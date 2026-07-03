@@ -27,8 +27,30 @@ echo "Python gefunden:"
 python3 --version
 
 echo ""
+echo "Suche Python mit Tkinter (für die grafische Oberfläche) ..."
+SETUP_PYTHON=""
+for candidate in python3.13 python3.12 python3.11 python3 python; do
+    if command -v "$candidate" >/dev/null 2>&1 && "$candidate" -c "import tkinter" 2>/dev/null; then
+        SETUP_PYTHON="$candidate"
+        break
+    fi
+done
+
+if [ -z "$SETUP_PYTHON" ]; then
+    echo ""
+    echo "Warnung: Kein Python mit Tkinter gefunden."
+    echo "run.command funktioniert, gui.command aber nicht."
+    echo "Bitte Python 3 von python.org installieren:"
+    echo "https://www.python.org/downloads/"
+    echo ""
+    SETUP_PYTHON="python3"
+else
+    echo "Verwende: $SETUP_PYTHON ($($SETUP_PYTHON --version))"
+fi
+
+echo ""
 echo "Erstelle die lokale Arbeitsumgebung .venv ..."
-python3 -m venv .venv
+"$SETUP_PYTHON" -m venv .venv
 
 echo ""
 echo "Aktualisiere pip ..."
@@ -40,4 +62,4 @@ echo "Installiere benötigte Python-Erweiterungen ..."
 
 echo ""
 echo "Fertig. Die Einrichtung war erfolgreich."
-echo "Ab jetzt kannst du jedes Mal run.command doppelklicken."
+echo "Ab jetzt kannst du gui.command oder run.command doppelklicken."

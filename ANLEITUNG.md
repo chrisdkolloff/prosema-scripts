@@ -103,3 +103,4 @@ Prüfe diese Punkte:
 2. Ist die Excel-Datei in Excel oder Numbers noch geöffnet? Dann bitte schließen und noch einmal versuchen.
 3. Bei `run.command`: Heißt die Excel-Datei genau `input.xlsx` und liegt sie im gleichen Ordner?
 4. Steht eine Fehlermeldung im Fenster oder Protokoll? Dann die Meldung weitergeben.
+5. Startet `gui.command` nicht: Python von [python.org](https://www.python.org/downloads/) installieren und `setup.command` noch einmal ausführen (Homebrew-Python unterstützt die Oberfläche oft nicht).
