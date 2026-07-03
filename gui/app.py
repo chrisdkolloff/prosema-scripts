@@ -22,7 +22,7 @@ class ProsemaApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         ctk.set_appearance_mode("system")
-        ctk.set_default_color_theme("blue")
+        ctk.set_default_color_theme("green")
 
         self.title("PROSEMA Werkzeuge")
         self.geometry("820x620")
