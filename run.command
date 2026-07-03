@@ -28,7 +28,7 @@ echo "Starte Verarbeitung ..."
 echo ""
 
 source ".venv/bin/activate"
-python3 artikelnummern.py
+python3 scripts/artikelnummern.py
 
 echo ""
 echo "Wenn oben 'Fertig' steht, findest du das Ergebnis in:"

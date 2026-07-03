@@ -6,7 +6,7 @@ The day-to-day user should use the German instructions in `ANLEITUNG.md`.
 
 ## What It Does
 
-`artikelnummern.py` reads `input.xlsx`, assigns missing article numbers, and writes `output_mit_artikelnummern.xlsx`.
+`scripts/artikelnummern.py` reads `input.xlsx`, assigns missing article numbers, and writes `output_mit_artikelnummern.xlsx`.
 
 Article numbers use this format:
 
@@ -26,11 +26,12 @@ The script is idempotent: existing valid article numbers are preserved and are n
 .
 ├── ANLEITUNG.md
 ├── README.md
-├── artikelnummern.py
 ├── beispiel/
 │   └── input.xlsx
 ├── requirements.txt
 ├── run.command
+├── scripts/
+│   └── artikelnummern.py
 └── setup.command
 ```
 
@@ -54,7 +55,7 @@ python3 -m pip install -r requirements.txt
 To run manually:
 
 ```bash
-python3 artikelnummern.py
+python3 scripts/artikelnummern.py
 ```
 
 For the non-technical local workflow, double-click `setup.command` once, then double-click `run.command` each time.
