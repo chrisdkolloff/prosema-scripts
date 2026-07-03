@@ -409,7 +409,7 @@ def _build_job_spec():
             ),
             FieldSpec(
                 "strict",
-                "Bei Fehlern abbrechen (strict)",
+                "Bei Fehlern abbrechen (strikt)",
                 FieldKind.BOOL,
                 True,
                 help="Abbruch bei unbekannten Gruppennamen",
