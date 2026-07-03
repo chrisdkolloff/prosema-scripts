@@ -42,7 +42,7 @@ class JobForm(ctk.CTkFrame):
                 hover_color=("gray85", "gray25"),
                 command=self._toggle_advanced,
             )
-            self._advanced_toggle.grid(row=self._next_row(), column=0, sticky="w", pady=(8, 4))
+            self._advanced_toggle.grid(row=self._next_row(), column=0, sticky="w", pady=(16, 6))
 
             self._advanced_frame = ctk.CTkFrame(self, fg_color="transparent")
             for fld in advanced:
@@ -53,7 +53,7 @@ class JobForm(ctk.CTkFrame):
         self.grid_columnconfigure(0, weight=1)
 
     def _next_row(self) -> int:
-        return len(self._widgets) + (1 if hasattr(self, "_advanced_toggle") else 0)
+        return self.grid_size()[1]
 
     def _toggle_advanced(self) -> None:
         self._advanced_visible = not self._advanced_visible
