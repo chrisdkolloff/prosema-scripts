@@ -258,8 +258,95 @@ def generate_weclapp_import(
     return stats
 
 
+def _project_root() -> Path:
+    return Path(__file__).resolve().parent.parent
+
+
+def _resolve_path(path: str | Path) -> Path:
+    p = Path(path)
+    if not p.is_absolute():
+        p = _project_root() / p
+    return p
+
+
+def _ensure_project_root() -> None:
+    root = _project_root()
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+
+
+def run_job(params: dict):
+    from gui.job_spec import RunResult, coerce_params, validate_params
+
+    params = coerce_params(JOB_SPEC, params)
+    validate_params(JOB_SPEC, params)
+
+    try:
+        stats = generate_weclapp_import(
+            _resolve_path(params["input"]),
+            _resolve_path(params["template"]),
+            _resolve_path(params["rabatte"]),
+            _resolve_path(params["output"]),
+        )
+    except PermissionError as exc:
+        raise PermissionError(
+            f"Konnte {params['output']} nicht speichern — ist die Datei geöffnet?"
+        ) from exc
+
+    return RunResult(
+        summary=f"Fertig: {params['output']}  ({stats.rows_written} Zeilen)",
+        details=stats.summary_lines(),
+    )
+
+
+def _build_job_spec():
+    from gui.job_spec import FieldKind, FieldSpec, JobSpec
+
+    template_default = (
+        "data/SupplySourcesWeclapp DemoImportfile_de (28.10.2024)(1).csv"
+    )
+    return JobSpec(
+        id="weclapp_import",
+        title="Weclapp-Import erzeugen",
+        description=(
+            "Bezugsquellen-Import für Weclapp aus der Masterdatei erzeugen. "
+            "Rabatte werden anhand der Prosema-Artikelnummer nachgeschlagen."
+        ),
+        fields=(
+            FieldSpec(
+                "input",
+                "Masterdatei",
+                FieldKind.FILE_IN,
+                "230703-masterdatei.xlsx",
+            ),
+            FieldSpec(
+                "output",
+                "Ausgabedatei",
+                FieldKind.FILE_OUT,
+                "weclapp_import.csv",
+                output_name="weclapp_import.csv",
+            ),
+            FieldSpec(
+                "template",
+                "Weclapp-Importvorlage",
+                FieldKind.FILE_IN,
+                template_default,
+                advanced=True,
+            ),
+            FieldSpec(
+                "rabatte",
+                "Produktgruppen-Rabatte",
+                FieldKind.FILE_IN,
+                "data/produktgruppen_rabatte.csv",
+                advanced=True,
+            ),
+        ),
+        run=run_job,
+    )
+
+
 def build_argparser() -> argparse.ArgumentParser:
-    root = Path(__file__).resolve().parent.parent
+    root = _project_root()
     parser = argparse.ArgumentParser(
         description="Weclapp-Bezugsquellen-Import aus Masterdatei erzeugen.",
     )
@@ -295,13 +382,14 @@ def build_argparser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
+    _ensure_project_root()
     parser = build_argparser()
     args = parser.parse_args()
 
-    master_path = Path(args.master)
-    template_path = Path(args.template)
-    rabatte_path = Path(args.rabatte)
-    output_path = Path(args.output)
+    master_path = _resolve_path(args.master)
+    template_path = _resolve_path(args.template)
+    rabatte_path = _resolve_path(args.rabatte)
+    output_path = _resolve_path(args.output)
 
     for label, path in (
         ("Masterdatei", master_path),
@@ -321,6 +409,10 @@ def main() -> None:
     print(f"Fertig: {output_path}")
     for line in stats.summary_lines():
         print(line)
+
+
+_ensure_project_root()
+JOB_SPEC = _build_job_spec()
 
 
 if __name__ == "__main__":

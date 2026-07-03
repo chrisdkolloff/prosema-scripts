@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 import tkinter as tk
+from pathlib import Path
 from tkinter import filedialog
 from typing import Any
 
@@ -198,11 +199,18 @@ class JobForm(ctk.CTkFrame):
             )
         else:
             initial = entry.get().strip()
+            out_name = fld.output_name or str(fld.default)
+            suffix = Path(out_name).suffix
+            default_ext = suffix if suffix else ".xlsx"
+            if default_ext == ".csv":
+                filetypes = [("CSV", "*.csv"), ("Alle Dateien", "*.*")]
+            else:
+                filetypes = [("Excel", "*.xlsx"), ("Alle Dateien", "*.*")]
             path = filedialog.asksaveasfilename(
                 title=fld.label,
-                defaultextension=".xlsx",
+                defaultextension=default_ext,
                 initialfile=initial.split("/")[-1] if initial else "",
-                filetypes=[("Excel", "*.xlsx"), ("Alle Dateien", "*.*")],
+                filetypes=filetypes,
             )
         if path:
             entry.delete(0, "end")
