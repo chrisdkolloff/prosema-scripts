@@ -1,6 +1,12 @@
 #!/bin/bash
 cd "$(dirname "$0")" || exit 1
 
+pause() {
+    echo ""
+    read -r -p "Drücke die Eingabetaste, um dieses Fenster zu schließen." _
+}
+trap pause EXIT
+
 find_gui_python() {
     for candidate in \
         .venv/bin/pythonw \
@@ -18,15 +24,17 @@ find_gui_python() {
 }
 
 PYTHON="$(find_gui_python)" || {
-    osascript -e 'display alert "GUI nicht verfügbar" message "Kein Python mit Tkinter in .venv gefunden. Bitte setup.command erneut ausführen (Python von python.org installieren, falls nötig)." as critical'
+    echo ""
+    echo "Kein Python mit Tkinter in .venv gefunden."
+    echo "Bitte Python von python.org installieren und setup.command erneut ausführen:"
+    echo "https://www.python.org/downloads/"
     exit 1
 }
 
-# pythonw exists only with some python.org installs.
-if [ -x ".venv/bin/pythonw" ] && [ "$PYTHON" = ".venv/bin/pythonw" ]; then
-    exec .venv/bin/pythonw -m gui
-fi
+echo "PROSEMA Werkzeuge"
+echo "-----------------"
+echo ""
+echo "Das Fenster öffnet sich gleich. Dieses Terminal kann minimiert werden."
+echo ""
 
-# Start GUI in background so the Terminal window can close.
-"$PYTHON" -m gui &
-exit 0
+exec "$PYTHON" -m gui
