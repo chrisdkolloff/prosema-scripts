@@ -118,10 +118,18 @@ def find_or_create_column(ws, header_name: str, header_row: int) -> int:
     return new_col
 
 
-def normalize_name(value) -> str:
+def normalize_group_name(value) -> str:
+    """Normalize a group name for lookup: strip whitespace, compare as lowercase."""
     if value is None:
         return ""
-    return str(value).strip().casefold()
+    return str(value).strip().lower()
+
+
+def normalize_group_code(value) -> str:
+    """Normalize a group code from the dictionary: strip whitespace, lowercase."""
+    if value is None:
+        return ""
+    return str(value).strip().lower()
 
 
 def load_group_dictionary(path: Path) -> tuple[dict[str, str], dict[tuple[str, str], str]]:
@@ -148,8 +156,8 @@ def load_group_dictionary(path: Path) -> tuple[dict[str, str], dict[tuple[str, s
             name_raw = ws_main.cell(row=row, column=name_col).value
             if code_raw in (None, "") or name_raw in (None, ""):
                 continue
-            code = str(code_raw).strip()
-            key = normalize_name(name_raw)
+            code = normalize_group_code(code_raw)
+            key = normalize_group_name(name_raw)
             if key in main_name_to_code:
                 raise ValueError(
                     f"Doppelte Hauptgruppen-Bezeichnung im Gruppenschlüssel: {name_raw!r} "
@@ -169,9 +177,9 @@ def load_group_dictionary(path: Path) -> tuple[dict[str, str], dict[tuple[str, s
             sub_name_raw = ws_sub.cell(row=row, column=sub_name_col).value
             if main_code_raw in (None, "") or sub_code_raw in (None, "") or sub_name_raw in (None, ""):
                 continue
-            main_code = str(main_code_raw).strip()
-            sub_code = str(sub_code_raw).strip()
-            key = (main_code, normalize_name(sub_name_raw))
+            main_code = normalize_group_code(main_code_raw)
+            sub_code = normalize_group_code(sub_code_raw)
+            key = (main_code, normalize_group_name(sub_name_raw))
             if key in sub_name_to_code:
                 raise ValueError(
                     f"Doppelte Untergruppen-Bezeichnung im Gruppenschlüssel: "
@@ -201,23 +209,25 @@ def resolve_group_codes(
 ) -> tuple[str | None, str | None, RowResolutionError | None]:
     main_raw = ws.cell(row=row, column=main_col).value
     sub_raw = ws.cell(row=row, column=sub_col).value
-    main_display = "" if main_raw is None else str(main_raw).strip()
-    sub_display = "" if sub_raw is None else str(sub_raw).strip()
+    main_name = normalize_group_name(main_raw)
+    sub_name = normalize_group_name(sub_raw)
+    main_display = main_name or None
+    sub_display = sub_name or None
 
-    err = RowResolutionError(row=row, main_name=main_display or None, sub_name=sub_display or None)
+    err = RowResolutionError(row=row, main_name=main_display, sub_name=sub_display)
     main_code: str | None = None
 
-    if main_display == "":
+    if main_name == "":
         err.main_unknown = True
     else:
-        main_code = main_name_to_code.get(normalize_name(main_display))
+        main_code = main_name_to_code.get(main_name)
         if main_code is None:
             err.main_unknown = True
 
-    if sub_display == "":
+    if sub_name == "":
         err.sub_unknown = True
     elif main_code is not None:
-        sub_code = sub_name_to_code.get((main_code, normalize_name(sub_display)))
+        sub_code = sub_name_to_code.get((main_code, sub_name))
         if sub_code is None:
             err.sub_unknown = True
         else:
