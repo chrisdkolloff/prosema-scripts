@@ -44,7 +44,7 @@ class Scheme:
     main_group_header: str = "Hauptgruppe"
     sub_group_header: str = "Untergruppe"
     data_row_key_header: str = "Artikelnr."
-    dictionary_file: str = "gruppenschluessel.xlsx"
+    dictionary_file: str = "data/gruppen.xlsx"
 
     @property
     def max_running(self) -> int:
@@ -54,7 +54,7 @@ class Scheme:
         path = Path(self.dictionary_file)
         if path.is_absolute():
             return path
-        return Path(__file__).resolve().parent / path
+        return Path(__file__).resolve().parent.parent / path
 
     def normalize_group(self, value, width: int, where: str) -> str:
         raw = "" if value is None else str(value).strip()
@@ -244,7 +244,20 @@ def resolve_group_codes(
 
 
 def format_resolution_errors(errors: list[RowResolutionError]) -> str:
+    missing_mains = sorted({err.main_name for err in errors if err.main_unknown and err.main_name})
+    missing_subs = sorted(
+        {err.sub_name for err in errors if err.sub_unknown and not err.main_unknown and err.sub_name}
+    )
+
     lines = ["Gruppennamen konnten nicht aufgelöst werden:"]
+    if missing_mains:
+        lines.append(f"\nUnbekannte Hauptgruppen ({len(missing_mains)}):")
+        lines.extend(f"  - {name}" for name in missing_mains)
+    if missing_subs:
+        lines.append(f"\nUnbekannte Untergruppen ({len(missing_subs)}):")
+        lines.extend(f"  - {name}" for name in missing_subs)
+
+    lines.append(f"\nDetails ({len(errors)} Zeile(n)):")
     for err in errors:
         parts = [f"  Zeile {err.row}:"]
         if err.main_unknown:
@@ -252,7 +265,7 @@ def format_resolution_errors(errors: list[RowResolutionError]) -> str:
         elif err.sub_unknown:
             parts.append(f" unbekannte Untergruppe {err.sub_name!r}")
         lines.append("".join(parts))
-    lines.append("Bitte korrigieren Sie die Namen in input.xlsx oder ergänzen Sie den Gruppenschlüssel.")
+    lines.append("\nBitte korrigieren Sie die Namen in input.xlsx oder ergänzen Sie den Gruppenschlüssel.")
     return "\n".join(lines)
 
 
@@ -341,22 +354,110 @@ def assign_article_numbers(
     return assigned, ranges
 
 
-def main():
-    INPUT = "input.xlsx"
-    OUTPUT = "output_mit_artikelnummern.xlsx"
-    if not Path(INPUT).exists():
-        sys.exit(f"Eingabedatei nicht gefunden: {INPUT}")
+def _ensure_project_root() -> None:
+    root = Path(__file__).resolve().parent.parent
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+
+
+def run_job(params: dict):
+    from gui.job_spec import RunResult, coerce_params, validate_params
+
+    params = coerce_params(JOB_SPEC, params)
+    validate_params(JOB_SPEC, params)
+
+    scheme = Scheme(
+        start=params["start"],
+        step=params["step"],
+        dictionary_file=params["dictionary_file"],
+    )
     try:
-        assigned, ranges = assign_article_numbers(INPUT, OUTPUT)
+        assigned, ranges = assign_article_numbers(
+            params["input"],
+            params["output"],
+            scheme=scheme,
+            overwrite_existing=params["overwrite_existing"],
+            strict=params["strict"],
+        )
+    except PermissionError as e:
+        raise PermissionError(
+            f"Konnte {params['output']} nicht speichern — ist die Datei in Excel geöffnet?"
+        ) from e
+
+    details = [f"  {grp}: bis {high:04d}" for grp, high in ranges.items()]
+    return RunResult(
+        summary=f"Fertig: {params['output']}  ({assigned} neue Nummern vergeben)",
+        details=details,
+    )
+
+
+def _build_job_spec():
+    from gui.job_spec import FieldKind, FieldSpec, JobSpec
+
+    return JobSpec(
+        id="artikelnummern",
+        title="Artikelnummern erstellen",
+        description="Fehlende Artikelnummern in einer Excel-Masterliste vergeben.",
+        fields=(
+            FieldSpec("input", "Eingabedatei", FieldKind.FILE_IN, "input.xlsx"),
+            FieldSpec(
+                "output",
+                "Ausgabedatei",
+                FieldKind.FILE_OUT,
+                "output_mit_artikelnummern.xlsx",
+                output_name="output_mit_artikelnummern.xlsx",
+            ),
+            FieldSpec(
+                "strict",
+                "Bei Fehlern abbrechen (strict)",
+                FieldKind.BOOL,
+                True,
+                help="Abbruch bei unbekannten Gruppennamen",
+            ),
+            FieldSpec(
+                "overwrite_existing",
+                "Bestehende Nummern überschreiben",
+                FieldKind.BOOL,
+                True,
+                help="Vorhandene Artikelnummern neu vergeben",
+            ),
+            FieldSpec("start", "Startnummer", FieldKind.INT, 10, advanced=True),
+            FieldSpec("step", "Schrittweite", FieldKind.INT, 10, advanced=True),
+            FieldSpec(
+                "dictionary_file",
+                "Gruppenschlüssel",
+                FieldKind.STR,
+                "data/gruppen.xlsx",
+                advanced=True,
+            ),
+        ),
+        run=run_job,
+    )
+
+
+def main():
+    _ensure_project_root()
+    from gui.job_spec import args_to_params, build_argparser, coerce_params, validate_params
+
+    parser = build_argparser(JOB_SPEC)
+    args = parser.parse_args()
+    params = coerce_params(JOB_SPEC, args_to_params(JOB_SPEC, args))
+    try:
+        validate_params(JOB_SPEC, params)
+        result = run_job(params)
     except FileNotFoundError as e:
         sys.exit(str(e))
-    except PermissionError:
-        sys.exit(f"Konnte {OUTPUT} nicht speichern - ist die Datei in Excel geöffnet?")
+    except PermissionError as e:
+        sys.exit(str(e))
     except (ValueError, OverflowError) as e:
         sys.exit(f"Abbruch: {e}")
-    print(f"Fertig: {OUTPUT}  ({assigned} neue Nummern vergeben)")
-    for grp, high in ranges.items():
-        print(f"  {grp}: bis {high:04d}")
+    print(result.summary)
+    for line in result.details:
+        print(line)
+
+
+_ensure_project_root()
+JOB_SPEC = _build_job_spec()
 
 
 if __name__ == "__main__":

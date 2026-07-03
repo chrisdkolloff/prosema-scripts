@@ -52,7 +52,22 @@ Falls das nicht klappt:
 2. Öffne „Datenschutz & Sicherheit“.
 3. Klicke bei der blockierten Datei auf „Trotzdem öffnen“.
 
-## 4. Jedes Mal Artikelnummern erstellen
+## 4. Mit der grafischen Oberfläche (empfohlen)
+
+1. Doppelklicke auf `gui.command`.
+2. Es öffnet sich ein Fenster mit den verfügbaren Werkzeugen.
+3. Wähle links das gewünschte Werkzeug, zum Beispiel **Artikelnummern erstellen**.
+4. Klicke bei **Eingabedatei** auf **Durchsuchen…** und wähle deine Excel-Datei.
+5. Die **Ausgabedatei** wird automatisch vorgeschlagen. Du kannst sie bei Bedarf ändern.
+6. Schließe die Excel-Datei in Excel oder Numbers.
+7. Klicke auf **Generieren**.
+8. Wenn alles geklappt hat, erscheint eine Meldung **Fertig** und das Ergebnis liegt an dem gewählten Ausgabeort.
+
+Weitere Optionen findest du unter **Erweitert**. Für den normalen Gebrauch musst du dort nichts ändern.
+
+Beim ersten Doppelklick auf `gui.command` gilt derselbe macOS-Hinweis wie in Abschnitt 3 (rechte Maustaste → Öffnen).
+
+## 5. Alternative: Artikelnummern über run.command
 
 1. Speichere deine Excel-Datei in diesem Ordner.
 2. Der Dateiname muss genau so sein:
@@ -71,7 +86,7 @@ input.xlsx
 output_mit_artikelnummern.xlsx
 ```
 
-## 5. Test mit Beispieldatei
+## 6. Test mit Beispieldatei
 
 1. Öffne den Ordner `beispiel`.
 2. Kopiere die Datei `input.xlsx`.
@@ -80,12 +95,11 @@ output_mit_artikelnummern.xlsx
 5. Doppelklicke auf `run.command`.
 6. Danach sollte die Datei `output_mit_artikelnummern.xlsx` erscheinen.
 
-## 6. Wenn es nicht funktioniert
+## 7. Wenn es nicht funktioniert
 
 Prüfe diese Punkte:
 
-1. Heißt die Excel-Datei genau `input.xlsx`?
-2. Liegt `input.xlsx` im gleichen Ordner wie `run.command`?
-3. Ist die Excel-Datei in Excel oder Numbers noch geöffnet? Dann bitte schließen und noch einmal `run.command` doppelklicken.
-4. Wurde `setup.command` schon einmal ausgeführt?
-5. Steht im Terminalfenster eine Fehlermeldung? Dann das Fenster offen lassen und die Meldung weitergeben.
+1. Wurde `setup.command` schon einmal ausgeführt?
+2. Ist die Excel-Datei in Excel oder Numbers noch geöffnet? Dann bitte schließen und noch einmal versuchen.
+3. Bei `run.command`: Heißt die Excel-Datei genau `input.xlsx` und liegt sie im gleichen Ordner?
+4. Steht eine Fehlermeldung im Fenster oder Protokoll? Dann die Meldung weitergeben.
