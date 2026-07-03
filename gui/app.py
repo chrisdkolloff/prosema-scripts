@@ -6,12 +6,12 @@ import sys
 from pathlib import Path
 
 import customtkinter as ctk
-from tkinter import messagebox
+from tkinter import messagebox, Event
 
 from gui.job_spec import JobSpec, RunResult
 from gui.registry import JOBS
 from gui.runner import JobRunner
-from gui.widgets import JobForm
+from gui.widgets import JobForm, ScrollableFrame
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -77,10 +77,15 @@ class ProsemaApp(ctk.CTk):
         main = ctk.CTkFrame(self, fg_color="transparent")
         main.grid(row=0, column=1, sticky="nsew", padx=16, pady=16)
         main.grid_columnconfigure(0, weight=1)
-        main.grid_rowconfigure(5, weight=1)
+        main.grid_rowconfigure(0, weight=1)
+
+        self._scroll = ScrollableFrame(main)
+        self._scroll.grid(row=0, column=0, sticky="nsew", pady=(0, 8))
+        content = self._scroll.inner
+        content.grid_columnconfigure(0, weight=1)
 
         self._job_title = ctk.CTkLabel(
-            main,
+            content,
             text="",
             font=ctk.CTkFont(size=20, weight="bold"),
             anchor="w",
@@ -88,7 +93,7 @@ class ProsemaApp(ctk.CTk):
         self._job_title.grid(row=0, column=0, sticky="ew", pady=(0, 4))
 
         self._job_description = ctk.CTkLabel(
-            main,
+            content,
             text="",
             anchor="w",
             wraplength=560,
@@ -96,12 +101,13 @@ class ProsemaApp(ctk.CTk):
             text_color=("gray30", "gray70"),
         )
         self._job_description.grid(row=1, column=0, sticky="ew", pady=(0, 12))
+        content.bind("<Configure>", self._update_description_wrap)
 
-        self._form_container = ctk.CTkFrame(main, fg_color="transparent")
+        self._form_container = ctk.CTkFrame(content, fg_color="transparent")
         self._form_container.grid(row=2, column=0, sticky="ew")
         self._form_container.grid_columnconfigure(0, weight=1)
 
-        action_row = ctk.CTkFrame(main, fg_color="transparent")
+        action_row = ctk.CTkFrame(content, fg_color="transparent")
         action_row.grid(row=3, column=0, sticky="new", pady=(8, 8))
         self._generate_btn = ctk.CTkButton(
             action_row,
@@ -112,11 +118,15 @@ class ProsemaApp(ctk.CTk):
         self._generate_btn.pack(side="left")
 
         log_label = ctk.CTkLabel(main, text="Protokoll", anchor="w")
-        log_label.grid(row=4, column=0, sticky="ew", pady=(4, 4))
+        log_label.grid(row=1, column=0, sticky="ew", pady=(4, 4))
 
         self._log = ctk.CTkTextbox(main, height=180, state="disabled")
-        self._log.grid(row=5, column=0, sticky="nsew")
-        main.grid_rowconfigure(5, weight=1)
+        self._log.grid(row=2, column=0, sticky="ew")
+
+    def _update_description_wrap(self, event: Event) -> None:
+        width = event.width - 24
+        if width > 100:
+            self._job_description.configure(wraplength=width)
 
     def _check_setup(self) -> None:
         if not (PROJECT_ROOT / ".venv").is_dir():
@@ -150,6 +160,7 @@ class ProsemaApp(ctk.CTk):
         self._current_job_id = job_id
         self._job_title.configure(text=job.title)
         self._job_description.configure(text=job.description)
+        self.after_idle(self._scroll.refresh)
 
     def _on_generate(self) -> None:
         if self._current_job_id is None or self._runner.running:

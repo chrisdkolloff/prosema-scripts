@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 import tkinter as tk
 from tkinter import filedialog
 from typing import Any
@@ -9,6 +10,78 @@ from typing import Any
 import customtkinter as ctk
 
 from gui.job_spec import FieldKind, FieldSpec, JobSpec, default_output_path, defaults_from_spec
+
+
+def _next_grid_row(parent: tk.Misc) -> int:
+    max_row = -1
+    for child in parent.winfo_children():
+        info = child.grid_info()
+        if info:
+            row = int(info["row"])
+            span = int(info.get("rowspan", 1))
+            max_row = max(max_row, row + span - 1)
+    return max_row + 1
+
+
+class ScrollableFrame(ctk.CTkFrame):
+    """Canvas-based vertical scroll area with a fixed viewport height."""
+
+    def __init__(self, master, **kwargs):
+        super().__init__(master, fg_color="transparent", **kwargs)
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(0, weight=1)
+
+        bg = self._apply_appearance_mode(self.cget("bg_color"))
+        self._canvas = tk.Canvas(self, highlightthickness=0, bg=bg)
+        self._scrollbar = ctk.CTkScrollbar(self, command=self._canvas.yview)
+        self._canvas.configure(yscrollcommand=self._scrollbar.set)
+
+        self._canvas.grid(row=0, column=0, sticky="nsew")
+        self._scrollbar.grid(row=0, column=1, sticky="ns")
+
+        self._inner = ctk.CTkFrame(self._canvas, fg_color="transparent")
+        self._window_id = self._canvas.create_window((0, 0), window=self._inner, anchor="nw")
+
+        self._inner.bind("<Configure>", self._on_inner_configure)
+        self._canvas.bind("<Configure>", self._on_canvas_configure)
+        self._canvas.bind("<Enter>", self._bind_mousewheel)
+        self._canvas.bind("<Leave>", self._unbind_mousewheel)
+        self._inner.bind("<Enter>", self._bind_mousewheel)
+        self._inner.bind("<Leave>", self._unbind_mousewheel)
+
+    @property
+    def inner(self) -> ctk.CTkFrame:
+        return self._inner
+
+    def refresh(self) -> None:
+        self._canvas.update_idletasks()
+        self._canvas.configure(scrollregion=self._canvas.bbox("all"))
+
+    def _on_inner_configure(self, _event: tk.Event) -> None:
+        self.refresh()
+
+    def _on_canvas_configure(self, event: tk.Event) -> None:
+        self._canvas.itemconfigure(self._window_id, width=event.width)
+
+    def _bind_mousewheel(self, _event: tk.Event) -> None:
+        self._canvas.bind_all("<MouseWheel>", self._on_mousewheel)
+        self._canvas.bind_all("<Button-4>", self._on_mousewheel)
+        self._canvas.bind_all("<Button-5>", self._on_mousewheel)
+
+    def _unbind_mousewheel(self, _event: tk.Event) -> None:
+        self._canvas.unbind_all("<MouseWheel>")
+        self._canvas.unbind_all("<Button-4>")
+        self._canvas.unbind_all("<Button-5>")
+
+    def _on_mousewheel(self, event: tk.Event) -> None:
+        if event.num == 4:
+            self._canvas.yview_scroll(-1, "units")
+        elif event.num == 5:
+            self._canvas.yview_scroll(1, "units")
+        elif sys.platform == "darwin":
+            self._canvas.yview_scroll(-int(event.delta), "units")
+        else:
+            self._canvas.yview_scroll(-int(event.delta / 6), "units")
 
 
 class JobForm(ctk.CTkFrame):
@@ -53,7 +126,7 @@ class JobForm(ctk.CTkFrame):
         self.grid_columnconfigure(0, weight=1)
 
     def _next_row(self) -> int:
-        return self.grid_size()[1]
+        return _next_grid_row(self)
 
     def _toggle_advanced(self) -> None:
         self._advanced_visible = not self._advanced_visible
@@ -63,10 +136,19 @@ class JobForm(ctk.CTkFrame):
         else:
             self._advanced_frame.grid_remove()
             self._advanced_toggle.configure(text="▶ Erweitert")
+        self._refresh_scroll()
+
+    def _refresh_scroll(self) -> None:
+        widget: tk.Misc | None = self
+        while widget is not None:
+            if isinstance(widget, ScrollableFrame):
+                widget.refresh()
+                return
+            widget = widget.master
 
     def _add_field(self, fld: FieldSpec, default: Any, parent: ctk.CTkFrame | None = None) -> None:
         parent = parent or self
-        row = parent.grid_size()[1]
+        row = _next_grid_row(parent)
 
         label = ctk.CTkLabel(parent, text=fld.label, anchor="w")
         label.grid(row=row, column=0, sticky="w", pady=(6, 2))
