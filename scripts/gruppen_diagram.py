@@ -1,8 +1,8 @@
 """
-Gruppenhierarchie aus gruppen.xlsx als Graphviz-Diagramm erzeugen.
+Gruppenhierarchie aus gruppen.xlsx als interaktives Plotly-Diagramm erzeugen.
 
 Liest die Tabellenblätter „Hauptgruppen“ und „Untergruppen“ und rendert eine
-Baumstruktur: jede Hauptgruppe mit ihren Untergruppen als Cluster.
+Sunburst-Ansicht: Hauptgruppen im Inneren, Untergruppen im äußeren Ring.
 """
 
 from __future__ import annotations
@@ -15,11 +15,9 @@ from pathlib import Path
 from openpyxl import load_workbook
 
 try:
-    from graphviz import Digraph
-    from graphviz.backend.execute import ExecutableNotFound
+    import plotly.graph_objects as go
 except ImportError:  # pragma: no cover - handled at runtime
-    Digraph = None  # type: ignore[misc, assignment]
-    ExecutableNotFound = OSError  # type: ignore[misc, assignment]
+    go = None  # type: ignore[assignment]
 
 
 @dataclass(frozen=True)
@@ -27,6 +25,9 @@ class Subgroup:
     main_code: str
     sub_code: str
     name: str
+
+
+ROOT_ID = "root"
 
 
 def _project_root() -> Path:
@@ -53,6 +54,12 @@ def _format_code(value) -> str:
     if not raw.isdigit():
         raise ValueError(f"Ungültiger Gruppencode: {raw!r}")
     return f"{int(raw):03d}"
+
+
+def _label(code: str, name: str) -> str:
+    if name:
+        return f"{code} {name}"
+    return code
 
 
 def load_groups(path: Path) -> tuple[dict[str, str], list[Subgroup]]:
@@ -96,102 +103,92 @@ def load_groups(path: Path) -> tuple[dict[str, str], list[Subgroup]]:
         wb.close()
 
 
-def _node_label(code: str, name: str) -> str:
-    if name:
-        return f"{code}\\n{name}"
-    return code
-
-
-def build_diagram(
+def build_figure(
     main_groups: dict[str, str],
     subgroups: list[Subgroup],
-) -> Digraph:
-    dot = Digraph(
-        name="gruppen",
-        graph_attr={
-            "rankdir": "TB",
-            "splines": "ortho",
-            "nodesep": "0.35",
-            "ranksep": "0.55",
-            "fontsize": "11",
-            "fontname": "Helvetica",
-        },
-        node_attr={
-            "shape": "box",
-            "style": "rounded,filled",
-            "fillcolor": "#f8f9fa",
-            "color": "#6c757d",
-            "fontname": "Helvetica",
-            "fontsize": "10",
-        },
-        edge_attr={
-            "color": "#adb5bd",
-        },
-    )
-
+):
     by_main: dict[str, list[Subgroup]] = {}
     for subgroup in subgroups:
         by_main.setdefault(subgroup.main_code, []).append(subgroup)
 
-    for main_code in sorted(by_main):
-        main_name = main_groups.get(main_code, "")
-        cluster_name = f"cluster_{main_code}"
-        with dot.subgraph(name=cluster_name) as cluster:
-            cluster.attr(
-                label=_node_label(main_code, main_name),
-                style="rounded,filled",
-                color="#dee2e6",
-                fillcolor="#ffffff",
-                fontsize="12",
-                fontname="Helvetica-Bold",
-            )
-            main_id = f"main_{main_code}"
-            cluster.node(
-                main_id,
-                label=_node_label(main_code, main_name),
-                fillcolor="#e7f1ff",
-                color="#0d6efd",
-                penwidth="1.5",
-            )
-            for subgroup in sorted(by_main[main_code], key=lambda s: s.sub_code):
-                sub_id = f"sub_{main_code}_{subgroup.sub_code}"
-                cluster.node(
-                    sub_id,
-                    label=_node_label(subgroup.sub_code, subgroup.name),
-                )
-                cluster.edge(main_id, sub_id)
+    ids = [ROOT_ID]
+    labels = ["Produktgruppen"]
+    parents = [""]
+    values = [len(subgroups)]
 
-    return dot
+    for main_code in sorted(by_main):
+        main_id = f"main_{main_code}"
+        main_name = main_groups.get(main_code, "")
+        ids.append(main_id)
+        labels.append(_label(main_code, main_name))
+        parents.append(ROOT_ID)
+        values.append(len(by_main[main_code]))
+
+        for subgroup in sorted(by_main[main_code], key=lambda s: s.sub_code):
+            sub_id = f"sub_{main_code}_{subgroup.sub_code}"
+            ids.append(sub_id)
+            labels.append(_label(subgroup.sub_code, subgroup.name))
+            parents.append(main_id)
+            values.append(1)
+
+    fig = go.Figure(
+        go.Sunburst(
+            ids=ids,
+            labels=labels,
+            parents=parents,
+            values=values,
+            branchvalues="total",
+            hovertext=labels,
+            hovertemplate="<b>%{hovertext}</b><extra></extra>",
+            hoverlabel=dict(namelength=-1),
+        )
+    )
+    fig.update_layout(
+        title="Haupt- und Untergruppen",
+        width=1400,
+        height=1400,
+        margin=dict(t=50, l=10, r=10, b=10),
+        uniformtext=dict(minsize=10, mode="hide"),
+    )
+    return fig
+
+
+def _output_path(output: Path, fmt: str) -> Path:
+    suffix = f".{fmt}"
+    if output.suffix.lower() == suffix:
+        return output
+    return output.with_suffix(suffix)
 
 
 def render_diagram(
     main_groups: dict[str, str],
     subgroups: list[Subgroup],
-    output_stem: Path,
+    output: Path,
     fmt: str,
 ) -> Path:
-    if Digraph is None:
+    if go is None:
         raise ImportError(
-            "Das Paket 'graphviz' ist nicht installiert. "
-            "Bitte ausführen: pip install graphviz"
+            "Das Paket 'plotly' ist nicht installiert. "
+            "Bitte ausführen: pip install plotly"
         )
 
-    dot = build_diagram(main_groups, subgroups)
-    output_stem.parent.mkdir(parents=True, exist_ok=True)
+    fig = build_figure(main_groups, subgroups)
+    output_file = _output_path(output, fmt)
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+
+    if fmt == "html":
+        fig.write_html(str(output_file), include_plotlyjs="cdn")
+        return output_file
 
     try:
-        rendered = dot.render(
-            filename=str(output_stem),
-            format=fmt,
-            cleanup=True,
-        )
-    except ExecutableNotFound as exc:
+        fig.write_image(str(output_file))
+    except ValueError as exc:
         raise RuntimeError(
-            "Graphviz-Binary nicht gefunden. "
-            "Bitte installieren, z. B. mit: brew install graphviz"
+            f"Statisches Format {fmt!r} benötigt das Paket 'kaleido'. "
+            "Bitte ausführen: pip install kaleido — oder HTML verwenden (-f html)."
         ) from exc
 
-    return Path(rendered)
+    return output_file
 
 
 def build_argparser() -> argparse.ArgumentParser:
@@ -208,15 +205,15 @@ def build_argparser() -> argparse.ArgumentParser:
     parser.add_argument(
         "-o",
         "--output",
-        default=str(root / "data" / "gruppen_diagram"),
-        help="Ausgabedatei ohne Endung (Standard: data/gruppen_diagram)",
+        default=str(root / "data" / "gruppen_diagram.html"),
+        help="Ausgabedatei (Standard: data/gruppen_diagram.html)",
     )
     parser.add_argument(
         "-f",
         "--format",
-        default="png",
-        choices=("png", "svg", "pdf"),
-        help="Ausgabeformat (Standard: png)",
+        default="html",
+        choices=("html", "png", "svg", "pdf"),
+        help="Ausgabeformat (Standard: html; png/svg/pdf benötigen kaleido)",
     )
     return parser
 
@@ -226,11 +223,11 @@ def main() -> None:
     args = build_argparser().parse_args()
 
     input_path = _resolve_path(args.input)
-    output_stem = _resolve_path(args.output)
+    output_path = _resolve_path(args.output)
 
     try:
         main_groups, subgroups = load_groups(input_path)
-        output_file = render_diagram(main_groups, subgroups, output_stem, args.format)
+        output_file = render_diagram(main_groups, subgroups, output_path, args.format)
     except (FileNotFoundError, ValueError, ImportError, RuntimeError, OSError) as exc:
         sys.exit(f"Abbruch: {exc}")
 
