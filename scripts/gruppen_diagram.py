@@ -7,8 +7,8 @@ Sunburst-Ansicht: Hauptgruppen im Inneren, Untergruppen im äußeren Ring.
 
 from __future__ import annotations
 
-import argparse
 import sys
+import webbrowser
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -191,49 +191,77 @@ def render_diagram(
     return output_file
 
 
-def build_argparser() -> argparse.ArgumentParser:
-    root = _project_root()
-    parser = argparse.ArgumentParser(
-        description="Haupt- und Untergruppen aus gruppen.xlsx als Diagramm erzeugen.",
+def run_job(params: dict):
+    from gui.job_spec import RunResult, coerce_params, validate_params
+
+    params = coerce_params(JOB_SPEC, params)
+    validate_params(JOB_SPEC, params)
+
+    input_path = _resolve_path(params["input"])
+    output_path = _resolve_path(params["output"])
+
+    main_groups, subgroups = load_groups(input_path)
+    output_file = render_diagram(main_groups, subgroups, output_path, "html")
+
+    opened = webbrowser.open(output_file.resolve().as_uri())
+    details = [
+        f"Hauptgruppen: {len(main_groups)}",
+        f"Untergruppen: {len(subgroups)}",
+    ]
+    if not opened:
+        details.append("Hinweis: Browser konnte nicht automatisch geöffnet werden.")
+    return RunResult(summary=f"Fertig: {output_file}", details=details)
+
+
+def _build_job_spec():
+    from gui.job_spec import FieldKind, FieldSpec, JobSpec
+
+    return JobSpec(
+        id="gruppen_diagram",
+        title="Gruppen-Diagramm",
+        description=(
+            "Interaktives Diagramm der Haupt- und Untergruppen aus dem Gruppenschlüssel "
+            "erzeugen und im Browser öffnen."
+        ),
+        fields=(
+            FieldSpec(
+                "input",
+                "Gruppenschlüssel",
+                FieldKind.FILE_IN,
+                "data/gruppen.xlsx",
+            ),
+            FieldSpec(
+                "output",
+                "Ausgabedatei",
+                FieldKind.FILE_OUT,
+                "data/gruppen_diagram.html",
+                output_name="gruppen_diagram.html",
+            ),
+        ),
+        run=run_job,
     )
-    parser.add_argument(
-        "-i",
-        "--input",
-        default=str(root / "data" / "gruppen.xlsx"),
-        help="Gruppenschlüssel (.xlsx, Standard: data/gruppen.xlsx)",
-    )
-    parser.add_argument(
-        "-o",
-        "--output",
-        default=str(root / "data" / "gruppen_diagram.html"),
-        help="Ausgabedatei (Standard: data/gruppen_diagram.html)",
-    )
-    parser.add_argument(
-        "-f",
-        "--format",
-        default="html",
-        choices=("html", "png", "svg", "pdf"),
-        help="Ausgabeformat (Standard: html; png/svg/pdf benötigen kaleido)",
-    )
-    return parser
 
 
 def main() -> None:
     _ensure_project_root()
-    args = build_argparser().parse_args()
+    from gui.job_spec import args_to_params, build_argparser, coerce_params, validate_params
 
-    input_path = _resolve_path(args.input)
-    output_path = _resolve_path(args.output)
-
+    parser = build_argparser(JOB_SPEC)
+    args = parser.parse_args()
+    params = coerce_params(JOB_SPEC, args_to_params(JOB_SPEC, args))
     try:
-        main_groups, subgroups = load_groups(input_path)
-        output_file = render_diagram(main_groups, subgroups, output_path, args.format)
+        validate_params(JOB_SPEC, params)
+        result = run_job(params)
     except (FileNotFoundError, ValueError, ImportError, RuntimeError, OSError) as exc:
         sys.exit(f"Abbruch: {exc}")
 
-    print(f"Fertig: {output_file}")
-    print(f"  Hauptgruppen:  {len(main_groups)}")
-    print(f"  Untergruppen:  {len(subgroups)}")
+    print(result.summary)
+    for line in result.details:
+        print(line)
+
+
+_ensure_project_root()
+JOB_SPEC = _build_job_spec()
 
 
 if __name__ == "__main__":

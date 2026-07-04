@@ -204,6 +204,8 @@ class JobForm(ctk.CTkFrame):
             default_ext = suffix if suffix else ".xlsx"
             if default_ext == ".csv":
                 filetypes = [("CSV", "*.csv"), ("Alle Dateien", "*.*")]
+            elif default_ext == ".html":
+                filetypes = [("HTML", "*.html"), ("Alle Dateien", "*.*")]
             else:
                 filetypes = [("Excel", "*.xlsx"), ("Alle Dateien", "*.*")]
             path = filedialog.asksaveasfilename(
