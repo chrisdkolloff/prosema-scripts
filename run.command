@@ -1,5 +1,7 @@
 #!/bin/bash
 cd "$(dirname "$0")" || exit 1
+# shellcheck source=python_env.sh
+source "$(dirname "$0")/python_env.sh"
 
 pause() {
     echo ""
@@ -10,12 +12,12 @@ trap pause EXIT
 echo "Artikelnummern-Generator"
 echo "------------------------"
 
-if [ ! -f ".venv/bin/activate" ]; then
+PYTHON="$(prosema_venv_python)" || {
     echo ""
     echo "Die Einrichtung wurde noch nicht gefunden."
     echo "Bitte doppelklicke zuerst setup.command."
     exit 1
-fi
+}
 
 if [ ! -f "input.xlsx" ]; then
     echo ""
@@ -27,8 +29,7 @@ fi
 echo "Starte Verarbeitung ..."
 echo ""
 
-source ".venv/bin/activate"
-python3 scripts/artikelnummern.py
+"$PYTHON" scripts/artikelnummern.py
 
 echo ""
 echo "Wenn oben 'Fertig' steht, findest du das Ergebnis in:"

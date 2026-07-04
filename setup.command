@@ -1,5 +1,7 @@
 #!/bin/bash
 cd "$(dirname "$0")" || exit 1
+# shellcheck source=python_env.sh
+source "$(dirname "$0")/python_env.sh"
 
 pause() {
     echo ""
@@ -10,55 +12,32 @@ trap pause EXIT
 echo "Einrichtung für den Artikelnummern-Generator"
 echo "--------------------------------------------"
 
-if ! command -v python3 >/dev/null 2>&1; then
-    echo ""
-    echo "Python 3 wurde nicht gefunden."
-    echo "Bitte installiere Python 3 von dieser Seite:"
-    echo "https://www.python.org/downloads/"
-    echo ""
-    echo "Falls Homebrew bereits installiert ist, geht auch:"
-    echo "brew install python"
-    echo ""
-    echo "Danach diese Datei bitte noch einmal doppelklicken."
+if ! prosema_require_system_python; then
     exit 1
 fi
 
-echo "Python gefunden:"
-python3 --version
+echo "Verwende: $PROSEMA_PYTHON ($($PROSEMA_PYTHON --version))"
 
 echo ""
-echo "Suche Python mit Tkinter (für die grafische Oberfläche) ..."
-SETUP_PYTHON=""
-for candidate in python3.13 python3.12 python3.11 python3 python; do
-    if command -v "$candidate" >/dev/null 2>&1 && "$candidate" -c "import tkinter" 2>/dev/null; then
-        SETUP_PYTHON="$candidate"
-        break
-    fi
-done
-
-if [ -z "$SETUP_PYTHON" ]; then
-    echo ""
-    echo "Warnung: Kein Python mit Tkinter gefunden."
-    echo "run.command funktioniert, gui.command aber nicht."
-    echo "Bitte Python 3 von python.org installieren:"
-    echo "https://www.python.org/downloads/"
-    echo ""
-    SETUP_PYTHON="python3"
-else
-    echo "Verwende: $SETUP_PYTHON ($($SETUP_PYTHON --version))"
+echo "Erstelle die lokale Arbeitsumgebung .venv (Python ${PROSEMA_PYTHON_VERSION}) ..."
+if [ -d ".venv" ]; then
+    rm -rf .venv
 fi
+"$PROSEMA_PYTHON" -m venv .venv
 
-echo ""
-echo "Erstelle die lokale Arbeitsumgebung .venv ..."
-"$SETUP_PYTHON" -m venv .venv
+VENV_PYTHON="$(prosema_venv_python)" || {
+    echo ""
+    echo "Die virtuelle Umgebung konnte nicht eingerichtet werden."
+    exit 1
+}
 
 echo ""
 echo "Aktualisiere pip ..."
-.venv/bin/python3 -m pip install --upgrade pip
+"$VENV_PYTHON" -m pip install --upgrade pip
 
 echo ""
 echo "Installiere benötigte Python-Erweiterungen ..."
-.venv/bin/python3 -m pip install -r requirements.txt
+"$VENV_PYTHON" -m pip install -r requirements.txt
 
 echo ""
 echo "Fertig. Die Einrichtung war erfolgreich."
