@@ -31,15 +31,15 @@ MASTER_COLUMNS = {
 }
 
 FIXED_COLUMNS = {
-    "Zu- und Abschläge Preisart 1": DISCOUNT_PRICE_TYPE,
-    "Zu- und Abschläge Preisart 2": DISCOUNT_PRICE_TYPE,
     "Serienartikel": "ja",
     "Dropshipping möglich": "ja",
     "Primäre Bezugsquelle": "ja",
 }
 
-DISCOUNT_VALUE_COLUMNS = (
+DISCOUNT_COLUMNS = (
+    "Zu- und Abschläge Preisart 1",
     "Zu- und Abschläge Wert 1",
+    "Zu- und Abschläge Preisart 2",
     "Zu- und Abschläge Wert 2",
 )
 
@@ -48,23 +48,19 @@ DISCOUNT_VALUE_COLUMNS = (
 class GenerationStats:
     rows_read: int = 0
     rows_written: int = 0
+    rows_without_discount: int = 0
     skipped_missing_article: int = 0
     skipped_malformed_article: int = 0
-    skipped_no_discount: int = 0
 
     def summary_lines(self) -> list[str]:
-        skipped = (
-            self.skipped_missing_article
-            + self.skipped_malformed_article
-            + self.skipped_no_discount
-        )
+        skipped = self.skipped_missing_article + self.skipped_malformed_article
         return [
             f"Masterzeilen gelesen: {self.rows_read}",
             f"Zeilen geschrieben:   {self.rows_written}",
+            f"  — davon ohne Rabatt:              {self.rows_without_discount}",
             f"Zeilen übersprungen:  {skipped}",
             f"  — fehlende Prosema Artikelnummer: {self.skipped_missing_article}",
             f"  — ungültige Artikelnummer:        {self.skipped_malformed_article}",
-            f"  — kein Rabatt-Eintrag:            {self.skipped_no_discount}",
         ]
 
 
@@ -223,11 +219,6 @@ def generate_weclapp_import(
 
             haupt, unter = parsed
             discount = lookup_discount(discounts, haupt, unter)
-            if discount is None:
-                stats.skipped_no_discount += 1
-                continue
-
-            grundrabatt, kundenrabatt = discount
             out_row = {column: "" for column in headers}
 
             for out_col, master_col in MASTER_COLUMNS.items():
@@ -246,11 +237,20 @@ def generate_weclapp_import(
                     )
                 out_row[out_col] = fixed
 
-            wert1, wert2 = DISCOUNT_VALUE_COLUMNS
-            if wert1 not in headers or wert2 not in headers:
-                raise ValueError("Rabatt-Wert-Spalten fehlen in der Importvorlage.")
-            out_row[wert1] = str(grundrabatt)
-            out_row[wert2] = str(kundenrabatt)
+            if discount is not None:
+                grundrabatt, kundenrabatt = discount
+                preisart1, wert1, preisart2, wert2 = DISCOUNT_COLUMNS
+                for col in DISCOUNT_COLUMNS:
+                    if col not in headers:
+                        raise ValueError(
+                            f"Rabatt-Spalte {col!r} fehlt in der Importvorlage."
+                        )
+                out_row[preisart1] = DISCOUNT_PRICE_TYPE
+                out_row[wert1] = str(grundrabatt)
+                out_row[preisart2] = DISCOUNT_PRICE_TYPE
+                out_row[wert2] = str(kundenrabatt)
+            else:
+                stats.rows_without_discount += 1
 
             writer.writerow(out_row)
             stats.rows_written += 1
