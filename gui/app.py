@@ -184,7 +184,8 @@ class ProsemaApp(ctk.CTk):
         self._append_log(result.summary)
         for line in result.details:
             self._append_log(line)
-        self.after(0, lambda: messagebox.showinfo("Fertig", result.summary))
+        if result.show_success_dialog:
+            self.after(0, lambda: messagebox.showinfo("Fertig", result.summary))
 
     def _on_error(self, message: str) -> None:
         self._append_log(message)

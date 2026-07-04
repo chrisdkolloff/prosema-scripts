@@ -33,6 +33,7 @@ class FieldSpec:
 class RunResult:
     summary: str
     details: list[str] = field(default_factory=list)
+    show_success_dialog: bool = True
 
 
 @dataclass(frozen=True)

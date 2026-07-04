@@ -62,6 +62,10 @@ def _label(code: str, name: str) -> str:
     return code
 
 
+def _code_sort_key(code: str) -> int:
+    return int(code)
+
+
 def load_groups(path: Path) -> tuple[dict[str, str], list[Subgroup]]:
     if not path.exists():
         raise FileNotFoundError(f"Gruppenschlüssel nicht gefunden: {path}")
@@ -116,7 +120,7 @@ def build_figure(
     parents = [""]
     values = [len(subgroups)]
 
-    for main_code in sorted(by_main):
+    for main_code in sorted(by_main, key=_code_sort_key):
         main_id = f"main_{main_code}"
         main_name = main_groups.get(main_code, "")
         ids.append(main_id)
@@ -124,7 +128,7 @@ def build_figure(
         parents.append(ROOT_ID)
         values.append(len(by_main[main_code]))
 
-        for subgroup in sorted(by_main[main_code], key=lambda s: s.sub_code):
+        for subgroup in sorted(by_main[main_code], key=lambda s: _code_sort_key(s.sub_code)):
             sub_id = f"sub_{main_code}_{subgroup.sub_code}"
             ids.append(sub_id)
             labels.append(_label(subgroup.sub_code, subgroup.name))
@@ -138,6 +142,7 @@ def build_figure(
             parents=parents,
             values=values,
             branchvalues="total",
+            sort=False,
             hovertext=labels,
             hovertemplate="<b>%{hovertext}</b><extra></extra>",
             hoverlabel=dict(namelength=-1),
@@ -210,7 +215,11 @@ def run_job(params: dict):
     ]
     if not opened:
         details.append("Hinweis: Browser konnte nicht automatisch geöffnet werden.")
-    return RunResult(summary=f"Fertig: {output_file}", details=details)
+    return RunResult(
+        summary=f"Fertig: {output_file}",
+        details=details,
+        show_success_dialog=False,
+    )
 
 
 def _build_job_spec():

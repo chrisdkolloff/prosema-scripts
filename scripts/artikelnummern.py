@@ -316,12 +316,13 @@ def assign_article_numbers(
             resolved_codes[row] = (main, sub)
 
     if resolution_errors:
-        print(format_resolution_errors(resolution_errors))
+        details = format_resolution_errors(resolution_errors)
         if strict:
             raise ValueError(
-                f"Abbruch: {len(resolution_errors)} Zeile(n) mit unbekannten Gruppennamen "
-                "(strict=True, Datei wurde nicht gespeichert)."
+                f"{len(resolution_errors)} Zeile(n) mit unbekannten Gruppennamen "
+                f"(strict=True, Datei wurde nicht gespeichert).\n\n{details}"
             )
+        print(details)
 
     # Pass 2: fill blanks.
     assigned = 0
