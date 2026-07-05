@@ -212,6 +212,7 @@ def _dashboard_html(
         "rows": rows,
         "filterColumns": [column for column in FILTER_COLUMNS if column in columns],
         "tableColumns": [column for column in TABLE_COLUMNS if column in columns],
+        "availableColumns": columns,
         "searchColumns": [column for column in SEARCH_COLUMNS if column in columns],
         "filterOptions": {
             column: _filter_options(rows, column)
@@ -400,6 +401,82 @@ def _dashboard_html(
       opacity: 0.45;
       cursor: default;
     }}
+    .table-toolbar {{
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px 0;
+      flex-wrap: wrap;
+    }}
+    .table-toolbar-actions {{
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }}
+    .table-toolbar button.secondary {{
+      background: var(--panel);
+      color: var(--text);
+      border: 1px solid var(--border);
+      min-width: auto;
+    }}
+    .toolbar-summary {{
+      font-size: 0.9rem;
+      color: var(--muted);
+    }}
+    .column-panel {{
+      margin: 0 16px 12px;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--bg);
+    }}
+    .column-panel-header {{
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+    }}
+    .column-panel-title {{
+      font-size: 0.9rem;
+      color: var(--muted);
+    }}
+    .column-actions {{
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }}
+    .column-actions button {{
+      min-width: auto;
+      padding: 6px 10px;
+      font-size: 0.85rem;
+      background: var(--panel);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }}
+    .column-grid {{
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 6px 12px;
+      max-height: 220px;
+      overflow: auto;
+    }}
+    .column-grid label {{
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      font-size: 0.85rem;
+      color: var(--text);
+      cursor: pointer;
+    }}
+    .column-grid input {{
+      margin-top: 2px;
+    }}
+    .column-panel[hidden] {{
+      display: none;
+    }}
     @media (max-width: 960px) {{
       .charts {{ grid-template-columns: 1fr; }}
     }}
@@ -429,6 +506,36 @@ def _dashboard_html(
   </section>
 
   <div class="table-wrap">
+    <div class="table-toolbar">
+      <div class="table-toolbar-actions">
+        <button type="button" class="secondary" id="toggle-view-columns">Ansicht-Spalten</button>
+        <button type="button" class="secondary" id="toggle-export-columns">Export-Spalten</button>
+        <button type="button" id="export-csv">Als CSV exportieren</button>
+      </div>
+      <div id="column-selection-summary" class="toolbar-summary"></div>
+    </div>
+    <div class="column-panel" id="view-column-panel" hidden>
+      <div class="column-panel-header">
+        <div class="column-panel-title">Spalten in der Tabelle</div>
+        <div class="column-actions">
+          <button type="button" class="secondary" id="view-columns-default">Standard</button>
+          <button type="button" class="secondary" id="view-columns-all">Alle</button>
+          <button type="button" class="secondary" id="view-columns-none">Keine</button>
+        </div>
+      </div>
+      <div class="column-grid" id="view-column-grid"></div>
+    </div>
+    <div class="column-panel" id="export-column-panel" hidden>
+      <div class="column-panel-header">
+        <div class="column-panel-title">Spalten für CSV-Export</div>
+        <div class="column-actions">
+          <button type="button" class="secondary" id="export-columns-default">Standard</button>
+          <button type="button" class="secondary" id="export-columns-all">Alle</button>
+          <button type="button" class="secondary" id="export-columns-none">Keine</button>
+        </div>
+      </div>
+      <div class="column-grid" id="export-column-grid"></div>
+    </div>
     <div class="table-meta">
       <div id="table-summary"></div>
       <div class="pager">
@@ -449,6 +556,8 @@ def _dashboard_html(
     const PAGE_SIZE = 75;
     let filteredRows = DATA.rows.slice();
     let currentPage = 1;
+    let visibleColumns = DATA.tableColumns.slice();
+    let selectedExportColumns = DATA.tableColumns.slice();
     const activeFilters = Object.fromEntries(DATA.filterColumns.map((col) => [col, ""]));
 
     function escapeHtml(value) {{
@@ -457,6 +566,82 @@ def _dashboard_html(
         .replaceAll("<", "&lt;")
         .replaceAll(">", "&gt;")
         .replaceAll('"', "&quot;");
+    }}
+
+    function csvEscape(value) {{
+      const text = String(value ?? "");
+      if (/[;"\\n\\r]/.test(text)) {{
+        return `"${{text.replaceAll('"', '""')}}"`;
+      }}
+      return text;
+    }}
+
+    function updateColumnSelectionSummary() {{
+      const summary = document.getElementById("column-selection-summary");
+      summary.textContent =
+        `Ansicht: ${{visibleColumns.length}} · Export: ${{selectedExportColumns.length}} von ${{DATA.availableColumns.length}} Spalten`;
+    }}
+
+    function buildColumnPicker(gridId, selectedColumns, onChange) {{
+      const grid = document.getElementById(gridId);
+      grid.innerHTML = "";
+      for (const column of DATA.availableColumns) {{
+        const label = document.createElement("label");
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.value = column;
+        checkbox.checked = selectedColumns.includes(column);
+        checkbox.addEventListener("change", () => {{
+          let next = selectedColumns.slice();
+          if (checkbox.checked) {{
+            if (!next.includes(column)) next.push(column);
+          }} else {{
+            next = next.filter((col) => col !== column);
+          }}
+          if (next.length === 0) {{
+            checkbox.checked = true;
+            next = [column];
+          }}
+          next.sort(
+            (a, b) => DATA.availableColumns.indexOf(a) - DATA.availableColumns.indexOf(b)
+          );
+          onChange(next);
+        }});
+        const text = document.createElement("span");
+        text.textContent = column;
+        label.appendChild(checkbox);
+        label.appendChild(text);
+        grid.appendChild(label);
+      }}
+    }}
+
+    function syncColumnCheckboxes(gridId, selectedColumns) {{
+      for (const input of document.querySelectorAll(`#${{gridId}} input[type=checkbox]`)) {{
+        input.checked = selectedColumns.includes(input.value);
+      }}
+    }}
+
+    function setSelectedColumns(selectedColumns, allColumns, fallback) {{
+      const next = selectedColumns.length ? selectedColumns.slice() : [fallback];
+      next.sort((a, b) => allColumns.indexOf(a) - allColumns.indexOf(b));
+      return next;
+    }}
+
+    function buildViewColumnPicker() {{
+      buildColumnPicker("view-column-grid", visibleColumns, (next) => {{
+        visibleColumns = next;
+        syncColumnCheckboxes("view-column-grid", visibleColumns);
+        updateColumnSelectionSummary();
+        renderTable();
+      }});
+    }}
+
+    function buildExportColumnPicker() {{
+      buildColumnPicker("export-column-grid", selectedExportColumns, (next) => {{
+        selectedExportColumns = next;
+        syncColumnCheckboxes("export-column-grid", selectedExportColumns);
+        updateColumnSelectionSummary();
+      }});
     }}
 
     function matchesSearch(row, query) {{
@@ -577,7 +762,7 @@ def _dashboard_html(
     }}
 
     function renderTable() {{
-      const columns = DATA.tableColumns;
+      const columns = visibleColumns;
       const head = document.getElementById("table-head");
       head.innerHTML = `<tr>${{columns.map((col) => `<th>${{escapeHtml(col)}}</th>`).join("")}}</tr>`;
 
@@ -628,6 +813,26 @@ def _dashboard_html(
       }});
     }}
 
+    function exportCsv() {{
+      const columns = selectedExportColumns;
+      const lines = [
+        columns.map(csvEscape).join(";"),
+        ...filteredRows.map((row) =>
+          columns.map((col) => csvEscape(row[col] || "")).join(";")
+        ),
+      ];
+      const blob = new Blob(["\ufeff" + lines.join("\\n")], {{
+        type: "text/csv;charset=utf-8",
+      }});
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+      link.href = url;
+      link.download = `masterliste-export-${{stamp}}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+    }}
+
     function renderAll() {{
       renderStats();
       renderCharts();
@@ -637,6 +842,78 @@ def _dashboard_html(
     document.getElementById("source-label").textContent =
       `${{DATA.sourceName}} · ${{DATA.columnCount}} Spalten · ${{DATA.rows.length}} Zeilen`;
     document.getElementById("search-input").addEventListener("input", applyFilters);
+    document.getElementById("toggle-view-columns").addEventListener("click", () => {{
+      const panel = document.getElementById("view-column-panel");
+      const open = panel.hasAttribute("hidden");
+      panel.toggleAttribute("hidden", !open);
+      document.getElementById("toggle-view-columns").textContent =
+        open ? "Ansicht-Spalten ausblenden" : "Ansicht-Spalten";
+    }});
+    document.getElementById("toggle-export-columns").addEventListener("click", () => {{
+      const panel = document.getElementById("export-column-panel");
+      const open = panel.hasAttribute("hidden");
+      panel.toggleAttribute("hidden", !open);
+      document.getElementById("toggle-export-columns").textContent =
+        open ? "Export-Spalten ausblenden" : "Export-Spalten";
+    }});
+    document.getElementById("view-columns-default").addEventListener("click", () => {{
+      visibleColumns = setSelectedColumns(
+        DATA.tableColumns,
+        DATA.availableColumns,
+        DATA.availableColumns[0]
+      );
+      syncColumnCheckboxes("view-column-grid", visibleColumns);
+      updateColumnSelectionSummary();
+      renderTable();
+    }});
+    document.getElementById("view-columns-all").addEventListener("click", () => {{
+      visibleColumns = setSelectedColumns(
+        DATA.availableColumns,
+        DATA.availableColumns,
+        DATA.availableColumns[0]
+      );
+      syncColumnCheckboxes("view-column-grid", visibleColumns);
+      updateColumnSelectionSummary();
+      renderTable();
+    }});
+    document.getElementById("view-columns-none").addEventListener("click", () => {{
+      visibleColumns = setSelectedColumns(
+        [DATA.availableColumns[0]],
+        DATA.availableColumns,
+        DATA.availableColumns[0]
+      );
+      syncColumnCheckboxes("view-column-grid", visibleColumns);
+      updateColumnSelectionSummary();
+      renderTable();
+    }});
+    document.getElementById("export-columns-default").addEventListener("click", () => {{
+      selectedExportColumns = setSelectedColumns(
+        DATA.tableColumns,
+        DATA.availableColumns,
+        DATA.availableColumns[0]
+      );
+      syncColumnCheckboxes("export-column-grid", selectedExportColumns);
+      updateColumnSelectionSummary();
+    }});
+    document.getElementById("export-columns-all").addEventListener("click", () => {{
+      selectedExportColumns = setSelectedColumns(
+        DATA.availableColumns,
+        DATA.availableColumns,
+        DATA.availableColumns[0]
+      );
+      syncColumnCheckboxes("export-column-grid", selectedExportColumns);
+      updateColumnSelectionSummary();
+    }});
+    document.getElementById("export-columns-none").addEventListener("click", () => {{
+      selectedExportColumns = setSelectedColumns(
+        [DATA.availableColumns[0]],
+        DATA.availableColumns,
+        DATA.availableColumns[0]
+      );
+      syncColumnCheckboxes("export-column-grid", selectedExportColumns);
+      updateColumnSelectionSummary();
+    }});
+    document.getElementById("export-csv").addEventListener("click", exportCsv);
     document.getElementById("reset-filters").addEventListener("click", () => {{
       DATA.filterColumns.forEach((col) => {{
         activeFilters[col] = "";
@@ -656,6 +933,9 @@ def _dashboard_html(
     }});
 
     buildFilterBar();
+    buildViewColumnPicker();
+    buildExportColumnPicker();
+    updateColumnSelectionSummary();
     Plotly.newPlot("bar-chart", DATA.barFigure.data, DATA.barFigure.layout, {{ responsive: true }});
     Plotly.newPlot("treemap-chart", DATA.treemapFigure.data, DATA.treemapFigure.layout, {{ responsive: true }});
     bindTreemapClicks();
@@ -733,7 +1013,7 @@ def _build_job_spec():
         title="Masterliste-Dashboard",
         description=(
             "Interaktives Plotly-Dashboard aus der Excel-Masterliste erzeugen. "
-            "Filtern nach Kategorien, Textsuche und paginierte Tabellenansicht."
+            "Filtern nach Kategorien, Spaltenauswahl, CSV-Export und paginierte Tabellenansicht."
         ),
         fields=(
             FieldSpec(
