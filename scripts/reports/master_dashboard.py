@@ -114,26 +114,9 @@ def _count_by(rows: list[dict[str, str]], column: str) -> dict[str, int]:
     return counts
 
 
-def build_overview_figures(rows: list[dict[str, str]]) -> tuple[go.Figure, go.Figure]:
+def build_treemap_figure(rows: list[dict[str, str]]) -> go.Figure:
     main_counts = _count_by(rows, "Hauptgruppe")
     sorted_main = sorted(main_counts.items(), key=lambda item: (-item[1], item[0]))
-
-    bar_fig = go.Figure(
-        go.Bar(
-            x=[count for _, count in sorted_main],
-            y=[name for name, _ in sorted_main],
-            orientation="h",
-            marker_color="#2e7d32",
-            hovertemplate="<b>%{y}</b><br>%{x} Artikel<extra></extra>",
-        )
-    )
-    bar_fig.update_layout(
-        title="Artikel pro Hauptgruppe",
-        margin=dict(l=180, r=20, t=50, b=30),
-        height=max(320, 28 * len(sorted_main)),
-        xaxis_title="Anzahl Artikel",
-        yaxis=dict(autorange="reversed"),
-    )
 
     treemap_ids = ["root"]
     treemap_labels = ["Masterliste"]
@@ -177,7 +160,7 @@ def build_overview_figures(rows: list[dict[str, str]]) -> tuple[go.Figure, go.Fi
         margin=dict(l=10, r=10, t=50, b=10),
         height=520,
     )
-    return bar_fig, treemap_fig
+    return treemap_fig
 
 
 def _figure_json(fig: go.Figure) -> str:
@@ -203,7 +186,6 @@ def _dashboard_html(
     source_name: str,
     column_count: int,
     rows: list[dict[str, str]],
-    bar_fig: go.Figure,
     treemap_fig: go.Figure,
 ) -> str:
     columns = list(rows[0].keys()) if rows else list(TABLE_COLUMNS)
@@ -220,7 +202,6 @@ def _dashboard_html(
             for column in FILTER_COLUMNS
             if column in columns
         },
-        "barFigure": json.loads(_figure_json(bar_fig)),
         "treemapFigure": json.loads(_figure_json(treemap_fig)),
     }
     data_json = json.dumps(payload, ensure_ascii=False)
@@ -336,9 +317,6 @@ def _dashboard_html(
       min-width: 120px;
     }}
     .charts {{
-      display: grid;
-      grid-template-columns: minmax(320px, 1fr) minmax(320px, 1.2fr);
-      gap: 16px;
       padding: 0 24px 16px;
     }}
     .panel {{
@@ -478,9 +456,6 @@ def _dashboard_html(
     .column-panel[hidden] {{
       display: none;
     }}
-    @media (max-width: 960px) {{
-      .charts {{ grid-template-columns: 1fr; }}
-    }}
   </style>
 </head>
 <body>
@@ -502,7 +477,6 @@ def _dashboard_html(
   </div>
 
   <section class="charts">
-    <div class="panel"><div id="bar-chart" style="height:100%; min-height:320px;"></div></div>
     <div class="panel"><div id="treemap-chart" style="height:520px;"></div></div>
   </section>
 
@@ -698,12 +672,6 @@ def _dashboard_html(
 
     function renderCharts() {{
       const mainCounts = countBy(filteredRows, "Hauptgruppe");
-      const barFigure = JSON.parse(JSON.stringify(DATA.barFigure));
-      barFigure.data[0].x = mainCounts.map(([, count]) => count);
-      barFigure.data[0].y = mainCounts.map(([name]) => name);
-      barFigure.layout.height = Math.max(320, 28 * mainCounts.length);
-      barFigure.layout.yaxis = {{ autorange: "reversed" }};
-      Plotly.react("bar-chart", barFigure.data, barFigure.layout, {{ responsive: true }});
 
       const treemapIds = ["root"];
       const treemapLabels = ["Auswahl"];
@@ -858,7 +826,6 @@ def _dashboard_html(
     buildFilterBar();
     buildColumnPicker();
     updateColumnSelectionSummary();
-    Plotly.newPlot("bar-chart", DATA.barFigure.data, DATA.barFigure.layout, {{ responsive: true }});
     Plotly.newPlot("treemap-chart", DATA.treemapFigure.data, DATA.treemapFigure.layout, {{ responsive: true }});
     bindTreemapClicks();
     renderAll();
@@ -881,14 +848,13 @@ def render_dashboard(
             "Bitte ausführen: pip install plotly"
         )
 
-    bar_fig, treemap_fig = build_overview_figures(rows)
+    treemap_fig = build_treemap_figure(rows)
     dashboard_columns = _dashboard_columns(headers)
     output.parent.mkdir(parents=True, exist_ok=True)
     page = _dashboard_html(
         source_name=source_name,
         column_count=len(headers),
         rows=_slim_rows(rows, dashboard_columns),
-        bar_fig=bar_fig,
         treemap_fig=treemap_fig,
     )
     output.write_text(page, encoding="utf-8")
