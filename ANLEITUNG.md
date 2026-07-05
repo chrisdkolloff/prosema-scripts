@@ -55,14 +55,14 @@ Falls das nicht klappt:
 ## 4. Mit der grafischen Oberfläche (empfohlen)
 
 1. Doppelklicke auf `gui.command`.
-2. Es öffnet sich ein Terminalfenster und das PROSEMA-Fenster. Das Terminal kann minimiert werden.
+2. Es öffnet sich kurz ein Terminalfenster und das PROSEMA-Fenster.
 3. Wähle links das gewünschte Werkzeug, zum Beispiel **Artikelnummern erstellen**.
 4. Klicke bei **Eingabedatei** auf **Durchsuchen…** und wähle deine Excel-Datei.
 5. Die **Ausgabedatei** wird automatisch vorgeschlagen. Du kannst sie bei Bedarf ändern.
 6. Schließe die Excel-Datei in Excel oder Numbers.
 7. Klicke auf **Generieren**.
 8. Wenn alles geklappt hat, erscheint eine Meldung **Fertig** und das Ergebnis liegt an dem gewählten Ausgabeort.
-9. Schließe das PROSEMA-Fenster und drücke im Terminal die Eingabetaste, damit sich das Terminal schließt.
+9. Schließe das PROSEMA-Fenster — das Terminal schließt sich dabei automatisch mit.
 
 Weitere Optionen findest du unter **Erweitert**. Für den normalen Gebrauch musst du dort nichts ändern.
 
