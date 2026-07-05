@@ -285,18 +285,19 @@ def generate_weclapp_import(
 
 
 def _project_root() -> Path:
-    return Path(__file__).resolve().parent.parent
+    from scripts.paths import PROJECT_ROOT
+
+    return PROJECT_ROOT
 
 
 def _resolve_path(path: str | Path) -> Path:
-    p = Path(path)
-    if not p.is_absolute():
-        p = _project_root() / p
-    return p
+    from scripts.paths import resolve_path
+
+    return resolve_path(path)
 
 
 def _ensure_project_root() -> None:
-    root = _project_root()
+    root = Path(__file__).resolve().parents[2]
     if str(root) not in sys.path:
         sys.path.insert(0, str(root))
 
@@ -348,13 +349,13 @@ def _build_job_spec():
                 "input",
                 "Masterdatei",
                 FieldKind.FILE_IN,
-                "230703-masterdatei.xlsx",
+                "input/input.xlsx",
             ),
             FieldSpec(
                 "output",
                 "Ausgabedatei",
                 FieldKind.FILE_OUT,
-                "weclapp_import.csv",
+                "output/export/weclapp_import.csv",
                 output_name="weclapp_import.csv",
             ),
             FieldSpec(
@@ -384,7 +385,7 @@ def build_argparser() -> argparse.ArgumentParser:
     parser.add_argument(
         "master",
         nargs="?",
-        default=str(root / "230703-masterdatei.xlsx"),
+        default=str(root / "input" / "input.xlsx"),
         help="Masterdatei (.xlsx)",
     )
     parser.add_argument(
@@ -406,7 +407,7 @@ def build_argparser() -> argparse.ArgumentParser:
     parser.add_argument(
         "output",
         nargs="?",
-        default=str(root / "weclapp_import.csv"),
+        default=str(root / "output" / "export" / "weclapp_import.csv"),
         help="Ausgabe-CSV",
     )
     return parser

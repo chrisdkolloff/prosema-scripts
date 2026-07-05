@@ -45,7 +45,22 @@ class JobSpec:
     run: Callable[[dict[str, Any]], RunResult]
 
 
-def default_output_path(input_path: str | Path, output_name: str) -> Path:
+def default_output_path(
+    input_path: str | Path,
+    output_name: str,
+    *,
+    default_output: str | Path | None = None,
+) -> Path:
+    from scripts.paths import PROJECT_ROOT
+
+    if default_output:
+        default = Path(default_output)
+        if default.parent != Path("."):
+            return PROJECT_ROOT / default.parent / Path(output_name).name
+
+    out = Path(output_name)
+    if out.parent != Path("."):
+        return PROJECT_ROOT / out
     return Path(input_path).parent / output_name
 
 
@@ -72,9 +87,11 @@ def coerce_params(spec: JobSpec, raw: dict[str, Any]) -> dict[str, Any]:
 
 
 def validate_params(spec: JobSpec, params: dict[str, Any]) -> None:
+    from scripts.paths import resolve_path
+
     for fld in spec.fields:
         if fld.kind == FieldKind.FILE_IN:
-            path = Path(params[fld.name])
+            path = resolve_path(params[fld.name])
             if not path.exists():
                 raise FileNotFoundError(f"Eingabedatei nicht gefunden: {path}")
 

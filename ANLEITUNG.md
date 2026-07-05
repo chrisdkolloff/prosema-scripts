@@ -70,18 +70,18 @@ Beim ersten Doppelklick auf `gui.command` gilt derselbe macOS-Hinweis wie in Abs
 
 ## 5. Alternative: Artikelnummern über run.command
 
-1. Speichere deine Excel-Datei in diesem Ordner.
+1. Speichere deine Excel-Datei im Ordner `input/`.
 2. Der Dateiname muss genau so sein:
 
 ```text
-input.xlsx
+input/input.xlsx
 ```
 
 3. Schließe die Datei in Excel oder Numbers.
 4. Doppelklicke auf `run.command`.
 5. Warte, bis im Terminalfenster „Fertig“ steht.
 6. Drücke die Eingabetaste, damit sich das Fenster schließt.
-7. Die neue Datei liegt danach in diesem Ordner und heißt:
+7. Die neue Datei liegt danach im Ordner `output/processing/` und heißt:
 
 ```text
 output_mit_artikelnummern.xlsx
@@ -89,12 +89,9 @@ output_mit_artikelnummern.xlsx
 
 ## 6. Test mit Beispieldatei
 
-1. Öffne den Ordner `beispiel`.
-2. Kopiere die Datei `input.xlsx`.
-3. Gehe zurück in den Hauptordner.
-4. Füge die Datei dort ein.
-5. Doppelklicke auf `run.command`.
-6. Danach sollte die Datei `output_mit_artikelnummern.xlsx` erscheinen.
+1. Der Ordner `input/` enthält bereits eine Beispieldatei `input.xlsx`.
+2. Doppelklicke auf `run.command`.
+3. Danach sollte die Datei `output/processing/output_mit_artikelnummern.xlsx` erscheinen.
 
 ## 7. Wenn es nicht funktioniert
 
@@ -102,6 +99,6 @@ Prüfe diese Punkte:
 
 1. Wurde `setup.command` schon einmal ausgeführt?
 2. Ist die Excel-Datei in Excel oder Numbers noch geöffnet? Dann bitte schließen und noch einmal versuchen.
-3. Bei `run.command`: Heißt die Excel-Datei genau `input.xlsx` und liegt sie im gleichen Ordner?
+3. Bei `run.command`: Heißt die Excel-Datei genau `input.xlsx` und liegt sie im Ordner `input/`?
 4. Steht eine Fehlermeldung im Fenster oder Protokoll? Dann die Meldung weitergeben.
 5. Startet `gui.command` nicht: Python von [python.org](https://www.python.org/downloads/) installieren und `setup.command` noch einmal ausführen (Homebrew-Python unterstützt die Oberfläche oft nicht).

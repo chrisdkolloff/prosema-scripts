@@ -234,7 +234,13 @@ class JobForm(ctk.CTkFrame):
         if output_field is None or not output_field.output_name:
             return
 
-        suggested = str(default_output_path(input_path, output_field.output_name))
+        suggested = str(
+            default_output_path(
+                input_path,
+                output_field.output_name,
+                default_output=output_field.default,
+            )
+        )
         current = output_entry.get().strip()
         if not current or current == self._suggested_output or current == str(output_field.default):
             output_entry.delete(0, "end")

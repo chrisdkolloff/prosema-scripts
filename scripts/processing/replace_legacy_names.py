@@ -1,11 +1,11 @@
 """
-Legacy-Kategorienamen in input.xlsx auf neue Bezeichnungen umstellen.
+Legacy-Kategorienamen in einer Excel-Masterliste auf neue Bezeichnungen umstellen.
 
 Die Spalten „Hauptgruppe“ und „Untergruppe“ enthalten oft noch alte Namen aus dem
 System „Original Kategorie“ / „Original Untergruppe“. Dieses Skript mappt sie auf
 die neuen Bezeichnungen (Gruppenschlüssel-kompatibel) und speichert die Datei.
 
-Artikelnummern werden hier nicht vergeben — dafür scripts/artikelnummern.py verwenden.
+Artikelnummern werden hier nicht vergeben — dafür scripts/processing/artikelnummern.py verwenden.
 """
 
 from __future__ import annotations
@@ -434,7 +434,7 @@ def _run_verify() -> None:
 
 
 def _ensure_project_root() -> None:
-    root = Path(__file__).resolve().parent.parent
+    root = Path(__file__).resolve().parents[2]
     if str(root) not in sys.path:
         sys.path.insert(0, str(root))
 
@@ -445,12 +445,16 @@ def run_job(params: dict):
     params = coerce_params(JOB_SPEC, params)
     validate_params(JOB_SPEC, params)
 
+    from scripts.paths import ensure_parent_dir, resolve_path
+
     sheet = params["sheet_name"].strip()
     sheet_name = sheet or None
+    input_path = resolve_path(params["input"])
+    output_path = ensure_parent_dir(params["output"])
     try:
         resolved, changed = replace_legacy_names(
-            params["input"],
-            params["output"],
+            str(input_path),
+            str(output_path),
             strict=params["strict"],
             sheet_name=sheet_name,
         )
@@ -475,12 +479,12 @@ def _build_job_spec():
         title="Legacy-Namen ersetzen",
         description="Alte Haupt- und Untergruppen-Namen auf neue Bezeichnungen umstellen.",
         fields=(
-            FieldSpec("input", "Eingabedatei", FieldKind.FILE_IN, "input.xlsx"),
+            FieldSpec("input", "Eingabedatei", FieldKind.FILE_IN, "input/input.xlsx"),
             FieldSpec(
                 "output",
                 "Ausgabedatei",
                 FieldKind.FILE_OUT,
-                "output_mit_neuen_namen.xlsx",
+                "output/processing/output_mit_neuen_namen.xlsx",
                 output_name="output_mit_neuen_namen.xlsx",
             ),
             FieldSpec(

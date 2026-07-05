@@ -1,4 +1,7 @@
 .venv/
 __pycache__/
 .DS_Store
-output_*.xlsx
+output/**/*
+!output/processing/.gitkeep
+!output/export/.gitkeep
+!output/reports/.gitkeep

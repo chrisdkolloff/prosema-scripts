@@ -19,18 +19,18 @@ PYTHON="$(prosema_venv_python)" || {
     exit 1
 }
 
-if [ ! -f "input.xlsx" ]; then
+if [ ! -f "input/input.xlsx" ]; then
     echo ""
-    echo "Die Datei input.xlsx wurde nicht gefunden."
-    echo "Bitte speichere deine Excel-Datei in diesem Ordner unter dem Namen input.xlsx."
+    echo "Die Datei input/input.xlsx wurde nicht gefunden."
+    echo "Bitte speichere deine Excel-Datei im Ordner input/ unter dem Namen input.xlsx."
     exit 1
 fi
 
 echo "Starte Verarbeitung ..."
 echo ""
 
-"$PYTHON" scripts/artikelnummern.py
+"$PYTHON" scripts/processing/artikelnummern.py
 
 echo ""
 echo "Wenn oben 'Fertig' steht, findest du das Ergebnis in:"
-echo "output_mit_artikelnummern.xlsx"
+echo "output/processing/output_mit_artikelnummern.xlsx"

@@ -51,10 +51,9 @@ class Scheme:
         return 10 ** self.running_width - 1
 
     def dictionary_path(self) -> Path:
-        path = Path(self.dictionary_file)
-        if path.is_absolute():
-            return path
-        return Path(__file__).resolve().parent.parent / path
+        from scripts.paths import resolve_path
+
+        return resolve_path(self.dictionary_file)
 
     def normalize_group(self, value, width: int, where: str) -> str:
         raw = "" if value is None else str(value).strip()
@@ -265,7 +264,9 @@ def format_resolution_errors(errors: list[RowResolutionError]) -> str:
         elif err.sub_unknown:
             parts.append(f" unbekannte Untergruppe {err.sub_name!r}")
         lines.append("".join(parts))
-    lines.append("\nBitte korrigieren Sie die Namen in input.xlsx oder ergänzen Sie den Gruppenschlüssel.")
+    lines.append(
+        "\nBitte korrigieren Sie die Namen in der Eingabedatei oder ergänzen Sie den Gruppenschlüssel."
+    )
     return "\n".join(lines)
 
 
@@ -356,7 +357,7 @@ def assign_article_numbers(
 
 
 def _ensure_project_root() -> None:
-    root = Path(__file__).resolve().parent.parent
+    root = Path(__file__).resolve().parents[2]
     if str(root) not in sys.path:
         sys.path.insert(0, str(root))
 
@@ -372,10 +373,14 @@ def run_job(params: dict):
         step=params["step"],
         dictionary_file=params["dictionary_file"],
     )
+    from scripts.paths import ensure_parent_dir, resolve_path
+
+    input_path = resolve_path(params["input"])
+    output_path = ensure_parent_dir(params["output"])
     try:
         assigned, ranges = assign_article_numbers(
-            params["input"],
-            params["output"],
+            str(input_path),
+            str(output_path),
             scheme=scheme,
             overwrite_existing=params["overwrite_existing"],
             strict=params["strict"],
@@ -400,12 +405,12 @@ def _build_job_spec():
         title="Artikelnummern erstellen",
         description="Fehlende Artikelnummern in einer Excel-Masterliste vergeben.",
         fields=(
-            FieldSpec("input", "Eingabedatei", FieldKind.FILE_IN, "input.xlsx"),
+            FieldSpec("input", "Eingabedatei", FieldKind.FILE_IN, "input/input.xlsx"),
             FieldSpec(
                 "output",
                 "Ausgabedatei",
                 FieldKind.FILE_OUT,
-                "output_mit_artikelnummern.xlsx",
+                "output/processing/output_mit_artikelnummern.xlsx",
                 output_name="output_mit_artikelnummern.xlsx",
             ),
             FieldSpec(

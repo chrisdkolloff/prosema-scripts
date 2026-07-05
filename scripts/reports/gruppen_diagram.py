@@ -31,18 +31,19 @@ ROOT_ID = "root"
 
 
 def _project_root() -> Path:
-    return Path(__file__).resolve().parent.parent
+    from scripts.paths import PROJECT_ROOT
+
+    return PROJECT_ROOT
 
 
 def _resolve_path(path: str | Path) -> Path:
-    p = Path(path)
-    if not p.is_absolute():
-        p = _project_root() / p
-    return p
+    from scripts.paths import resolve_path
+
+    return resolve_path(path)
 
 
 def _ensure_project_root() -> None:
-    root = _project_root()
+    root = Path(__file__).resolve().parents[2]
     if str(root) not in sys.path:
         sys.path.insert(0, str(root))
 
@@ -243,7 +244,7 @@ def _build_job_spec():
                 "output",
                 "Ausgabedatei",
                 FieldKind.FILE_OUT,
-                "data/gruppen_diagram.html",
+                "output/reports/gruppen_diagram.html",
                 output_name="gruppen_diagram.html",
             ),
         ),
