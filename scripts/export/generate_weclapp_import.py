@@ -27,6 +27,7 @@ MASTER_COLUMNS = {
     "LIEFERANTENNUMMER": "Lieferantennummer",
     "Bruttokaufpreis": "Verkaufspreis €, BE",
     "Verkaufsartikel-Nummer": "Prosema Artikelnummer",
+    "Artikel-Mengeneinheit": "Basiseinheitencode",
 }
 
 FIXED_COLUMNS = {
