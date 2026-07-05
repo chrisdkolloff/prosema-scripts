@@ -508,33 +508,21 @@ def _dashboard_html(
   <div class="table-wrap">
     <div class="table-toolbar">
       <div class="table-toolbar-actions">
-        <button type="button" class="secondary" id="toggle-view-columns">Ansicht-Spalten</button>
-        <button type="button" class="secondary" id="toggle-export-columns">Export-Spalten</button>
+        <button type="button" class="secondary" id="toggle-columns">Spalten auswählen</button>
         <button type="button" id="export-csv">Als CSV exportieren</button>
       </div>
       <div id="column-selection-summary" class="toolbar-summary"></div>
     </div>
-    <div class="column-panel" id="view-column-panel" hidden>
+    <div class="column-panel" id="column-panel" hidden>
       <div class="column-panel-header">
-        <div class="column-panel-title">Spalten in der Tabelle</div>
+        <div class="column-panel-title">Angezeigte Spalten (werden auch exportiert)</div>
         <div class="column-actions">
-          <button type="button" class="secondary" id="view-columns-default">Standard</button>
-          <button type="button" class="secondary" id="view-columns-all">Alle</button>
-          <button type="button" class="secondary" id="view-columns-none">Keine</button>
+          <button type="button" class="secondary" id="columns-default">Standard</button>
+          <button type="button" class="secondary" id="columns-all">Alle</button>
+          <button type="button" class="secondary" id="columns-none">Keine</button>
         </div>
       </div>
-      <div class="column-grid" id="view-column-grid"></div>
-    </div>
-    <div class="column-panel" id="export-column-panel" hidden>
-      <div class="column-panel-header">
-        <div class="column-panel-title">Spalten für CSV-Export</div>
-        <div class="column-actions">
-          <button type="button" class="secondary" id="export-columns-default">Standard</button>
-          <button type="button" class="secondary" id="export-columns-all">Alle</button>
-          <button type="button" class="secondary" id="export-columns-none">Keine</button>
-        </div>
-      </div>
-      <div class="column-grid" id="export-column-grid"></div>
+      <div class="column-grid" id="column-grid"></div>
     </div>
     <div class="table-meta">
       <div id="table-summary"></div>
@@ -557,7 +545,6 @@ def _dashboard_html(
     let filteredRows = DATA.rows.slice();
     let currentPage = 1;
     let visibleColumns = DATA.tableColumns.slice();
-    let selectedExportColumns = DATA.tableColumns.slice();
     const activeFilters = Object.fromEntries(DATA.filterColumns.map((col) => [col, ""]));
 
     function escapeHtml(value) {{
@@ -579,20 +566,20 @@ def _dashboard_html(
     function updateColumnSelectionSummary() {{
       const summary = document.getElementById("column-selection-summary");
       summary.textContent =
-        `Ansicht: ${{visibleColumns.length}} · Export: ${{selectedExportColumns.length}} von ${{DATA.availableColumns.length}} Spalten`;
+        `${{visibleColumns.length}} von ${{DATA.availableColumns.length}} Spalten`;
     }}
 
-    function buildColumnPicker(gridId, selectedColumns, onChange) {{
-      const grid = document.getElementById(gridId);
+    function buildColumnPicker() {{
+      const grid = document.getElementById("column-grid");
       grid.innerHTML = "";
       for (const column of DATA.availableColumns) {{
         const label = document.createElement("label");
         const checkbox = document.createElement("input");
         checkbox.type = "checkbox";
         checkbox.value = column;
-        checkbox.checked = selectedColumns.includes(column);
+        checkbox.checked = visibleColumns.includes(column);
         checkbox.addEventListener("change", () => {{
-          let next = selectedColumns.slice();
+          let next = visibleColumns.slice();
           if (checkbox.checked) {{
             if (!next.includes(column)) next.push(column);
           }} else {{
@@ -602,10 +589,10 @@ def _dashboard_html(
             checkbox.checked = true;
             next = [column];
           }}
-          next.sort(
-            (a, b) => DATA.availableColumns.indexOf(a) - DATA.availableColumns.indexOf(b)
-          );
-          onChange(next);
+          visibleColumns = setSelectedColumns(next, DATA.availableColumns, DATA.availableColumns[0]);
+          syncColumnCheckboxes();
+          updateColumnSelectionSummary();
+          renderTable();
         }});
         const text = document.createElement("span");
         text.textContent = column;
@@ -615,9 +602,9 @@ def _dashboard_html(
       }}
     }}
 
-    function syncColumnCheckboxes(gridId, selectedColumns) {{
-      for (const input of document.querySelectorAll(`#${{gridId}} input[type=checkbox]`)) {{
-        input.checked = selectedColumns.includes(input.value);
+    function syncColumnCheckboxes() {{
+      for (const input of document.querySelectorAll("#column-grid input[type=checkbox]")) {{
+        input.checked = visibleColumns.includes(input.value);
       }}
     }}
 
@@ -627,21 +614,11 @@ def _dashboard_html(
       return next;
     }}
 
-    function buildViewColumnPicker() {{
-      buildColumnPicker("view-column-grid", visibleColumns, (next) => {{
-        visibleColumns = next;
-        syncColumnCheckboxes("view-column-grid", visibleColumns);
-        updateColumnSelectionSummary();
-        renderTable();
-      }});
-    }}
-
-    function buildExportColumnPicker() {{
-      buildColumnPicker("export-column-grid", selectedExportColumns, (next) => {{
-        selectedExportColumns = next;
-        syncColumnCheckboxes("export-column-grid", selectedExportColumns);
-        updateColumnSelectionSummary();
-      }});
+    function setVisibleColumns(columns) {{
+      visibleColumns = setSelectedColumns(columns, DATA.availableColumns, DATA.availableColumns[0]);
+      syncColumnCheckboxes();
+      updateColumnSelectionSummary();
+      renderTable();
     }}
 
     function matchesSearch(row, query) {{
@@ -814,7 +791,7 @@ def _dashboard_html(
     }}
 
     function exportCsv() {{
-      const columns = selectedExportColumns;
+      const columns = visibleColumns;
       const lines = [
         columns.map(csvEscape).join(";"),
         ...filteredRows.map((row) =>
@@ -842,76 +819,21 @@ def _dashboard_html(
     document.getElementById("source-label").textContent =
       `${{DATA.sourceName}} · ${{DATA.columnCount}} Spalten · ${{DATA.rows.length}} Zeilen`;
     document.getElementById("search-input").addEventListener("input", applyFilters);
-    document.getElementById("toggle-view-columns").addEventListener("click", () => {{
-      const panel = document.getElementById("view-column-panel");
+    document.getElementById("toggle-columns").addEventListener("click", () => {{
+      const panel = document.getElementById("column-panel");
       const open = panel.hasAttribute("hidden");
       panel.toggleAttribute("hidden", !open);
-      document.getElementById("toggle-view-columns").textContent =
-        open ? "Ansicht-Spalten ausblenden" : "Ansicht-Spalten";
+      document.getElementById("toggle-columns").textContent =
+        open ? "Spalten ausblenden" : "Spalten auswählen";
     }});
-    document.getElementById("toggle-export-columns").addEventListener("click", () => {{
-      const panel = document.getElementById("export-column-panel");
-      const open = panel.hasAttribute("hidden");
-      panel.toggleAttribute("hidden", !open);
-      document.getElementById("toggle-export-columns").textContent =
-        open ? "Export-Spalten ausblenden" : "Export-Spalten";
+    document.getElementById("columns-default").addEventListener("click", () => {{
+      setVisibleColumns(DATA.tableColumns);
     }});
-    document.getElementById("view-columns-default").addEventListener("click", () => {{
-      visibleColumns = setSelectedColumns(
-        DATA.tableColumns,
-        DATA.availableColumns,
-        DATA.availableColumns[0]
-      );
-      syncColumnCheckboxes("view-column-grid", visibleColumns);
-      updateColumnSelectionSummary();
-      renderTable();
+    document.getElementById("columns-all").addEventListener("click", () => {{
+      setVisibleColumns(DATA.availableColumns);
     }});
-    document.getElementById("view-columns-all").addEventListener("click", () => {{
-      visibleColumns = setSelectedColumns(
-        DATA.availableColumns,
-        DATA.availableColumns,
-        DATA.availableColumns[0]
-      );
-      syncColumnCheckboxes("view-column-grid", visibleColumns);
-      updateColumnSelectionSummary();
-      renderTable();
-    }});
-    document.getElementById("view-columns-none").addEventListener("click", () => {{
-      visibleColumns = setSelectedColumns(
-        [DATA.availableColumns[0]],
-        DATA.availableColumns,
-        DATA.availableColumns[0]
-      );
-      syncColumnCheckboxes("view-column-grid", visibleColumns);
-      updateColumnSelectionSummary();
-      renderTable();
-    }});
-    document.getElementById("export-columns-default").addEventListener("click", () => {{
-      selectedExportColumns = setSelectedColumns(
-        DATA.tableColumns,
-        DATA.availableColumns,
-        DATA.availableColumns[0]
-      );
-      syncColumnCheckboxes("export-column-grid", selectedExportColumns);
-      updateColumnSelectionSummary();
-    }});
-    document.getElementById("export-columns-all").addEventListener("click", () => {{
-      selectedExportColumns = setSelectedColumns(
-        DATA.availableColumns,
-        DATA.availableColumns,
-        DATA.availableColumns[0]
-      );
-      syncColumnCheckboxes("export-column-grid", selectedExportColumns);
-      updateColumnSelectionSummary();
-    }});
-    document.getElementById("export-columns-none").addEventListener("click", () => {{
-      selectedExportColumns = setSelectedColumns(
-        [DATA.availableColumns[0]],
-        DATA.availableColumns,
-        DATA.availableColumns[0]
-      );
-      syncColumnCheckboxes("export-column-grid", selectedExportColumns);
-      updateColumnSelectionSummary();
+    document.getElementById("columns-none").addEventListener("click", () => {{
+      setVisibleColumns([DATA.availableColumns[0]]);
     }});
     document.getElementById("export-csv").addEventListener("click", exportCsv);
     document.getElementById("reset-filters").addEventListener("click", () => {{
@@ -933,8 +855,7 @@ def _dashboard_html(
     }});
 
     buildFilterBar();
-    buildViewColumnPicker();
-    buildExportColumnPicker();
+    buildColumnPicker();
     updateColumnSelectionSummary();
     Plotly.newPlot("bar-chart", DATA.barFigure.data, DATA.barFigure.layout, {{ responsive: true }});
     Plotly.newPlot("treemap-chart", DATA.treemapFigure.data, DATA.treemapFigure.layout, {{ responsive: true }});
