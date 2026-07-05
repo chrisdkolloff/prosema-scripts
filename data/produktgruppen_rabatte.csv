@@ -1,6 +1,9 @@
-Produktgruppe,Code,Kategorie-Name,Grundrabatt,Kundenrabatt
-Fliesenprofile,020,Profile,50%,40%
-Tredsafe / Diamondstep / Diamondtred,040.020,Treppenprofile fuer Einlagen,50%,20%
-Durabase-Matten-System,060,Mattensysteme,50%,25%
-Teppich-/Parkett-/Laminatprofile,080,Bodenbelagsprofile,50%,40%
-"Profile, Duschrinnen & Zubehoer",070,Duschsysteme,50%,–
+Kategorie,Produktgruppe,Grundrabatt,Kundenrabatt
+A,Fliesenprofile,50%,40%
+B,Fliesenprofile,50%,40%
+C,Fliesenprofile,50%,40%
+F,Fliesenprofile,50%,40%
+I,Tredsafe / Diamondstep / Diamondtred,50%,20%
+MAT,Durabase-Matten-System,50%,25%
+T,Teppich-/Parkett-/Laminatprofile,50%,40%
+NET,"Profile, Duschrinnen & Zubehoer",50%,–

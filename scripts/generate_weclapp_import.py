@@ -2,24 +2,23 @@
 Weclapp-Bezugsquellen-Import aus Masterdatei und Produktgruppen-Rabatten erzeugen.
 
 Liest die Spaltenüberschriften direkt aus der Weclapp-Importvorlage (CSV) und
-füllt nur die gemappten Spalten; Rabatte werden anhand des Artikelnummern-Codes
-MMM.SSS (mit Fallback auf MMM) aus produktgruppen_rabatte.csv nachgeschlagen.
+füllt nur die gemappten Spalten; Rabatte werden anhand der Spalte
+Rabattkategorie_Lieferant aus produktgruppen_rabatte.csv nachgeschlagen.
 """
 
 from __future__ import annotations
 
 import argparse
 import csv
-import re
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from openpyxl import load_workbook
 
 DISCOUNT_PRICE_TYPE = "DISCOUNT_PCT"
 
-ARTICLE_PATTERN = re.compile(r"^(\d{3})\.(\d{3})\.(\d{4})$")
+RABATT_CATEGORY_COLUMN = "Rabattkategorie_Lieferant"
 
 MASTER_COLUMNS = {
     "ARTIKELNAME": "PROSEMA Kurztext",
@@ -50,18 +49,19 @@ class GenerationStats:
     rows_written: int = 0
     rows_without_discount: int = 0
     skipped_missing_article: int = 0
-    skipped_malformed_article: int = 0
+    warnings: list[str] = field(default_factory=list)
 
     def summary_lines(self) -> list[str]:
-        skipped = self.skipped_missing_article + self.skipped_malformed_article
-        return [
+        lines = [
             f"Masterzeilen gelesen: {self.rows_read}",
             f"Zeilen geschrieben:   {self.rows_written}",
             f"  — davon ohne Rabatt:              {self.rows_without_discount}",
-            f"Zeilen übersprungen:  {skipped}",
+            f"Zeilen übersprungen:  {self.skipped_missing_article}",
             f"  — fehlende Prosema Artikelnummer: {self.skipped_missing_article}",
-            f"  — ungültige Artikelnummer:        {self.skipped_malformed_article}",
         ]
+        if self.warnings:
+            lines.append(f"Warnungen:            {len(self.warnings)}")
+        return lines
 
 
 def _detect_csv_format(path: Path) -> tuple[str, str, bool]:
@@ -114,40 +114,56 @@ def load_discount_table(path: Path) -> dict[str, tuple[int, int]]:
         rows = list(csv.DictReader(handle))
     discounts: dict[str, tuple[int, int]] = {}
     for row in rows:
-        code = str(row.get("Code", "")).strip()
-        if not code:
+        kategorie = str(row.get("Kategorie", "")).strip()
+        if not kategorie:
             continue
-        discounts[code] = (
+        discounts[kategorie] = (
             parse_discount_percent(row.get("Grundrabatt")),
             parse_discount_percent(row.get("Kundenrabatt")),
         )
     return discounts
 
 
-def lookup_discount(
-    discounts: dict[str, tuple[int, int]],
-    hauptgruppe: str,
-    untergruppe: str,
-) -> tuple[int, int] | None:
-    # Most specific match first (MMM.SSS), then Hauptgruppe-only (MMM).
-    full_code = f"{hauptgruppe}.{untergruppe}"
-    if full_code in discounts:
-        return discounts[full_code]
-    if hauptgruppe in discounts:
-        return discounts[hauptgruppe]
-    return None
-
-
-def parse_article_number(value: object) -> tuple[str, str] | None:
+def _article_label(value: object) -> str:
     if value is None:
-        return None
+        return "(ohne Artikelnummer)"
     text = str(value).strip()
-    if not text:
-        return None
-    match = ARTICLE_PATTERN.match(text)
-    if not match:
-        return None
-    return match.group(1), match.group(2)
+    return text or "(ohne Artikelnummer)"
+
+
+def validate_discount_categories(
+    master_rows: list[dict[str, object]],
+    discounts: dict[str, tuple[int, int]],
+) -> tuple[list[str], list[str]]:
+    """Return warnings for missing categories and errors for unknown ones."""
+    warnings: list[str] = []
+    unknown: dict[str, list[str]] = {}
+
+    for master_row in master_rows:
+        article_raw = master_row["Prosema Artikelnummer"]
+        if article_raw is None or str(article_raw).strip() == "":
+            continue
+
+        category_raw = master_row[RABATT_CATEGORY_COLUMN]
+        category = "" if category_raw is None else str(category_raw).strip()
+        if not category:
+            warnings.append(
+                f"{_article_label(article_raw)} — keine Rabattkategorie in "
+                f"{RABATT_CATEGORY_COLUMN!r}"
+            )
+            continue
+
+        if category not in discounts:
+            unknown.setdefault(category, []).append(_article_label(article_raw))
+
+    errors: list[str] = []
+    for category in sorted(unknown):
+        articles = ", ".join(unknown[category])
+        errors.append(
+            f"Rabattkategorie {category!r} nicht in produktgruppen_rabatte.csv "
+            f"(Artikel: {articles})"
+        )
+    return warnings, errors
 
 
 def format_output_value(column: str, value: object) -> str:
@@ -168,18 +184,19 @@ def read_master_rows(path: Path) -> list[dict[str, object]]:
     row_iter = ws.iter_rows(values_only=True)
     header_row = next(row_iter)
     headers = ["" if cell is None else str(cell) for cell in header_row]
-    missing = [src for src in MASTER_COLUMNS.values() if src not in headers]
+    required_columns = (*MASTER_COLUMNS.values(), RABATT_CATEGORY_COLUMN)
+    missing = [src for src in required_columns if src not in headers]
     if missing:
         wb.close()
         raise ValueError(
             f"Masterdatei fehlen Spalten: {', '.join(missing)} ({path})"
         )
-    col_index = {name: headers.index(name) for name in MASTER_COLUMNS.values()}
+    col_index = {name: headers.index(name) for name in required_columns}
     rows: list[dict[str, object]] = []
     for row in row_iter:
         if all(cell is None or str(cell).strip() == "" for cell in row):
             continue
-        rows.append({name: row[col_index[name]] for name in MASTER_COLUMNS.values()})
+        rows.append({name: row[col_index[name]] for name in required_columns})
     wb.close()
     return rows
 
@@ -194,7 +211,19 @@ def generate_weclapp_import(
     discounts = load_discount_table(rabatte_path)
     master_rows = read_master_rows(master_path)
 
-    stats = GenerationStats(rows_read=len(master_rows))
+    category_warnings, category_errors = validate_discount_categories(
+        master_rows, discounts
+    )
+    if category_errors:
+        message = "Unbekannte Rabattkategorien:\n" + "\n".join(
+            f"  {line}" for line in category_errors
+        )
+        raise ValueError(message)
+
+    stats = GenerationStats(
+        rows_read=len(master_rows),
+        warnings=category_warnings,
+    )
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     with open(output_path, "w", encoding=encoding, newline="") as handle:
@@ -209,16 +238,13 @@ def generate_weclapp_import(
 
         for master_row in master_rows:
             article_raw = master_row["Prosema Artikelnummer"]
-            parsed = parse_article_number(article_raw)
             if article_raw is None or str(article_raw).strip() == "":
                 stats.skipped_missing_article += 1
                 continue
-            if parsed is None:
-                stats.skipped_malformed_article += 1
-                continue
 
-            haupt, unter = parsed
-            discount = lookup_discount(discounts, haupt, unter)
+            category_raw = master_row[RABATT_CATEGORY_COLUMN]
+            category = "" if category_raw is None else str(category_raw).strip()
+            discount = discounts.get(category) if category else None
             out_row = {column: "" for column in headers}
 
             for out_col, master_col in MASTER_COLUMNS.items():
@@ -293,9 +319,14 @@ def run_job(params: dict):
             f"Konnte {params['output']} nicht speichern — ist die Datei geöffnet?"
         ) from exc
 
+    details = stats.summary_lines()
+    if stats.warnings:
+        details.append("Warnung: Artikel ohne Rabattkategorie:")
+        details.extend(f"  {warning}" for warning in stats.warnings)
+
     return RunResult(
         summary=f"Fertig: {params['output']}  ({stats.rows_written} Zeilen)",
-        details=stats.summary_lines(),
+        details=details,
     )
 
 
@@ -310,7 +341,7 @@ def _build_job_spec():
         title="Weclapp-Import erzeugen",
         description=(
             "Bezugsquellen-Import für Weclapp aus der Masterdatei erzeugen. "
-            "Rabatte werden anhand der Prosema-Artikelnummer nachgeschlagen."
+            "Rabatte werden anhand der Rabattkategorie_Lieferant nachgeschlagen."
         ),
         fields=(
             FieldSpec(
@@ -405,6 +436,11 @@ def main() -> None:
         )
     except (ValueError, OSError) as exc:
         sys.exit(f"Abbruch: {exc}")
+
+    if stats.warnings:
+        print("Warnung: Artikel ohne Rabattkategorie:", file=sys.stderr)
+        for warning in stats.warnings:
+            print(f"  {warning}", file=sys.stderr)
 
     print(f"Fertig: {output_path}")
     for line in stats.summary_lines():
