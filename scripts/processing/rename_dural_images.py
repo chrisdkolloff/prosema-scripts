@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import re
 import shutil
+import sys
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -33,11 +34,86 @@ FILENAME_SUFFIX_RE = re.compile(r"^(.+)-(\d+)$")
 @dataclass
 class RenameStats:
     copied: int = 0
-    unmatched_files: list[str] = field(default_factory=list)
+    unmatched_files: int = 0
     unmatched_article_numbers: set[str] = field(default_factory=set)
-    excel_without_image: set[str] = field(default_factory=set)
-    renamed_entries: list[str] = field(default_factory=list)
-    errors: list[str] = field(default_factory=list)
+    errors: int = 0
+
+
+class RunLog:
+    """Append-only log written incrementally while the script runs."""
+
+    def __init__(self, log_path: Path) -> None:
+        self.path = log_path
+        self._file = log_path.open("w", encoding="utf-8")
+
+    def close(self) -> None:
+        self._file.close()
+
+    def _write(self, line: str = "") -> None:
+        self._file.write(line + "\n")
+        self._file.flush()
+
+    def write_header(
+        self,
+        *,
+        master_path: Path,
+        base_dir: Path,
+        mapping_count: int,
+    ) -> None:
+        self._write("Dural -> Prosema Bildumbenennung")
+        self._write(f"Gestartet: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        self._write(f"Masterdatei: {master_path}")
+        self._write(f"Basisordner: {base_dir}")
+        self._write(f"Zuordnungen geladen: {mapping_count}")
+        self._write("")
+
+    def write_section(self, label: str) -> None:
+        self._write(f"[{label}]")
+        self._write(f"  Gestartet: {datetime.now().strftime('%H:%M:%S')}")
+
+    def write_unmatched(self, filename: str, article_number: str) -> None:
+        self._write(
+            f"  Nicht zugeordnet: {filename} (Artikelnr. {article_number})"
+        )
+
+    def write_error(self, message: str) -> None:
+        self._write(f"  FEHLER: {message}")
+
+    def write_section_done(self, stats: RenameStats) -> None:
+        self._write(
+            f"  Abgeschlossen: {stats.copied} kopiert, "
+            f"{stats.unmatched_files} nicht zugeordnet, "
+            f"{stats.errors} Fehler"
+        )
+        self._write("")
+
+    def write_footer(
+        self,
+        *,
+        all_stats: dict[str, RenameStats],
+        excel_without_image: list[str],
+    ) -> None:
+        copied = sum(s.copied for s in all_stats.values())
+        unmatched_files = sum(s.unmatched_files for s in all_stats.values())
+        unmatched_articles = {
+            article for s in all_stats.values() for article in s.unmatched_article_numbers
+        }
+        errors = sum(s.errors for s in all_stats.values())
+
+        self._write("Zusammenfassung")
+        self._write(f"  Abgeschlossen: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        self._write(f"  Kopiert/umbenannt: {copied}")
+        self._write(f"  Nicht zuordenbar (Artikelnummern): {len(unmatched_articles)}")
+        self._write(f"  Nicht zuordenbar (Dateien): {unmatched_files}")
+        self._write(f"  Master-Artikel ohne Bild: {len(excel_without_image)}")
+        self._write(f"  Fehler: {errors}")
+        self._write("")
+
+        if excel_without_image:
+            self._write("Artikelnummern in Masterdatei ohne passendes Bild")
+            for article in excel_without_image:
+                self._write(f"  {article}")
+            self._write("")
 
 
 def _article_lookup_keys(value) -> set[str]:
@@ -105,12 +181,20 @@ def process_directory(
     target_dir: Path,
     mapping: dict[str, str],
     *,
+    label: str,
+    log: RunLog | None,
     dry_run: bool,
 ) -> RenameStats:
     stats = RenameStats()
     if not source_dir.is_dir():
-        stats.errors.append(f"Quellordner nicht gefunden: {source_dir}")
+        message = f"Quellordner nicht gefunden: {source_dir}"
+        stats.errors += 1
+        if log:
+            log.write_error(message)
         return stats
+
+    if log:
+        log.write_section(label)
 
     files = sorted(
         f.name for f in source_dir.iterdir() if f.is_file() and not f.name.startswith(".")
@@ -123,13 +207,23 @@ def process_directory(
     if not dry_run:
         target_dir.mkdir(parents=True, exist_ok=True)
 
+    total = len(files)
+    processed = 0
     for _article_key, entries in sorted(grouped.items(), key=lambda item: item[0]):
         article_number, _, _ = parse_filename(entries[0][0])
         prosema = resolve_prosema(article_number, mapping)
         if prosema is None:
             stats.unmatched_article_numbers.add(article_number)
             for filename, _, _ in entries:
-                stats.unmatched_files.append(filename)
+                stats.unmatched_files += 1
+                processed += 1
+                if log:
+                    log.write_unmatched(filename, article_number)
+            if processed % 100 == 0 or processed == total:
+                print(
+                    f"  [{label}] {processed}/{total} Dateien verarbeitet …",
+                    file=sys.stderr,
+                )
             continue
 
         multiple = len(entries) > 1
@@ -141,90 +235,30 @@ def process_directory(
 
             source_path = source_dir / filename
             target_path = target_dir / target_name
-            stats.renamed_entries.append(f"{filename} -> {target_name}")
             if dry_run:
                 stats.copied += 1
+                processed += 1
                 continue
+
             try:
                 shutil.copy2(source_path, target_path)
                 stats.copied += 1
+                processed += 1
             except OSError as exc:
-                stats.errors.append(f"{filename}: {exc}")
+                stats.errors += 1
+                processed += 1
+                if log:
+                    log.write_error(f"{filename}: {exc}")
 
+            if processed % 100 == 0 or processed == total:
+                print(
+                    f"  [{label}] {processed}/{total} Dateien verarbeitet …",
+                    file=sys.stderr,
+                )
+
+    if log:
+        log.write_section_done(stats)
     return stats
-
-
-def write_log(
-    log_path: Path,
-    *,
-    master_path: Path,
-    base_dir: Path,
-    dry_run: bool,
-    all_stats: dict[str, RenameStats],
-    excel_articles: set[str],
-    found_articles: set[str],
-) -> None:
-    unmatched_articles = set()
-    unmatched_files: list[str] = []
-    renamed: list[str] = []
-    errors: list[str] = []
-    copied = 0
-
-    for label, stats in all_stats.items():
-        unmatched_articles.update(stats.unmatched_article_numbers)
-        unmatched_files.extend(f"[{label}] {name}" for name in stats.unmatched_files)
-        renamed.extend(f"[{label}] {entry}" for entry in stats.renamed_entries)
-        errors.extend(f"[{label}] {entry}" for entry in stats.errors)
-        copied += stats.copied
-
-    excel_without_image = sorted(
-        article
-        for article in excel_articles
-        if not _article_lookup_keys(article) & found_articles
-    )
-
-    lines = [
-        "Dural -> Prosema Bildumbenennung",
-        f"Zeitpunkt: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-        f"Masterdatei: {master_path}",
-        f"Basisordner: {base_dir}",
-        f"Modus: {'Dry-Run (keine Dateien kopiert)' if dry_run else 'Kopieren'}",
-        "",
-        "Zusammenfassung",
-        f"  Kopiert/umbenannt: {copied}",
-        f"  Nicht zuordenbar (Artikelnummern): {len(unmatched_articles)}",
-        f"  Nicht zuordenbar (Dateien): {len(unmatched_files)}",
-        f"  Master-Artikel ohne Bild: {len(excel_without_image)}",
-        f"  Fehler: {len(errors)}",
-        "",
-    ]
-
-    if unmatched_articles:
-        lines.append("Artikelnummern nicht in Masterdatei gefunden")
-        lines.extend(f"  {article}" for article in sorted(unmatched_articles))
-        lines.append("")
-
-    if unmatched_files:
-        lines.append("Dateien nicht verarbeitet (keine Zuordnung)")
-        lines.extend(f"  {entry}" for entry in unmatched_files)
-        lines.append("")
-
-    if excel_without_image:
-        lines.append("Artikelnummern in Masterdatei ohne passendes Bild")
-        lines.extend(f"  {article}" for article in excel_without_image)
-        lines.append("")
-
-    if errors:
-        lines.append("Fehler")
-        lines.extend(f"  {entry}" for entry in errors)
-        lines.append("")
-
-    if renamed:
-        lines.append("Umbenannte/kopierte Dateien")
-        lines.extend(f"  {entry}" for entry in renamed)
-        lines.append("")
-
-    log_path.write_text("\n".join(lines), encoding="utf-8")
 
 
 def run(
@@ -234,13 +268,33 @@ def run(
     dry_run: bool = False,
 ) -> Path:
     mapping, excel_articles = load_mapping(master_path)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_path = base_dir / f"umbenennung_log_{timestamp}.txt"
+
+    log: RunLog | None = None
+    if not dry_run:
+        log = RunLog(log_path)
+        log.write_header(
+            master_path=master_path,
+            base_dir=base_dir,
+            mapping_count=len(mapping),
+        )
+        print(f"Log (wird fortlaufend geschrieben): {log_path}", file=sys.stderr)
+
     all_stats: dict[str, RenameStats] = {}
     found_articles: set[str] = set()
 
     for source_name, target_name in SOURCE_DIRS.items():
         source_dir = base_dir / source_name
         target_dir = base_dir / target_name
-        stats = process_directory(source_dir, target_dir, mapping, dry_run=dry_run)
+        stats = process_directory(
+            source_dir,
+            target_dir,
+            mapping,
+            label=source_name,
+            log=log,
+            dry_run=dry_run,
+        )
         all_stats[source_name] = stats
 
         if source_dir.is_dir():
@@ -251,18 +305,19 @@ def run(
                 if resolve_prosema(article, mapping) is not None:
                     found_articles.update(_article_lookup_keys(article))
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_path = base_dir / f"umbenennung_log_{timestamp}.txt"
-    if not dry_run:
-        write_log(
-            log_path,
-            master_path=master_path,
-            base_dir=base_dir,
-            dry_run=dry_run,
+    excel_without_image = sorted(
+        article
+        for article in excel_articles
+        if not _article_lookup_keys(article) & found_articles
+    )
+
+    if log:
+        log.write_footer(
             all_stats=all_stats,
-            excel_articles=excel_articles,
-            found_articles=found_articles,
+            excel_without_image=excel_without_image,
         )
+        log.close()
+
     return log_path
 
 
@@ -304,7 +359,7 @@ def main(argv: list[str] | None = None) -> int:
         print("Dry-Run abgeschlossen (keine Dateien kopiert, kein Log geschrieben).")
     else:
         print("Fertig.")
-        print(f"Zielordner:")
+        print("Zielordner:")
         for target_name in SOURCE_DIRS.values():
             print(f"  {base_dir / target_name}")
         print(f"Log: {log_path}")
@@ -312,6 +367,4 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    import sys
-
     raise SystemExit(main())
