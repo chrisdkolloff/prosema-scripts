@@ -26,6 +26,7 @@ MASTER_COLUMNS = {
     "Lieferanten Firmenname": "Lieferanten Firmenname",
     "LIEFERANTENNUMMER": "Lieferantennummer",
     "Bruttokaufpreis": "Verkaufspreis €, BE",
+    "Bruttopreis des zugehörigen Verkaufsartikels": "Verkaufspreis €, BE",
     "Verkaufsartikel-Nummer": "Prosema Artikelnummer",
     "Artikel-Mengeneinheit": "Basiseinheitencode",
 }
@@ -34,6 +35,7 @@ FIXED_COLUMNS = {
     "Serienartikel": "ja",
     "Dropshipping möglich": "ja",
     "Primäre Bezugsquelle": "ja",
+    "Preis-Eintritt": "01.08.2026",
 }
 
 DISCOUNT_COLUMNS = (
@@ -170,7 +172,9 @@ def validate_discount_categories(
 def format_output_value(column: str, value: object) -> str:
     if value is None:
         return ""
-    if column == "Bruttokaufpreis" and isinstance(value, (int, float)):
+    if column in ("Bruttokaufpreis", "Bruttopreis des zugehörigen Verkaufsartikels") and isinstance(
+        value, (int, float)
+    ):
         number = float(value)
         formatted = f"{number:.2f}".rstrip("0").rstrip(".")
         return formatted.replace(".", ",")
