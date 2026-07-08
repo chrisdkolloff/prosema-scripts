@@ -26,6 +26,12 @@ from pathlib import Path
 from openpyxl import load_workbook
 from openpyxl.styles import Font
 
+FIXED_MASTER_COLUMNS = {
+    "Währung": "EUR",
+    "Verkaufsartikel-Währung": "EUR",
+    "Vertriebsweg": "GROSS1",
+}
+
 
 @dataclass(frozen=True)
 class Scheme:
@@ -289,6 +295,10 @@ def assign_article_numbers(
     sub_col = find_column(ws, scheme.sub_group_header, scheme.header_row)
     data_key_col = find_column(ws, scheme.data_row_key_header, scheme.header_row)
     article_col = find_or_create_column(ws, scheme.article_col_header, scheme.header_row)
+    fixed_cols = {
+        name: find_or_create_column(ws, name, scheme.header_row)
+        for name in FIXED_MASTER_COLUMNS
+    }
     pattern = scheme.pattern()
 
     counters: dict[tuple[str, str], int] = {}   # (main, sub) -> highest number used
@@ -330,6 +340,10 @@ def assign_article_numbers(
     for row in range(scheme.first_data_row, ws.max_row + 1):
         if not is_data_row(ws, row, data_key_col):
             continue
+
+        for header, fixed_value in FIXED_MASTER_COLUMNS.items():
+            ws.cell(row=row, column=fixed_cols[header]).value = fixed_value
+
         if row not in resolved_codes:
             continue
 
