@@ -35,6 +35,9 @@ FIXED_COLUMNS = {
     "Serienartikel": "ja",
     "Dropshipping möglich": "ja",
     "Primäre Bezugsquelle": "ja",
+    "Währung": "EUR",
+    "Verkaufsartikel-Währung": "EUR",
+    "Vertriebsweg": "GROSS1",
     "Preis-Eintritt": "01.08.2026",
 }
 
