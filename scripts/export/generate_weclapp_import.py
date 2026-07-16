@@ -48,6 +48,10 @@ DISCOUNT_COLUMNS = (
     "Zu- und Abschläge Wert 2",
 )
 
+FORCE_EMPTY_COLUMNS = {
+    "Bruttopreis des zugehörigen Verkaufsartikels",
+}
+
 
 @dataclass
 class GenerationStats:
@@ -260,6 +264,8 @@ def generate_weclapp_import(
                     raise ValueError(
                         f"Spalte {out_col!r} fehlt in der Importvorlage."
                     )
+                if out_col in FORCE_EMPTY_COLUMNS:
+                    continue
                 out_row[out_col] = format_output_value(
                     out_col, master_row[master_col]
                 )
