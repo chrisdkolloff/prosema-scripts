@@ -38,7 +38,7 @@ FIXED_COLUMNS = {
     "Währung": "EUR",
     "Verkaufsartikel-Währung": "EUR",
     "Vertriebsweg": "GROSS1",
-    "Preis-Eintritt": "01.08.2026",
+    "Preis-Eintritt": "15.07.2026",
 }
 
 DISCOUNT_COLUMNS = (
