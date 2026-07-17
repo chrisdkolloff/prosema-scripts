@@ -39,6 +39,12 @@ echo ""
 echo "Installiere benötigte Python-Erweiterungen ..."
 "$VENV_PYTHON" -m pip install -r requirements.txt
 
+if [ ! -f ".env" ] && [ -f ".env.example" ]; then
+    cp ".env.example" ".env"
+    echo ""
+    echo "Datei .env angelegt — bitte WECLAPP_TENANT und WECLAPP_API_TOKEN eintragen."
+fi
+
 echo ""
 echo "Fertig. Die Einrichtung war erfolgreich."
 echo "Ab jetzt kannst du gui.command oder run.command doppelklicken."

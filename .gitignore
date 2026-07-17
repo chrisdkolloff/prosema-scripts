@@ -1,6 +1,7 @@
 .venv/
 __pycache__/
 .DS_Store
+.env
 output/**/*
 !output/processing/.gitkeep
 !output/export/.gitkeep
