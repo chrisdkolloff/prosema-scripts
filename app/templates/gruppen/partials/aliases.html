@@ -1,0 +1,44 @@
+<div id="aliases-panel">
+  {% if alias_error %}
+  <p class="error-banner">{{ alias_error }}</p>
+  {% endif %}
+  {% if aliases %}
+  <ul class="alias-list">
+    {% for item in aliases %}
+    <li>
+      <span>{{ item.alias }}</span>
+      {% if is_admin %}
+      <form
+        method="post"
+        action="/aliases/{{ item.id }}/loeschen"
+        class="inline-form"
+        hx-post="/aliases/{{ item.id }}/loeschen"
+        hx-target="#aliases-panel"
+        hx-swap="outerHTML"
+      >
+        <button type="submit" class="btn btn-danger btn-small">Löschen</button>
+      </form>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">Keine Aliase.</p>
+  {% endif %}
+  {% if is_admin %}
+  <form
+    method="post"
+    action="/gruppen/{{ group.id }}/aliases"
+    class="inline-form"
+    hx-post="/gruppen/{{ group.id }}/aliases"
+    hx-target="#aliases-panel"
+    hx-swap="outerHTML"
+  >
+    <label>
+      Alias
+      <input type="text" name="alias" required>
+    </label>
+    <button type="submit" class="btn">Speichern</button>
+  </form>
+  {% endif %}
+</div>

@@ -1,0 +1,11 @@
+<div
+  class="snapshot-stand-banner{% if is_fresh_pull %} snapshot-stand-banner--current{% else %} snapshot-stand-banner--archive{% endif %}"
+  {% if is_fresh_pull %}id="snapshot-stand-banner" data-snapshot-id="{{ snapshot.id }}"{% endif %}
+>
+  <span class="snapshot-stand-banner__text">
+    Stand: {{ format_timestamp }} · {{ format_swiss_number(total_all) }} Artikel · abgefragt von {{ snapshot.created_by_name }}
+  </span>
+  {% if is_fresh_pull %}
+  <button type="button" class="snapshot-stand-banner__close" aria-label="Schliessen">&times;</button>
+  {% endif %}
+</div>

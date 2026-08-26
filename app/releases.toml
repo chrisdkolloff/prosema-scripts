@@ -1,0 +1,33 @@
+# PROSEMA release history — edit this file to bump the version and document changes.
+# The top-level `version` is shown in the site header; `[[releases]]` entries appear on /changelog.
+
+version = "0.2.1"
+
+[[releases]]
+version = "0.2.1"
+date = "2026-08-25"
+summary = "Bezugsquellen-Export: Verkaufsartikel-Nummer immer setzen"
+changes = [
+  "Spalte W trägt immer die PROSEMA-Artikelnummer — leer legt weclapp einen neuen Verkaufsartikel an",
+  "Verkaufsartikel-Währung default EUR (bestätigt korrekt); Preis-Eintritt muss bewusst gesetzt werden",
+  "Validierung blockiert leere/ungültige Artikelnummern und doppelte Bezugsquellen",
+]
+
+[[releases]]
+version = "0.2.0"
+date = "2026-08-25"
+summary = "Artikel-Snapshots und Übersicht"
+changes = [
+  "Artikel-Übersicht mit weclapp-Snapshots",
+  "Export und Vergleich von Artikelständen",
+]
+
+[[releases]]
+version = "0.1.0"
+date = "2026-08-24"
+summary = "Erste Online-Version"
+changes = [
+  "Anmeldung über Microsoft Entra ID",
+  "Gruppenverwaltung und Diagramm",
+  "Artikel-Batches und Hintergrundaufträge",
+]

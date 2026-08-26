@@ -1,0 +1,1336 @@
+{
+  "entity": "article",
+  "endpoint": "POST /article",
+  "tenant": "ifwqvnzrfrodbrm",
+  "retrievedAt": "2026-08-18T13:23:30Z",
+  "method": "Discovered from this weclapp tenant with POST /article?dryRun=true, GET /customAttributeDefinition, GET /unit, GET /articleCategory, GET /currency. No articles were created.",
+  "requiredForCreate": [
+    {
+      "field": "name",
+      "type": "string",
+      "required": true,
+      "restrictions": [
+        "Must not be empty or whitespace.",
+        "Maps to the article short name / PROSEMA Kurztext."
+      ]
+    },
+    {
+      "field": "articleNumber",
+      "type": "string",
+      "required": true,
+      "restrictions": [
+        "Must not be empty.",
+        "Must be unique in this tenant. Duplicate values return validation error type duplicate.",
+        "This tenant uses Prosema numbers such as 020.020.0010."
+      ]
+    }
+  ],
+  "defaultedIfOmitted": [
+    {
+      "field": "articleType",
+      "type": "enum",
+      "required": false,
+      "defaultInThisTenant": "STORABLE",
+      "allowed": [
+        "SHIPPING_COST",
+        "STORABLE",
+        "SALES_BILL_OF_MATERIAL",
+        "LOADING_EQUIPMENT",
+        "PACKAGING_UNIT",
+        "SERVICE",
+        "SERVICE_QUOTA",
+        "BASIC",
+        "LOADING_EQUIPMENT_STORABLE"
+      ],
+      "note": "Existing catalog is mostly BASIC (4093), with a few STORABLE (16). New Dural/shop articles should almost certainly set BASIC explicitly rather than relying on the STORABLE default."
+    },
+    {
+      "field": "unitId",
+      "type": "reference:/unit",
+      "required": false,
+      "defaultInThisTenant": "6526",
+      "defaultUnitName": "mm",
+      "note": "Default unit is Millimeter. Typical shop articles use Stk. (3566) or lfm (4259). Always set this explicitly."
+    },
+    {
+      "field": "taxRateType",
+      "type": "enum",
+      "required": false,
+      "defaultInThisTenant": "STANDARD",
+      "allowed": [
+        "ZERO",
+        "SUPER_REDUCED",
+        "REDUCED",
+        "STANDARD",
+        "SLIGHTLY_REDUCED"
+      ]
+    },
+    {
+      "field": "active",
+      "type": "boolean",
+      "required": false,
+      "defaultInThisTenant": true
+    },
+    {
+      "field": "availableInSale",
+      "type": "boolean",
+      "required": false,
+      "defaultInThisTenant": true
+    }
+  ],
+  "readOnlyOnCreate": [
+    "id",
+    "version",
+    "createdDate",
+    "lastModifiedDate"
+  ],
+  "recommendedBusinessFields": [
+    {
+      "field": "articleType",
+      "why": "API default is STORABLE, but almost all existing products are BASIC."
+    },
+    {
+      "field": "unitId",
+      "why": "API default is mm; shop articles usually need Stk. or lfm."
+    },
+    {
+      "field": "articleCategoryId",
+      "why": "Needed so the father can bulk-assign a weclapp category from a dropdown."
+    },
+    {
+      "field": "ean",
+      "why": "Optional. The API accepted both a 3-digit dummy and a 13-digit GTIN in dry-run; no checksum was enforced."
+    },
+    {
+      "field": "matchCode",
+      "why": "Used on existing articles as supplier/reference code."
+    },
+    {
+      "field": "shortDescription1",
+      "why": "Often a copy of the article name on existing records."
+    },
+    {
+      "field": "longText",
+      "why": "HTML-capable long description / PROSEMA Langtext."
+    },
+    {
+      "field": "articlePrices",
+      "why": "Sales price is not required to create the article, but is required for a useful shop record."
+    },
+    {
+      "field": "customAttributes",
+      "why": "None are mandatory in this tenant, but category/dropdown fields live here (Hauptwarengruppe, Warengruppe, etc.)."
+    }
+  ],
+  "nestedCreateRules": {
+    "articlePrices": {
+      "requiredWhenPresent": [
+        "salesChannel",
+        "priceScaleType",
+        "priceScaleValue",
+        "currencyId"
+      ],
+      "alsoUsed": [
+        "price"
+      ],
+      "priceScaleTypeAllowed": [
+        "SCALE_FROM",
+        "SCALE_TO"
+      ],
+      "observedWorkingExample": {
+        "price": "10.00",
+        "currencyId": "261",
+        "priceScaleType": "SCALE_FROM",
+        "priceScaleValue": "0",
+        "salesChannel": "NET1"
+      },
+      "observedOnExistingArticle": {
+        "articleNumber": "020.020.0010",
+        "currencyId": "265",
+        "currencyName": "CHF",
+        "salesChannel": "GROSS1",
+        "priceScaleType": "SCALE_FROM",
+        "priceScaleValue": "0"
+      },
+      "salesChannelNote": "API enum contains NET1–NET300 and GROSS1–GROSS300 (600 values). Do not dump all of them in UI dropdowns. Use the channels already present on existing articles, currently GROSS1 and NET1."
+    },
+    "supplySources": {
+      "note": "Cannot create a new supply source inline as an empty nested object. Nested supplySources[] requires articleSupplySourceId of an already existing supply source."
+    },
+    "articleSupplySource": {
+      "endpoint": "POST /articleSupplySource",
+      "requiredForCreate": [
+        {
+          "field": "name",
+          "type": "string",
+          "required": true
+        },
+        {
+          "field": "unitId",
+          "type": "reference:/unit",
+          "required": true,
+          "note": "Unlike article, unitId has no default here."
+        },
+        {
+          "field": "supplierId",
+          "type": "reference:/party",
+          "required": true
+        },
+        {
+          "field": "articleNumber",
+          "type": "string",
+          "required": true,
+          "note": "This is the supplier article number, not the Prosema number."
+        }
+      ],
+      "linkToArticle": "After both exist, set article.supplySources[].articleSupplySourceId and optionally article.primarySupplySourceId."
+    }
+  },
+  "lookups": {
+    "units": [
+      {
+        "id": "4302",
+        "name": "Btl.",
+        "description": "Beutel"
+      },
+      {
+        "id": "4303",
+        "name": "Karton",
+        "description": "Karton"
+      },
+      {
+        "id": "4305",
+        "name": "Paar",
+        "description": "Paar"
+      },
+      {
+        "id": "3566",
+        "name": "Stk.",
+        "description": "Stück"
+      },
+      {
+        "id": "3564",
+        "name": "g",
+        "description": "Gramm"
+      },
+      {
+        "id": "3567",
+        "name": "h",
+        "description": "Stunde"
+      },
+      {
+        "id": "3563",
+        "name": "kg",
+        "description": "Kilogramm"
+      },
+      {
+        "id": "3565",
+        "name": "l",
+        "description": "Liter"
+      },
+      {
+        "id": "4259",
+        "name": "lfm",
+        "description": "Laufmeter"
+      },
+      {
+        "id": "6526",
+        "name": "mm",
+        "description": "Millimeter"
+      },
+      {
+        "id": "4304",
+        "name": "qm",
+        "description": "Quadratmeter"
+      }
+    ],
+    "currencies": [
+      {
+        "id": "261",
+        "name": "EUR",
+        "currencySymbol": "€"
+      },
+      {
+        "id": "262",
+        "name": "USD",
+        "currencySymbol": "$"
+      },
+      {
+        "id": "263",
+        "name": "CAD",
+        "currencySymbol": "C$"
+      },
+      {
+        "id": "264",
+        "name": "GBP",
+        "currencySymbol": "£"
+      },
+      {
+        "id": "265",
+        "name": "CHF",
+        "currencySymbol": "CHF"
+      },
+      {
+        "id": "266",
+        "name": "JPY",
+        "currencySymbol": "¥"
+      },
+      {
+        "id": "267",
+        "name": "CNY",
+        "currencySymbol": "¥"
+      },
+      {
+        "id": "268",
+        "name": "TRY",
+        "currencySymbol": "₺"
+      },
+      {
+        "id": "269",
+        "name": "SEK",
+        "currencySymbol": "Skr"
+      },
+      {
+        "id": "270",
+        "name": "NOK",
+        "currencySymbol": "kr"
+      },
+      {
+        "id": "271",
+        "name": "DKK",
+        "currencySymbol": "dkr"
+      },
+      {
+        "id": "272",
+        "name": "KRW",
+        "currencySymbol": "₩"
+      },
+      {
+        "id": "273",
+        "name": "INR",
+        "currencySymbol": "₹"
+      },
+      {
+        "id": "274",
+        "name": "ILS",
+        "currencySymbol": "₪"
+      },
+      {
+        "id": "275",
+        "name": "CZK",
+        "currencySymbol": "Kč"
+      },
+      {
+        "id": "276",
+        "name": "PLN",
+        "currencySymbol": "zł"
+      },
+      {
+        "id": "277",
+        "name": "RUB",
+        "currencySymbol": "₽"
+      }
+    ],
+    "articleCategories": [
+      {
+        "id": "20341",
+        "name": "Abdeckprofile",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20352",
+        "name": "Abdichtmatten",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20364",
+        "name": "Abschlussprofile Bodenbeläge",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20329",
+        "name": "Abschlussprofile Diamond",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20331",
+        "name": "Abschlussprofile Messing",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20330",
+        "name": "Abschlussprofile Spezial",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20327",
+        "name": "Abschlussprofile Winkel",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "57309",
+        "name": "Abschlussprofile messing",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20328",
+        "name": "Abschlussprofile quadratisch",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20325",
+        "name": "Abschlussprofile rund",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20367",
+        "name": "Anpassungsprofile Bodenbeläge",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20336",
+        "name": "Arbeitsplattenprofile",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20358",
+        "name": "Armierung",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20348",
+        "name": "Balkon und Terrasse",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20347",
+        "name": "Balkonwinkelprofile",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20365",
+        "name": "Bodenbelagsprofile",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20334",
+        "name": "Bodenprofile",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20338",
+        "name": "Dehnfugenprofile",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20335",
+        "name": "Dekorprofile",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20339",
+        "name": "Dickbettprofile",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20350",
+        "name": "Drainage Balkon und Terrasse",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20356",
+        "name": "Drainagematten",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20362",
+        "name": "Duschablagen",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20360",
+        "name": "Duschsysteme",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20357",
+        "name": "Dämmmatten",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20337",
+        "name": "Dünnbettprofile",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20332",
+        "name": "Eckschutzprofile",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20382",
+        "name": "Eingangsmatten",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20383",
+        "name": "Eingangsmatten Rahmen",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20384",
+        "name": "Eingangsmatten Standardgrösse",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20381",
+        "name": "Eingangsmatten individuelle Grösse",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20368",
+        "name": "Einteilige Sockelleisten",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20355",
+        "name": "Entkopplungsmatten",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20349",
+        "name": "Entwässerung Balkon und Terrasse",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20340",
+        "name": "Gebäudetrennfugen",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "225720",
+        "name": "Gefällekeile",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20354",
+        "name": "Heizmatten",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "197332",
+        "name": "Karton Verpackungen",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20370",
+        "name": "LED-Profile",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20371",
+        "name": "LED-Systeme",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20372",
+        "name": "LED-Zubehör",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20359",
+        "name": "Linienentwässerung",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20379",
+        "name": "Markierungsbänder",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20353",
+        "name": "Mattensysteme",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20320",
+        "name": "Nivelliersystem",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20326",
+        "name": "Profile",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20361",
+        "name": "Punktentwässerung",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20369",
+        "name": "Sockelleisten",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20373",
+        "name": "Taktile Einzelnoppen",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20377",
+        "name": "Taktile Einzelrippen",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20374",
+        "name": "Taktile Leitsysteme",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20375",
+        "name": "Taktile Noppenfolien",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20376",
+        "name": "Taktile Noppenmatten",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20378",
+        "name": "Taktile Rippenfolien",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20343",
+        "name": "Treppenprofile",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20344",
+        "name": "Treppenprofile für Einlagen",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20342",
+        "name": "Treppenprofile für Fliesen",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20345",
+        "name": "Treppenprofile für nachträglichen Einbau",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20346",
+        "name": "Treppenstufenprofile universell",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20322",
+        "name": "Verlegematerial",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20351",
+        "name": "Verlegematerial Balkon und Terrasse",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "197329",
+        "name": "Verpackungen",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20333",
+        "name": "Wand- und Bodenprofile",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20323",
+        "name": "Werkzeug",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20321",
+        "name": "Zubehör",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20363",
+        "name": "Zubehör Duschsysteme",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20324",
+        "name": "Zubehör allgemein",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20380",
+        "name": "Zubehör taktile Systeme",
+        "parentArticleCategoryId": null
+      },
+      {
+        "id": "20366",
+        "name": "Übergangsprofile Bodenbeläge",
+        "parentArticleCategoryId": null
+      }
+    ],
+    "customAttributes": [
+      {
+        "id": "7464",
+        "label": "Artikelbeschreibung (Prosema)",
+        "attributeType": "LARGE_TEXT",
+        "groupName": null,
+        "mandatory": false,
+        "readOnly": false,
+        "active": true,
+        "showOnCreationDialog": false,
+        "selectableValues": []
+      },
+      {
+        "id": "7462",
+        "label": "Bestand übertragen (Prosema)",
+        "attributeType": "BOOLEAN",
+        "groupName": null,
+        "mandatory": false,
+        "readOnly": false,
+        "active": true,
+        "showOnCreationDialog": false,
+        "selectableValues": []
+      },
+      {
+        "id": "7468",
+        "label": "Gewichtseinheit",
+        "attributeType": "STRING",
+        "groupName": null,
+        "mandatory": false,
+        "readOnly": false,
+        "active": true,
+        "showOnCreationDialog": false,
+        "selectableValues": []
+      },
+      {
+        "id": "7460",
+        "label": "Im Shop aktiv (Prosema)",
+        "attributeType": "BOOLEAN",
+        "groupName": null,
+        "mandatory": false,
+        "readOnly": false,
+        "active": true,
+        "showOnCreationDialog": false,
+        "selectableValues": []
+      },
+      {
+        "id": "7458",
+        "label": "Im Shop verfügbar (Prosema)",
+        "attributeType": "BOOLEAN",
+        "groupName": null,
+        "mandatory": false,
+        "readOnly": false,
+        "active": true,
+        "showOnCreationDialog": false,
+        "selectableValues": []
+      },
+      {
+        "id": "7470",
+        "label": "Produkt-ID (Prosema)",
+        "attributeType": "STRING",
+        "groupName": null,
+        "mandatory": false,
+        "readOnly": false,
+        "active": true,
+        "showOnCreationDialog": false,
+        "selectableValues": []
+      },
+      {
+        "id": "7472",
+        "label": "Varianten-ID (Prosema)",
+        "attributeType": "STRING",
+        "groupName": null,
+        "mandatory": false,
+        "readOnly": false,
+        "active": true,
+        "showOnCreationDialog": false,
+        "selectableValues": []
+      },
+      {
+        "id": "4266",
+        "label": "Farbe",
+        "attributeType": "STRING",
+        "groupName": "Beschaffenheit",
+        "mandatory": false,
+        "readOnly": false,
+        "active": true,
+        "showOnCreationDialog": false,
+        "selectableValues": []
+      },
+      {
+        "id": "4293",
+        "label": "Grundmaterial",
+        "attributeType": "STRING",
+        "groupName": "Beschaffenheit",
+        "mandatory": false,
+        "readOnly": false,
+        "active": true,
+        "showOnCreationDialog": false,
+        "selectableValues": []
+      },
+      {
+        "id": "4262",
+        "label": "Oberfläche",
+        "attributeType": "STRING",
+        "groupName": "Beschaffenheit",
+        "mandatory": false,
+        "readOnly": false,
+        "active": true,
+        "showOnCreationDialog": true,
+        "selectableValues": []
+      },
+      {
+        "id": "198526",
+        "label": "Bodenleger",
+        "attributeType": "BOOLEAN",
+        "groupName": "Branche",
+        "mandatory": false,
+        "readOnly": false,
+        "active": true,
+        "showOnCreationDialog": true,
+        "selectableValues": []
+      },
+      {
+        "id": "198523",
+        "label": "Dachdecker",
+        "attributeType": "BOOLEAN",
+        "groupName": "Branche",
+        "mandatory": false,
+        "readOnly": false,
+        "active": true,
+        "showOnCreationDialog": true,
+        "selectableValues": []
+      },
+      {
+        "id": "198520",
+        "label": "Landschaftsgärtner",
+        "attributeType": "BOOLEAN",
+        "groupName": "Branche",
+        "mandatory": false,
+        "readOnly": false,
+        "active": true,
+        "showOnCreationDialog": true,
+        "selectableValues": []
+      },
+      {
+        "id": "198529",
+        "label": "Plattenleger",
+        "attributeType": "BOOLEAN",
+        "groupName": "Branche",
+        "mandatory": false,
+        "readOnly": false,
+        "active": true,
+        "showOnCreationDialog": true,
+        "selectableValues": []
+      },
+      {
+        "id": "4500",
+        "label": "Produktfamilie",
+        "attributeType": "STRING",
+        "groupName": "Lieferanteninformation",
+        "mandatory": false,
+        "readOnly": false,
+        "active": true,
+        "showOnCreationDialog": false,
+        "selectableValues": []
+      },
+      {
+        "id": "4497",
+        "label": "Rabattcode",
+        "attributeType": "STRING",
+        "groupName": "Lieferanteninformation",
+        "mandatory": false,
+        "readOnly": false,
+        "active": true,
+        "showOnCreationDialog": false,
+        "selectableValues": []
+      },
+      {
+        "id": "4399",
+        "label": "VPE 1",
+        "attributeType": "STRING",
+        "groupName": "Logistik",
+        "mandatory": false,
+        "readOnly": false,
+        "active": true,
+        "showOnCreationDialog": true,
+        "selectableValues": []
+      },
+      {
+        "id": "4401",
+        "label": "VPE 2",
+        "attributeType": "STRING",
+        "groupName": "Logistik",
+        "mandatory": false,
+        "readOnly": false,
+        "active": true,
+        "showOnCreationDialog": false,
+        "selectableValues": []
+      },
+      {
+        "id": "4403",
+        "label": "VPE 3",
+        "attributeType": "STRING",
+        "groupName": "Logistik",
+        "mandatory": false,
+        "readOnly": false,
+        "active": true,
+        "showOnCreationDialog": false,
+        "selectableValues": []
+      },
+      {
+        "id": "4395",
+        "label": "Verkaufseinheit",
+        "attributeType": "STRING",
+        "groupName": "Logistik",
+        "mandatory": false,
+        "readOnly": false,
+        "active": true,
+        "showOnCreationDialog": false,
+        "selectableValues": []
+      },
+      {
+        "id": "4264",
+        "label": "Verpackung",
+        "attributeType": "STRING",
+        "groupName": "Logistik",
+        "mandatory": false,
+        "readOnly": false,
+        "active": true,
+        "showOnCreationDialog": false,
+        "selectableValues": []
+      },
+      {
+        "id": "7444",
+        "label": "Breite in mm",
+        "attributeType": "STRING",
+        "groupName": "Masse",
+        "mandatory": false,
+        "readOnly": false,
+        "active": true,
+        "showOnCreationDialog": false,
+        "selectableValues": []
+      },
+      {
+        "id": "7449",
+        "label": "Höhe in mm",
+        "attributeType": "STRING",
+        "groupName": "Masse",
+        "mandatory": false,
+        "readOnly": false,
+        "active": true,
+        "showOnCreationDialog": false,
+        "selectableValues": []
+      },
+      {
+        "id": "7447",
+        "label": "Länge in cm",
+        "attributeType": "STRING",
+        "groupName": "Masse",
+        "mandatory": false,
+        "readOnly": false,
+        "active": true,
+        "showOnCreationDialog": false,
+        "selectableValues": []
+      },
+      {
+        "id": "226369",
+        "label": "Hauptwarengruppe (Auswahl)",
+        "attributeType": "LIST",
+        "groupName": "Shopstruktur",
+        "mandatory": false,
+        "readOnly": false,
+        "active": true,
+        "showOnCreationDialog": false,
+        "selectableValues": [
+          {
+            "id": "226370",
+            "value": "Zubehör - 010",
+            "positionNumber": 1
+          },
+          {
+            "id": "226371",
+            "value": "Profile - 020",
+            "positionNumber": 2
+          },
+          {
+            "id": "226372",
+            "value": "Dehnfugenprofile - 030",
+            "positionNumber": 3
+          },
+          {
+            "id": "226373",
+            "value": "Treppenprofile - 040",
+            "positionNumber": 4
+          },
+          {
+            "id": "226374",
+            "value": "Balkon und Terrasse - 050",
+            "positionNumber": 5
+          },
+          {
+            "id": "226375",
+            "value": "Mattensysteme - 060",
+            "positionNumber": 6
+          },
+          {
+            "id": "226376",
+            "value": "Duschsysteme - 070",
+            "positionNumber": 7
+          },
+          {
+            "id": "226377",
+            "value": "Bodenbelagsprofile - 080",
+            "positionNumber": 8
+          },
+          {
+            "id": "226378",
+            "value": "Sockelleisten - 090",
+            "positionNumber": 9
+          },
+          {
+            "id": "226379",
+            "value": "LED-Systeme - 100",
+            "positionNumber": 10
+          },
+          {
+            "id": "226380",
+            "value": "Taktile Leitsysteme - 110",
+            "positionNumber": 11
+          },
+          {
+            "id": "226381",
+            "value": "Eingangsmatten - 120",
+            "positionNumber": 12
+          }
+        ]
+      },
+      {
+        "id": "226383",
+        "label": "Warengruppe (Auswahl)",
+        "attributeType": "LIST",
+        "groupName": "Shopstruktur",
+        "mandatory": false,
+        "readOnly": false,
+        "active": true,
+        "showOnCreationDialog": false,
+        "selectableValues": [
+          {
+            "id": "226384",
+            "value": "Nivelliersystem - 10",
+            "positionNumber": 1
+          },
+          {
+            "id": "226385",
+            "value": "Verlegematerial - 20",
+            "positionNumber": 2
+          },
+          {
+            "id": "226386",
+            "value": "Werkzeug - 30",
+            "positionNumber": 3
+          },
+          {
+            "id": "226387",
+            "value": "Zubehör allgemein - 90",
+            "positionNumber": 4
+          },
+          {
+            "id": "226388",
+            "value": "Abschlussprofile rund - 10",
+            "positionNumber": 5
+          },
+          {
+            "id": "226389",
+            "value": "Abschlussprofile Winkel - 20",
+            "positionNumber": 6
+          },
+          {
+            "id": "226390",
+            "value": "Abschlussprofile quadratisch - 30",
+            "positionNumber": 7
+          },
+          {
+            "id": "226391",
+            "value": "Abschlussprofile Diamond - 40",
+            "positionNumber": 8
+          },
+          {
+            "id": "226392",
+            "value": "Abschlussprofile Spezial - 50",
+            "positionNumber": 9
+          },
+          {
+            "id": "226393",
+            "value": "Abschlussprofile Messing - 60",
+            "positionNumber": 10
+          },
+          {
+            "id": "226394",
+            "value": "Eckschutzprofile - 80",
+            "positionNumber": 11
+          },
+          {
+            "id": "226395",
+            "value": "Wand- und Bodenprofile - 90",
+            "positionNumber": 12
+          },
+          {
+            "id": "226396",
+            "value": "Bodenprofile - 100",
+            "positionNumber": 13
+          },
+          {
+            "id": "226397",
+            "value": "Dekorprofile - 110",
+            "positionNumber": 14
+          },
+          {
+            "id": "226398",
+            "value": "Arbeitsplattenprofile - 120",
+            "positionNumber": 15
+          },
+          {
+            "id": "226399",
+            "value": "Dünnbettprofile - 10",
+            "positionNumber": 16
+          },
+          {
+            "id": "226400",
+            "value": "Dickbettprofile - 20",
+            "positionNumber": 17
+          },
+          {
+            "id": "226401",
+            "value": "Gebäudetrennfugen - 30",
+            "positionNumber": 18
+          },
+          {
+            "id": "226402",
+            "value": "Abdeckprofile - 40",
+            "positionNumber": 19
+          },
+          {
+            "id": "226403",
+            "value": "Treppenprofile für Fliesen - 10",
+            "positionNumber": 20
+          },
+          {
+            "id": "226404",
+            "value": "Treppenprofile für Einlagen - 20",
+            "positionNumber": 21
+          },
+          {
+            "id": "226405",
+            "value": "Treppenprofile für nachträglichen Einbau - 30",
+            "positionNumber": 22
+          },
+          {
+            "id": "226406",
+            "value": "Treppenstufenprofile universell - 40",
+            "positionNumber": 23
+          },
+          {
+            "id": "226407",
+            "value": "Balkonwinkelprofile - 10",
+            "positionNumber": 24
+          },
+          {
+            "id": "226408",
+            "value": "Entwässerung Balkon und Terrasse - 20",
+            "positionNumber": 25
+          },
+          {
+            "id": "226409",
+            "value": "Drainage Balkon und Terrasse - 30",
+            "positionNumber": 26
+          },
+          {
+            "id": "226410",
+            "value": "Verlegematerial Balkon und Terrasse - 40",
+            "positionNumber": 27
+          },
+          {
+            "id": "226411",
+            "value": "Abdichtmatten - 10",
+            "positionNumber": 28
+          },
+          {
+            "id": "226412",
+            "value": "Heizmatten - 20",
+            "positionNumber": 29
+          },
+          {
+            "id": "226413",
+            "value": "Entkopplungsmatten - 30",
+            "positionNumber": 30
+          },
+          {
+            "id": "226414",
+            "value": "Drainagematten - 40",
+            "positionNumber": 31
+          },
+          {
+            "id": "226415",
+            "value": "Dämmmatten - 50",
+            "positionNumber": 32
+          },
+          {
+            "id": "226416",
+            "value": "Armierung - 60",
+            "positionNumber": 33
+          },
+          {
+            "id": "226417",
+            "value": "Linienentwässerung - 10",
+            "positionNumber": 34
+          },
+          {
+            "id": "226418",
+            "value": "Punktentwässerung - 20",
+            "positionNumber": 35
+          },
+          {
+            "id": "226419",
+            "value": "Duschablagen - 30",
+            "positionNumber": 36
+          },
+          {
+            "id": "226420",
+            "value": "Zubehör Duschsysteme - 40",
+            "positionNumber": 37
+          },
+          {
+            "id": "226421",
+            "value": "Abschlussprofile Bodenbeläge - 10",
+            "positionNumber": 38
+          },
+          {
+            "id": "226422",
+            "value": "Übergangsprofile Bodenbeläge - 20",
+            "positionNumber": 39
+          },
+          {
+            "id": "226423",
+            "value": "Anpassungsprofile Bodenbeläge - 30",
+            "positionNumber": 40
+          },
+          {
+            "id": "226424",
+            "value": "Einteilige Sockelleisten - 10",
+            "positionNumber": 41
+          },
+          {
+            "id": "226425",
+            "value": "LED-Profile - 10",
+            "positionNumber": 42
+          },
+          {
+            "id": "226426",
+            "value": "LED-Zubehör - 20",
+            "positionNumber": 43
+          },
+          {
+            "id": "226427",
+            "value": "Taktile Einzelnoppen - 10",
+            "positionNumber": 44
+          },
+          {
+            "id": "226428",
+            "value": "Taktile Noppenfolien - 20",
+            "positionNumber": 45
+          },
+          {
+            "id": "226429",
+            "value": "Taktile Noppenmatten - 30",
+            "positionNumber": 46
+          },
+          {
+            "id": "226430",
+            "value": "Taktile Einzelrippen - 40",
+            "positionNumber": 47
+          },
+          {
+            "id": "226431",
+            "value": "Taktile Rippenfolien - 50",
+            "positionNumber": 48
+          },
+          {
+            "id": "226432",
+            "value": "Markierungsbänder - 60",
+            "positionNumber": 49
+          },
+          {
+            "id": "226433",
+            "value": "Zubehör taktile Systeme - 70",
+            "positionNumber": 50
+          },
+          {
+            "id": "226434",
+            "value": "Eingangsmatten individuelle Grösse - 10",
+            "positionNumber": 51
+          },
+          {
+            "id": "226435",
+            "value": "Eingangsmatten Rahmen - 20",
+            "positionNumber": 52
+          },
+          {
+            "id": "226436",
+            "value": "Eingangsmatten Standardgrösse - 30",
+            "positionNumber": 53
+          },
+          {
+            "id": "226437",
+            "value": "Gefällekeile - 130",
+            "positionNumber": 54
+          }
+        ]
+      }
+    ]
+  },
+  "minimumCreatePayloadThatSucceededInDryRun": {
+    "name": "API schema probe",
+    "articleNumber": "__schema_probe__"
+  },
+  "recommendedCreatePayloadShape": {
+    "name": "Abschlussprofil ...",
+    "articleNumber": "020.020.0010",
+    "articleType": "BASIC",
+    "unitId": "3566",
+    "taxRateType": "STANDARD",
+    "ean": "4018448005002",
+    "matchCode": "DSM 30, 250",
+    "shortDescription1": "Abschlussprofil ...",
+    "articleCategoryId": "20327",
+    "articlePrices": [
+      {
+        "price": "6.22",
+        "currencyId": "265",
+        "priceScaleType": "SCALE_FROM",
+        "priceScaleValue": "0",
+        "salesChannel": "GROSS1"
+      }
+    ],
+    "customAttributes": [
+      {
+        "attributeDefinitionId": "226369",
+        "selectedValueId": "<Hauptwarengruppe selectable id>"
+      },
+      {
+        "attributeDefinitionId": "226383",
+        "selectedValueId": "<Warengruppe selectable id>"
+      }
+    ]
+  }
+}

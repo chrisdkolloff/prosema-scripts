@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Gruppen — PROSEMA{% endblock %}
+{% block main_class %} wide{% endblock %}
+{% block content %}
+  <h1>Gruppen-Verwaltung</h1>
+  <p class="lede">Haupt- und Untergruppen sind die Grundlage für Artikelnummern. Codes sind nach der ersten Verwendung gesperrt.</p>
+
+  {% if error %}
+  <p class="error-banner">{{ error }}</p>
+  {% endif %}
+
+  <p class="toolbar">
+    <a href="/gruppen/diagramm">Diagramm</a>
+    {% if show_deleted %}
+    <a href="/gruppen">Gelöschte ausblenden</a>
+    {% else %}
+    <a href="/gruppen?geloeschte=1">Gelöschte anzeigen</a>
+    {% endif %}
+  </p>
+
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Code</th>
+        <th>Bezeichnung</th>
+        <th>Untergruppen</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for group in groups %}
+      <tr class="{% if group.deleted_at %}is-deleted{% endif %}">
+        <td><a href="/gruppen/{{ group.id }}"><code>{{ group.code }}</code></a></td>
+        <td><a href="/gruppen/{{ group.id }}">{{ group.name }}</a></td>
+        <td>{{ counts.get(group.id, 0) }}</td>
+        <td>
+          {% if group.deleted_at %}
+          <span class="badge badge-deleted">Gelöscht</span>
+          {% else %}
+          <span class="badge badge-active">Aktiv</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="4">Keine Hauptgruppen vorhanden.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if is_admin %}
+  <section class="create-panel">
+    <h2>Neue Hauptgruppe</h2>
+    <form method="post" action="/gruppen" class="stack-form">
+      <label>
+        Code
+        <input type="text" name="code" maxlength="3" required pattern="[0-9]{3}" value="{{ form_code or '' }}">
+      </label>
+      <label>
+        Bezeichnung
+        <input type="text" name="name" required value="{{ form_name or '' }}">
+      </label>
+      <button type="submit" class="btn">Speichern</button>
+    </form>
+  </section>
+  {% endif %}
+{% endblock %}

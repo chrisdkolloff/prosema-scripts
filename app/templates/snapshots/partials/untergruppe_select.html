@@ -1,0 +1,9 @@
+<label id="snapshot-untergruppe-label">
+  Untergruppe
+  <select name="untergruppe" id="snapshot-untergruppe">
+    <option value="">(alle)</option>
+    {% for value in untergruppen %}
+    <option value="{{ value }}" {% if filters.untergruppe == value %}selected{% endif %}>{{ value }}</option>
+    {% endfor %}
+  </select>
+</label>

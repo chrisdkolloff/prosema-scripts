@@ -1,0 +1,27 @@
+<div id="batch-grid-panel">
+  <div class="batch-grid-toolbar">
+    <p class="batch-filter-count">Gefiltert: {{ total_rows }} Zeilen</p>
+    <p id="batch-save-status" class="batch-save-status" role="status">Gespeichert</p>
+  </div>
+  <div id="batch-spreadsheet" class="batch-spreadsheet"></div>
+  <script type="application/json" id="batch-grid-config">{{ grid_config | tojson }}</script>
+  {% if pages > 1 %}
+  <nav class="batch-pagination" aria-label="Seiten">
+    {% for n in range(1, pages + 1) %}
+      {% if n == page %}
+      <span class="is-current">{{ n }}</span>
+      {% else %}
+      {% set qs = filter_qs ~ ('&' if filter_qs else '') ~ 'seite=' ~ n %}
+      <a
+        href="/batches/{{ batch.id }}?{{ qs }}"
+        hx-get="/batches/{{ batch.id }}?{{ qs }}"
+        hx-target="#batch-grid-panel"
+        hx-select="#batch-grid-panel"
+        hx-swap="outerHTML"
+        hx-push-url="true"
+      >{{ n }}</a>
+      {% endif %}
+    {% endfor %}
+  </nav>
+  {% endif %}
+</div>

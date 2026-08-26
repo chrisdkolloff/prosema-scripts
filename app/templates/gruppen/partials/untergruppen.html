@@ -1,0 +1,147 @@
+<div id="untergruppen-panel">
+  <section class="detail-block">
+    <h2>Untergruppen</h2>
+    {% if error %}
+    <p class="error-banner">{{ error }}</p>
+    {% endif %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Code</th>
+          <th>Bezeichnung</th>
+          <th>Status</th>
+          <th>Alias</th>
+          {% if is_admin %}<th>Aktionen</th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in untergruppen %}
+        <tr id="untergruppe-{{ item.id }}" class="{% if item.deleted_at %}is-deleted{% endif %}">
+          <td>
+            {% if item.locked_at %}
+            <code>{{ item.code }}</code>
+            <p class="hint">Es befinden sich bereits Artikel in dieser Untergruppe</p>
+            {% elif is_admin and not item.deleted_at %}
+            <form method="post" action="/untergruppen/{{ item.id }}/code" class="inline-form">
+              <input type="text" name="code" maxlength="3" required pattern="[0-9]{3}" value="{{ item.code }}" aria-label="Code">
+              <button type="submit" class="btn btn-small">Speichern</button>
+            </form>
+            {% else %}
+            <code>{{ item.code }}</code>
+            {% endif %}
+          </td>
+          <td>
+            {% if is_admin and not item.deleted_at %}
+            <form
+              method="post"
+              action="/untergruppen/{{ item.id }}/umbenennen"
+              class="inline-form"
+              hx-post="/untergruppen/{{ item.id }}/umbenennen"
+              hx-target="#untergruppen-panel"
+              hx-swap="outerHTML"
+            >
+              <input type="text" name="name" required value="{{ item.name }}" aria-label="Bezeichnung">
+              <button type="submit" class="btn btn-small">Umbenennen</button>
+            </form>
+            {% else %}
+            {{ item.name }}
+            {% endif %}
+          </td>
+          <td>
+            {% if item.deleted_at %}
+            <span class="badge badge-deleted">Gelöscht</span>
+            {% else %}
+            <span class="badge badge-active">Aktiv</span>
+            {% endif %}
+          </td>
+          <td>
+            <ul class="alias-list compact">
+              {% for alias in item.aliases %}
+              <li>
+                {{ alias.alias }}
+                {% if is_admin %}
+                <form
+                  method="post"
+                  action="/aliases/{{ alias.id }}/loeschen"
+                  class="inline-form"
+                  hx-post="/aliases/{{ alias.id }}/loeschen"
+                  hx-target="#untergruppen-panel"
+                  hx-swap="outerHTML"
+                >
+                  <button type="submit" class="btn btn-danger btn-small">Löschen</button>
+                </form>
+                {% endif %}
+              </li>
+              {% endfor %}
+            </ul>
+            {% if is_admin and not item.deleted_at %}
+            <form
+              method="post"
+              action="/untergruppen/{{ item.id }}/aliases"
+              class="inline-form"
+              hx-post="/untergruppen/{{ item.id }}/aliases"
+              hx-target="#untergruppen-panel"
+              hx-swap="outerHTML"
+            >
+              <input type="text" name="alias" required placeholder="Alias" aria-label="Alias">
+              <button type="submit" class="btn btn-small">Speichern</button>
+            </form>
+            {% endif %}
+          </td>
+          {% if is_admin %}
+          <td>
+            {% if item.deleted_at %}
+            <form
+              method="post"
+              action="/untergruppen/{{ item.id }}/wiederherstellen"
+              hx-post="/untergruppen/{{ item.id }}/wiederherstellen"
+              hx-target="#untergruppen-panel"
+              hx-swap="outerHTML"
+            >
+              <button type="submit" class="btn btn-small">Wiederherstellen</button>
+            </form>
+            {% else %}
+            <form
+              method="post"
+              action="/untergruppen/{{ item.id }}/loeschen"
+              hx-post="/untergruppen/{{ item.id }}/loeschen"
+              hx-target="#untergruppen-panel"
+              hx-swap="outerHTML"
+            >
+              <button type="submit" class="btn btn-danger btn-small">Löschen</button>
+            </form>
+            {% endif %}
+          </td>
+          {% endif %}
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="{% if is_admin %}5{% else %}4{% endif %}">Keine Untergruppen.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    {% if is_admin %}
+    <h3>Neue Untergruppe</h3>
+    <form
+      method="post"
+      action="/gruppen/{{ group.id }}/untergruppen"
+      class="stack-form"
+      hx-post="/gruppen/{{ group.id }}/untergruppen"
+      hx-target="#untergruppen-panel"
+      hx-swap="outerHTML"
+    >
+      <label>
+        Code
+        <input type="text" name="code" maxlength="3" required pattern="[0-9]{3}">
+      </label>
+      <label>
+        Bezeichnung
+        <input type="text" name="name" required>
+      </label>
+      <button type="submit" class="btn">Speichern</button>
+    </form>
+    {% endif %}
+  </section>
+</div>

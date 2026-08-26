@@ -1,0 +1,7 @@
+# Collision: D equals a PROSEMA article_number in the same run.
+# The wizard would have matched the existing article, not created junk.
+# NEVER delete these.
+020.010.0360	020.010.0360	included=True	Viertelkreis-Abschlussprofil Edelstahl V2A unbehandelt natur 8 mm 250 cm
+020.020.5710	020.020.5710	included=True	Abschlussprofil Edelstahl (V2A, 304) natur gebürstet 10 mm 300 cm
+060.010.800	060.010.800	included=True	Innenecke Polyethylen, Polypropylen gelb 20 Stück
+999.999.001	999.999.001	included=False	TEST ARTICLE - DO NOT USE FOR REAL DATA

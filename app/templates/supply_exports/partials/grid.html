@@ -1,0 +1,74 @@
+<div id="supply-export-grid-panel">
+  <div class="batch-grid-toolbar">
+    <p class="batch-filter-count">
+      {{ format_swiss_number(total) }} Treffer
+      · Mit Änderung: {{ format_swiss_number(blocks.included) }}
+    </p>
+    <div class="supply-toolbar-actions">
+      <button type="button" class="btn btn-secondary btn-small" id="supply-column-toggle" aria-expanded="false" aria-controls="supply-column-picker">
+        Spalten
+      </button>
+      <p id="supply-save-status" class="batch-save-status" role="status">Gespeichert</p>
+    </div>
+  </div>
+  {% if column_picker %}
+  <div id="supply-column-picker" class="supply-column-picker" hidden>
+    <div class="supply-column-presets">
+      {% for preset in column_picker.presets %}
+      <button type="button" class="btn btn-secondary btn-small" data-column-preset="{{ preset.id }}">{{ preset.label }}</button>
+      {% endfor %}
+    </div>
+    <div class="supply-column-groups">
+      {% for group in column_picker.groups %}
+      <details class="supply-column-group" {% if not group.collapsed %}open{% endif %}>
+        <summary>{{ group.label }}</summary>
+        {% if group.hint %}<p class="muted supply-column-hint">{{ group.hint }}</p>{% endif %}
+        <ul>
+          {% for entry in group.entries %}
+          <li>
+            <label title="{{ entry.note }}" class="{% if entry.read_only %}is-readonly{% endif %}">
+              <input
+                type="checkbox"
+                value="{{ entry.field_key }}"
+                {% if entry.checked %}checked{% endif %}
+                {% if not entry.hideable %}disabled{% endif %}
+                data-hideable="{{ '1' if entry.hideable else '0' }}"
+              >
+              <span>{{ entry.label }}</span>
+              {% if entry.weclapp_column %}
+              <span class="supply-column-letter">{{ entry.weclapp_column }}</span>
+              {% endif %}
+              {% if entry.read_only %}
+              <span class="badge supply-readonly-badge">nur Anzeige</span>
+              {% endif %}
+            </label>
+          </li>
+          {% endfor %}
+        </ul>
+      </details>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+  <div id="supply-spreadsheet" class="batch-spreadsheet supply-export-spreadsheet"></div>
+  <script type="application/json" id="supply-grid-config">{{ grid_config | tojson }}</script>
+  {% if pages > 1 %}
+  <nav class="batch-pagination" aria-label="Seiten">
+    {% for n in range(1, pages + 1) %}
+      {% if n == page %}
+      <span class="is-current">{{ n }}</span>
+      {% else %}
+      {% set qs = filter_qs ~ ('&' if filter_qs else '') ~ 'seite=' ~ n %}
+      <a
+        href="/bezugsquellen/{{ run.id }}?{{ qs }}"
+        hx-get="/bezugsquellen/{{ run.id }}?{{ qs }}"
+        hx-target="#supply-export-grid-panel"
+        hx-select="#supply-export-grid-panel"
+        hx-swap="outerHTML"
+        hx-push-url="true"
+      >{{ n }}</a>
+      {% endif %}
+    {% endfor %}
+  </nav>
+  {% endif %}
+</div>

@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="de-CH">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}PROSEMA{% endblock %}</title>
+  <link rel="stylesheet" href="/static/app.css">
+  {% block extra_head %}{% endblock %}
+  <script src="/static/htmx.min.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="brand-row">
+      <a class="brand" href="/">PROSEMA</a>
+      <a class="app-version" href="/changelog" title="Änderungsprotokoll">v{{ app_version }}</a>
+    </div>
+    {% if user %}
+    <nav class="site-nav">
+      <a href="/gruppen">Gruppen</a>
+      <a href="/gruppen/diagramm">Diagramm</a>
+      <a href="/einstellungen">Einstellungen</a>
+      <span class="user-name">{{ user.name }}</span>
+      <a href="/auth/logout">Abmelden</a>
+    </nav>
+    {% endif %}
+  </header>
+  {% if user %}
+  <div
+    id="jobs-aktiv-banner"
+    hx-get="/jobs/aktiv"
+    hx-trigger="load, every 5s"
+    hx-swap="innerHTML"
+  ></div>
+  {% endif %}
+  <main class="site-main{% block main_class %}{% endblock %}">
+    {% block content %}{% endblock %}
+  </main>
+  {% block extra_scripts %}{% endblock %}
+</body>
+</html>

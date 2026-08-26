@@ -1,12 +1,13 @@
 """
-Interaktives Plotly-Dashboard für die Excel-Masterliste erzeugen.
+Interaktives Plotly-Dashboard für die Excel-Masterliste oder weclapp-Artikel-CSV.
 
-Liest alle Zeilen und Spalten der Masterdatei und erzeugt eine HTML-Seite mit
+Liest alle Zeilen und Spalten der Eingabedatei und erzeugt eine HTML-Seite mit
 Kategorie-Filtern, Textsuche, Übersichtsdiagrammen und einer durchsuchbaren Tabelle.
 """
 
 from __future__ import annotations
 
+import csv
 import json
 import sys
 import webbrowser
@@ -23,33 +24,38 @@ except ImportError:  # pragma: no cover - handled at runtime
 FILTER_COLUMNS = (
     "Hauptgruppe",
     "Untergruppe",
-    "Kategorie",
-    "Datenstatus",
+    "Shopify Produkte",
+    "Zielgruppe",
     "Lieferanten Firmenname",
-    "Kategorie2",
+    "Rabattkategorie_Lieferant",
     "Produktfamilie",
+    "weclapp Aktiv",
+    "weclapp Artikeltyp",
 )
 
 TABLE_COLUMNS = (
     "Prosema Artikelnummer",
-    "Artikelnr.",
+    "Lieferanten-Artikelnummer",
     "PROSEMA Kurztext",
     "Hauptgruppe",
     "Untergruppe",
-    "Kategorie",
-    "Datenstatus",
+    "Shopify Produkte",
+    "Zielgruppe",
     "Lieferanten Firmenname",
-    "Verkaufspreis €, BE",
+    "Verkaufspreis Prosema CHF",
     "Grundmaterial",
     "Farbe",
 )
 
 SEARCH_COLUMNS = (
     "Prosema Artikelnummer",
-    "Artikelnr.",
+    "Lieferanten-Artikelnummer",
     "PROSEMA Kurztext",
-    "Beschreibung",
-    "Referenz (Matchcode)",
+    "PROSEMA Langtext",
+    "Matchcode",
+    "weclapp Artikel-ID",
+    "weclapp Produkt-ID (Prosema)",
+    "weclapp Varianten-ID (Prosema)",
 )
 
 
@@ -79,10 +85,29 @@ def _cell_text(value: object) -> str:
     return str(value).strip()
 
 
-def load_master_data(path: Path) -> tuple[list[str], list[dict[str, str]]]:
-    if not path.exists():
-        raise FileNotFoundError(f"Masterdatei nicht gefunden: {path}")
+def _ordered_master_headers(headers: list[str]) -> list[str]:
+    from scripts.weclapp.master_columns import EXPORT_COLUMNS
 
+    preferred = [column for column in EXPORT_COLUMNS if column in headers]
+    extras = [header for header in headers if header not in preferred]
+    return preferred + extras
+
+
+def load_csv_data(path: Path) -> tuple[list[str], list[dict[str, str]]]:
+    with open(path, encoding="utf-8-sig", newline="") as handle:
+        reader = csv.DictReader(handle, delimiter=";")
+        if not reader.fieldnames:
+            raise ValueError(f"CSV enthält keine Spaltenüberschriften: {path}")
+        headers = [header.strip() for header in reader.fieldnames]
+        rows: list[dict[str, str]] = []
+        for row in reader:
+            record = {key: (row.get(key) or "").strip() for key in headers}
+            if any(record.values()):
+                rows.append(record)
+    return headers, rows
+
+
+def load_xlsx_data(path: Path) -> tuple[list[str], list[dict[str, str]]]:
     wb = load_workbook(path, read_only=True, data_only=True)
     try:
         ws = wb.active
@@ -104,6 +129,37 @@ def load_master_data(path: Path) -> tuple[list[str], list[dict[str, str]]]:
         return headers, rows
     finally:
         wb.close()
+
+
+def load_master_data(path: Path) -> tuple[list[str], list[dict[str, str]]]:
+    if not path.exists():
+        raise FileNotFoundError(f"Eingabedatei nicht gefunden: {path}")
+
+    suffix = path.suffix.lower()
+    if suffix == ".csv":
+        from scripts.weclapp.master_columns import (
+            EXPORT_COLUMNS,
+            flat_weclapp_csv_to_master_row,
+            is_master_format,
+            is_raw_weclapp_export,
+        )
+
+        headers, rows = load_csv_data(path)
+        if is_raw_weclapp_export(headers):
+            rows = [flat_weclapp_csv_to_master_row(row) for row in rows]
+            headers = list(EXPORT_COLUMNS)
+        elif is_master_format(headers):
+            headers = _ordered_master_headers(headers)
+        return headers, rows
+
+    if suffix in {".xlsx", ".xlsm", ".xltx", ".xltm"}:
+        headers, rows = load_xlsx_data(path)
+        return headers, rows
+
+    raise ValueError(
+        f"Nicht unterstütztes Dateiformat: {path.suffix}. "
+        "Erwartet werden .csv oder .xlsx."
+    )
 
 
 def _count_by(rows: list[dict[str, str]], column: str) -> dict[str, int]:
@@ -173,8 +229,21 @@ def _filter_options(rows: list[dict[str, str]], column: str) -> list[str]:
 
 
 def _dashboard_columns(headers: list[str]) -> list[str]:
-    wanted = set(FILTER_COLUMNS) | set(TABLE_COLUMNS) | set(SEARCH_COLUMNS)
-    return [header for header in headers if header in wanted]
+    from scripts.weclapp.master_columns import EXPORT_COLUMNS, EXPORT_DISPLAY_COLUMNS
+
+    preferred = [column for column in EXPORT_DISPLAY_COLUMNS if column in headers]
+    preferred.extend(
+        column
+        for column in EXPORT_COLUMNS
+        if column in headers and column not in preferred
+    )
+    fallback = [
+        column
+        for column in (*TABLE_COLUMNS, *FILTER_COLUMNS, *SEARCH_COLUMNS)
+        if column in headers and column not in preferred
+    ]
+    extras = [header for header in headers if header not in preferred and header not in fallback]
+    return preferred + fallback + extras
 
 
 def _slim_rows(rows: list[dict[str, str]], columns: list[str]) -> list[dict[str, str]]:
@@ -185,10 +254,10 @@ def _dashboard_html(
     *,
     source_name: str,
     column_count: int,
+    columns: list[str],
     rows: list[dict[str, str]],
     treemap_fig: go.Figure,
 ) -> str:
-    columns = list(rows[0].keys()) if rows else list(TABLE_COLUMNS)
     payload = {
         "sourceName": source_name,
         "columnCount": column_count,
@@ -453,6 +522,12 @@ def _dashboard_html(
     .column-grid input {{
       margin-top: 2px;
     }}
+    .column-text {{
+      display: inline-flex;
+      align-items: baseline;
+      gap: 6px;
+      flex-wrap: wrap;
+    }}
     .column-panel[hidden] {{
       display: none;
     }}
@@ -570,7 +645,10 @@ def _dashboard_html(
           renderTable();
         }});
         const text = document.createElement("span");
-        text.textContent = column;
+        text.className = "column-text";
+        const name = document.createElement("span");
+        name.textContent = column;
+        text.appendChild(name);
         label.appendChild(checkbox);
         label.appendChild(text);
         grid.appendChild(label);
@@ -854,6 +932,7 @@ def render_dashboard(
     page = _dashboard_html(
         source_name=source_name,
         column_count=len(headers),
+        columns=dashboard_columns,
         rows=_slim_rows(rows, dashboard_columns),
         treemap_fig=treemap_fig,
     )
@@ -871,11 +950,13 @@ def run_job(params: dict):
     output_path = _resolve_path(params["output"])
 
     headers, rows = load_master_data(input_path)
+    is_weclapp = input_path.suffix.lower() == ".csv"
+    source_label = f"{input_path.name} (weclapp)" if is_weclapp else input_path.name
     output_file = render_dashboard(
         headers,
         rows,
         output_path,
-        source_name=input_path.name,
+        source_name=source_label,
     )
 
     opened = webbrowser.open(output_file.resolve().as_uri())
@@ -900,15 +981,16 @@ def _build_job_spec():
         id="master_dashboard",
         title="Masterliste-Dashboard",
         description=(
-            "Interaktives Plotly-Dashboard aus der Excel-Masterliste erzeugen. "
-            "Filtern nach Kategorien, Spaltenauswahl, CSV-Export und paginierte Tabellenansicht."
+            "Interaktives Plotly-Dashboard aus der Excel-Masterliste oder dem "
+            "weclapp-Artikel-CSV-Snapshot erzeugen. Filtern nach Kategorien, "
+            "Spaltenauswahl, CSV-Export und paginierte Tabellenansicht."
         ),
         fields=(
             FieldSpec(
                 "input",
-                "Masterdatei",
+                "Eingabedatei",
                 FieldKind.FILE_IN,
-                "input/input.xlsx",
+                "output/export/weclapp_export.csv",
             ),
             FieldSpec(
                 "output",

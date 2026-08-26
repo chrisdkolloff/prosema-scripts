@@ -1,0 +1,10 @@
+{% if jobs|length == 1 %}
+<div class="licence-banner" role="status">
+  Läuft: {{ job_label }} ({{ jobs[0].created_by_name }}) — weclapp-Lizenz bitte noch nicht übergeben.
+  <a href="/jobs/{{ jobs[0].id }}">Auftrag</a>
+</div>
+{% elif jobs|length > 1 %}
+<div class="licence-banner" role="status">
+  {{ jobs|length }} Aufträge laufen — weclapp-Lizenz bitte noch nicht übergeben.
+</div>
+{% endif %}

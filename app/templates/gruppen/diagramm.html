@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Gruppen-Diagramm — PROSEMA{% endblock %}
+{% block main_class %} wide diagram{% endblock %}
+{% block content %}
+  <p class="back-link"><a href="/gruppen">Zur Gruppen-Verwaltung</a></p>
+  <h1>Gruppen-Diagramm</h1>
+  <div class="gruppen-diagram">
+    <script src="/static/plotly.min.js"></script>
+    {{ plot_html | safe }}
+  </div>
+  <script>
+    (function () {
+      var el = document.getElementById("gruppen-sunburst");
+      if (!el) return;
+
+      function ellipsizeLabels() {
+        var slices = el.querySelectorAll("g.slice");
+        for (var i = 0; i < slices.length; i++) {
+          var slice = slices[i];
+          var path = slice.querySelector("path");
+          var text = slice.querySelector("text");
+          if (!path || !text) continue;
+          var full = text.getAttribute("data-full-label");
+          if (!full) {
+            full = (text.textContent || "").replace(/\s+/g, " ").trim();
+            text.setAttribute("data-full-label", full);
+          }
+          var maxWidth = 24;
+          try {
+            var box = path.getBBox();
+            // Use the long side of the wedge so labels fill the sector;
+            // Plotly's auto orientation already follows that axis.
+            maxWidth = Math.max(24, Math.max(box.width, box.height) - 4);
+          } catch (err) {}
+          text.textContent = full;
+          if (typeof text.getComputedTextLength !== "function") continue;
+          if (text.getComputedTextLength() <= maxWidth) continue;
+          var lo = 0;
+          var hi = full.length;
+          while (lo < hi) {
+            var mid = Math.ceil((lo + hi) / 2);
+            text.textContent = full.slice(0, mid).replace(/\s+$/, "") + "...";
+            if (text.getComputedTextLength() <= maxWidth) lo = mid;
+            else hi = mid - 1;
+          }
+          text.textContent = lo <= 0 ? "..." : full.slice(0, lo).replace(/\s+$/, "") + "...";
+        }
+      }
+
+      function bind() {
+        if (typeof el.on !== "function") {
+          window.requestAnimationFrame(bind);
+          return;
+        }
+        el.on("plotly_afterplot", ellipsizeLabels);
+        el.on("plotly_relayout", ellipsizeLabels);
+        ellipsizeLabels();
+        el.on("plotly_click", function (event) {
+          var pt = event.points && event.points[0];
+          if (!pt || !pt.customdata) return;
+          var id = pt.customdata[0];
+          var kind = pt.customdata[1];
+          var parentId = pt.customdata[2];
+          if (kind === "hauptgruppe" && id) {
+            window.location.assign("/gruppen/" + id);
+          } else if (kind === "untergruppe" && parentId && id) {
+            window.location.assign("/gruppen/" + parentId + "#untergruppe-" + id);
+          }
+        });
+      }
+      bind();
+    })();
+  </script>
+{% endblock %}

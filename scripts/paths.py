@@ -13,6 +13,7 @@ DATA_DIR = PROJECT_ROOT / "data"
 OUTPUT_PROCESSING = OUTPUT_DIR / "processing"
 OUTPUT_EXPORT = OUTPUT_DIR / "export"
 OUTPUT_REPORTS = OUTPUT_DIR / "reports"
+OUTPUT_SHOPIFY = OUTPUT_DIR / "shopify"
 
 
 def resolve_path(path: str | Path) -> Path:

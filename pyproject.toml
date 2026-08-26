@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "prosema"
+version = "0.1.0"
+description = "PROSEMA catalog tools and internal web platform"
+requires-python = ">=3.12"
+dependencies = [
+    "openpyxl",
+    "customtkinter",
+    "plotly",
+    "requests",
+    "pandas",
+    "streamlit",
+    "fastapi",
+    "uvicorn[standard]",
+    "jinja2",
+    "python-multipart",
+    "sqlalchemy>=2.0",
+    "psycopg[binary]",
+    "alembic",
+    "pydantic-settings",
+    "authlib",
+    "itsdangerous",
+    "httpx",
+    "cryptography",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "ruff",
+]
+
+[tool.setuptools.packages.find]
+include = ["app*", "core*"]
+
+[tool.setuptools.package-data]
+app = ["templates/**/*", "static/**/*", "releases.toml"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["migrations"]
+
+[tool.ruff.lint]
+ignore = [
+    "B008",  # FastAPI Depends() in parameter defaults is the framework pattern
+]

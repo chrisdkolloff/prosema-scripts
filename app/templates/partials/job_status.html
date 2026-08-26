@@ -1,0 +1,38 @@
+<div
+  id="job-status"
+  class="job-status job-status-{{ job.status }}"
+  {% if polling %}
+  hx-get="/jobs/{{ job.id }}/status"
+  hx-trigger="every 2s"
+  hx-swap="outerHTML"
+  {% endif %}
+>
+  <p>
+    <span class="job-label">Status</span>
+    <strong>{{ status_label }}</strong>
+  </p>
+  {% if job.status == "succeeded" and job.result and job.result.get("message") %}
+  <p>{{ job.result.get("message") }}</p>
+  {% endif %}
+  {% if job.status == "failed" %}
+    {% if error_message %}
+    <p class="error-banner">
+      {{ error_message }}
+      <a href="{{ settings_path }}">weclapp-Einstellungen</a>
+    </p>
+    {% else %}
+    <p>Der Auftrag ist fehlgeschlagen.</p>
+    {% endif %}
+    {% if can_retry %}
+    <form
+      method="post"
+      action="/jobs/{{ job.id }}/erneut"
+      hx-post="/jobs/{{ job.id }}/erneut"
+      hx-target="#job-status"
+      hx-swap="outerHTML"
+    >
+      <button type="submit" class="btn">Erneut versuchen</button>
+    </form>
+    {% endif %}
+  {% endif %}
+</div>

@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Artikel-Registrierung — PROSEMA{% endblock %}
+{% block content %}
+  <h1>Artikel-Registrierung</h1>
+  {% if blocked %}
+  <p class="error-banner">
+    {{ access.message }}
+    <a href="{{ settings_path }}">weclapp-Einstellungen</a>
+  </p>
+  {% else %}
+  <p class="lede">Die Artikel-Registrierung folgt in Woche 3. weclapp-Zugriff ist vorhanden.</p>
+  <p class="hint">
+    Woche 3: den freigegebenen Satz zuerst speichern, danach nach weclapp schreiben.
+    Ein Lizenzfehler beim Schreiben darf Upload, Vorschau und Freigabe nicht verwerfen.
+  </p>
+  {% endif %}
+{% endblock %}

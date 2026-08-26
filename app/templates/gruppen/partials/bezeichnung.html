@@ -1,0 +1,43 @@
+<div id="bezeichnung-panel">
+  {% if name_error %}
+  <p class="error-banner">{{ name_error }}</p>
+  {% endif %}
+  {% if editing %}
+  <form
+    method="post"
+    action="/gruppen/{{ group.id }}/umbenennen"
+    class="inline-form"
+    hx-post="/gruppen/{{ group.id }}/umbenennen"
+    hx-target="#bezeichnung-panel"
+    hx-swap="outerHTML"
+  >
+    <label>
+      Bezeichnung
+      <input type="text" name="name" required value="{{ group.name }}">
+    </label>
+    <button type="submit" class="btn">Speichern</button>
+    <button
+      type="button"
+      class="btn btn-secondary"
+      hx-get="/gruppen/{{ group.id }}/bezeichnung"
+      hx-target="#bezeichnung-panel"
+      hx-swap="outerHTML"
+    >
+      Abbrechen
+    </button>
+  </form>
+  {% else %}
+  <p>{{ group.name }}</p>
+  {% if is_admin %}
+  <button
+    type="button"
+    class="btn btn-secondary"
+    hx-get="/gruppen/{{ group.id }}/bezeichnung?edit=1"
+    hx-target="#bezeichnung-panel"
+    hx-swap="outerHTML"
+  >
+    Umbenennen
+  </button>
+  {% endif %}
+  {% endif %}
+</div>

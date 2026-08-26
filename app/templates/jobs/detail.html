@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}Auftrag — PROSEMA{% endblock %}
+{% block content %}
+  <p class="back-link"><a href="/me">Zurück</a></p>
+  <h1>{{ job_label }}</h1>
+  <p class="muted">Ausgelöst von {{ job.created_by_name }}</p>
+  {% include "partials/job_status.html" %}
+{% endblock %}

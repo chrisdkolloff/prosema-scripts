@@ -2,3 +2,6 @@ openpyxl
 customtkinter
 plotly
 requests
+pandas
+streamlit
+pytest

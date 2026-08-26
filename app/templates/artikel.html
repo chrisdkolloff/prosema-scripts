@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Artikel-Ansicht — PROSEMA{% endblock %}
+{% block content %}
+  <h1>Artikel-Ansicht</h1>
+  <p class="lede">Ansehen ist ohne weclapp möglich. Einen Snapshot aktualisieren braucht Zugriff.</p>
+  <p>Noch kein Artikel-Snapshot vorhanden.</p>
+  {% if refresh_error or access.kind != "ok" %}
+  <p class="error-banner">
+    {% if access.kind != "ok" %}
+      {{ access.message }}
+    {% else %}
+      Snapshot konnte nicht aktualisiert werden.
+    {% endif %}
+    <a href="{{ settings_path }}">weclapp-Einstellungen</a>
+  </p>
+  {% endif %}
+  <form method="post" action="/artikel/aktualisieren">
+    <button type="submit" class="btn">Snapshot aktualisieren</button>
+  </form>
+{% endblock %}

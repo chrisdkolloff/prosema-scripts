@@ -1,0 +1,61 @@
+<div id="access-overview" class="access-overview">
+  <h2>Externe Systeme</h2>
+  <p class="lede">Zugriff auf angebundene Anwendungen. Weitere APIs erscheinen später in dieser Tabelle.</p>
+  <table class="data-table systems-list">
+    <thead>
+      <tr>
+        <th>Anwendung</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>weclapp</td>
+        <td class="system-status weclapp-status weclapp-status-{{ access.kind }}">
+          <strong>{{ access.message }}</strong>
+          {% if access.kind == "ok" and last_verified_label %}
+          <span class="muted">Zuletzt geprüft: {{ last_verified_label }}</span>
+          {% endif %}
+          {% if access.kind == "missing" %}
+          <a href="{{ settings_path }}">Token hinterlegen</a>
+          {% elif access.kind != "ok" %}
+          <a href="{{ settings_path }}">Einstellungen</a>
+          {% endif %}
+          <button
+            type="button"
+            class="btn btn-secondary btn-small"
+            hx-get="/weclapp/status"
+            hx-target="#access-overview"
+            hx-swap="outerHTML"
+          >
+            Jetzt prüfen
+          </button>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Werkzeuge</h2>
+  <table class="data-table tool-list">
+    <thead>
+      <tr>
+        <th>Werkzeug</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for tool in tools %}
+      <tr>
+        <td><a href="{{ tool.href }}">{{ tool.name }}</a></td>
+        <td>
+          {% if tool.mark == "Verfügbar" %}
+          <span class="tool-mark-ok">{{ tool.mark }}</span>
+          {% else %}
+          <span class="tool-mark-warn">{{ tool.mark }}</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

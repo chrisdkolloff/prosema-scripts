@@ -1,0 +1,36 @@
+<div id="snapshot-grid-panel">
+  <div class="batch-grid-toolbar">
+    <p class="batch-filter-count">
+      Gefiltert: {{ format_swiss_number(total_filtered) }} von {{ format_swiss_number(total_all) }} Zeilen
+    </p>
+    <a
+      class="btn btn-secondary"
+      href="/artikel-uebersicht/{{ snapshot.id }}/excel{% if excel_qs %}?{{ excel_qs }}{% endif %}"
+    >Als Excel herunterladen</a>
+  </div>
+  {% if total_filtered == 0 %}
+  <p class="muted">Keine Artikel gefunden</p>
+  {% else %}
+  <div id="snapshot-spreadsheet" class="batch-spreadsheet"></div>
+  <script type="application/json" id="snapshot-grid-config">{{ grid_config | tojson }}</script>
+  {% endif %}
+  {% if pages > 1 %}
+  <nav class="batch-pagination" aria-label="Seiten">
+    {% for n in range(1, pages + 1) %}
+      {% if n == page %}
+      <span class="is-current">{{ n }}</span>
+      {% else %}
+      {% set qs = viewer_qs ~ ('&' if viewer_qs else '') ~ 'seite=' ~ n %}
+      <a
+        href="/artikel-uebersicht/{{ snapshot.id }}?{{ qs }}"
+        hx-get="/artikel-uebersicht/{{ snapshot.id }}?{{ qs }}"
+        hx-target="#snapshot-grid-panel"
+        hx-select="#snapshot-grid-panel"
+        hx-swap="outerHTML"
+        hx-push-url="true"
+      >{{ n }}</a>
+      {% endif %}
+    {% endfor %}
+  </nav>
+  {% endif %}
+</div>

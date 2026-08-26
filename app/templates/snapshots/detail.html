@@ -1,0 +1,98 @@
+{# Jspreadsheet CE {{ jspreadsheet_version }} + jSuites {{ jsuites_version }} #}
+{% extends "base.html" %}
+{% block title %}Artikel-Übersicht — PROSEMA{% endblock %}
+{% block main_class %} grid{% endblock %}
+{% block extra_head %}
+  <link rel="stylesheet" href="/static/jsuites.css">
+  <link rel="stylesheet" href="/static/jspreadsheet.css">
+{% endblock %}
+{% block content %}
+  <p class="back-link"><a href="/artikel-uebersicht">Zur Übersicht</a></p>
+
+  {% if snapshot.status == "running" %}
+  <h1>Artikel-Übersicht</h1>
+  <p class="snapshot-stand-banner">Abfrage läuft…</p>
+  <div
+    id="snapshot-status-panel"
+    hx-get="/artikel-uebersicht/{{ snapshot.id }}/status{% if is_fresh_pull %}?neu=1{% endif %}"
+    hx-trigger="every 3s"
+    hx-swap="innerHTML"
+  >
+    <p class="muted">Die Abfrage kann einige Minuten dauern. Diese Seite aktualisiert sich automatisch.</p>
+  </div>
+
+  {% elif snapshot.status == "failed" %}
+  <h1>Artikel-Übersicht</h1>
+  <p class="error-banner">Abfrage fehlgeschlagen{% if snapshot.error %}: {{ snapshot.error }}{% endif %}</p>
+
+  {% else %}
+  {% include "snapshots/partials/stand_banner.html" %}
+
+  <form
+    class="inline-form batch-filter-bar"
+    method="get"
+    action="/artikel-uebersicht/{{ snapshot.id }}{% if viewer_qs %}?{{ viewer_qs }}{% endif %}"
+    hx-get="/artikel-uebersicht/{{ snapshot.id }}{% if viewer_qs %}?{{ viewer_qs }}{% endif %}"
+    hx-target="#snapshot-grid-panel"
+    hx-select="#snapshot-grid-panel"
+    hx-swap="outerHTML"
+    hx-push-url="true"
+  >
+    {% if is_fresh_pull %}
+    <input type="hidden" name="neu" value="1">
+    {% endif %}
+    <label>
+      Suche
+      <input type="search" name="q" value="{{ filters.query }}" placeholder="Nummer oder Name">
+    </label>
+    <label>
+      Hauptgruppe
+      <select
+        name="hauptgruppe"
+        hx-get="/artikel-uebersicht/{{ snapshot.id }}/untergruppen"
+        hx-target="#snapshot-untergruppe-label"
+        hx-swap="outerHTML"
+        hx-trigger="change"
+      >
+        <option value="">(alle)</option>
+        {% for value in hauptgruppen %}
+        <option value="{{ value }}" {% if filters.hauptgruppe == value %}selected{% endif %}>{{ value }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    {% include "snapshots/partials/untergruppe_select.html" %}
+    <label class="checkbox-label">
+      <input type="hidden" name="nur_aktive" value="0">
+      <input type="checkbox" name="nur_aktive" value="1" {% if filters.nur_aktive %}checked{% endif %}>
+      Nur aktive Artikel
+    </label>
+    <button type="submit" class="btn">Filtern</button>
+  </form>
+
+  {% include "snapshots/partials/grid.html" %}
+  {% endif %}
+{% endblock %}
+{% block extra_scripts %}
+  {% if snapshot.status == "complete" %}
+  <script src="/static/jsuites.js"></script>
+  <script src="/static/jspreadsheet.js"></script>
+  <script src="/static/snapshot_grid.js"></script>
+  <script>
+  (function () {
+    var banner = document.getElementById("snapshot-stand-banner");
+    if (!banner) return;
+    var key = "snapshot-banner-dismissed-" + banner.dataset.snapshotId;
+    if (localStorage.getItem(key)) {
+      banner.hidden = true;
+      return;
+    }
+    var close = banner.querySelector(".snapshot-stand-banner__close");
+    if (!close) return;
+    close.addEventListener("click", function () {
+      banner.hidden = true;
+      localStorage.setItem(key, "1");
+    });
+  })();
+  </script>
+  {% endif %}
+{% endblock %}

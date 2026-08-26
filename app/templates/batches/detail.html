@@ -1,0 +1,80 @@
+{# Jspreadsheet CE 5.0.4 + jSuites 5.13.5 (versions are coupled; a mismatch breaks widgets). #}
+{% extends "base.html" %}
+{% block title %}Stapel — PROSEMA{% endblock %}
+{% block main_class %} grid{% endblock %}
+{% block extra_head %}
+  <link rel="stylesheet" href="/static/jsuites.css">
+  <link rel="stylesheet" href="/static/jspreadsheet.css">
+{% endblock %}
+{% block content %}
+  <div
+    id="batch-presence-banner"
+    hx-post="/batches/{{ batch.id }}/anwesenheit"
+    hx-trigger="load, every 5s"
+    hx-swap="innerHTML"
+  ></div>
+
+  <p class="back-link"><a href="/artikel-registrierung">Zur Artikel-Registrierung</a></p>
+  <h1>Stapel</h1>
+  <p class="lede">
+    Status: {{ batch.status }}
+    {% if batch.filename %} — {{ batch.filename }}{% endif %}
+  </p>
+  {% if not editable %}
+  <p class="error-banner">Stapel bereits genehmigt — keine Änderungen möglich</p>
+  {% endif %}
+
+  <form
+    class="inline-form batch-filter-bar"
+    method="get"
+    action="/batches/{{ batch.id }}"
+    hx-get="/batches/{{ batch.id }}"
+    hx-target="#batch-grid-panel"
+    hx-select="#batch-grid-panel"
+    hx-swap="outerHTML"
+    hx-push-url="true"
+  >
+    <label>
+      Suche
+      <input type="search" name="q" value="{{ filters.query }}" placeholder="Nummer, Lieferant, Name">
+    </label>
+    <label>
+      Hauptgruppe
+      <select name="hauptgruppe">
+        <option value="">(alle)</option>
+        {% for label in hauptgruppen %}
+        <option value="{{ label }}" {% if filters.hauptgruppe == label %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      Kategorie
+      <select name="kategorie">
+        <option value="">(alle)</option>
+        {% for label in kategorien %}
+        <option value="{{ label }}" {% if filters.kategorie == label %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      Aktiv
+      <select name="aktiv">
+        <option value="">(alle)</option>
+        <option value="Ja" {% if filters.aktiv == "Ja" %}selected{% endif %}>Ja</option>
+        <option value="Nein" {% if filters.aktiv == "Nein" %}selected{% endif %}>Nein</option>
+      </select>
+    </label>
+    <label class="checkbox-label">
+      <input type="checkbox" name="nur_fehler" value="1" {% if filters.nur_fehler %}checked{% endif %}>
+      Nur Fehler
+    </label>
+    <button type="submit" class="btn">Filtern</button>
+  </form>
+
+  {% include "batches/partials/grid.html" %}
+{% endblock %}
+{% block extra_scripts %}
+  <script src="/static/jsuites.js"></script>
+  <script src="/static/jspreadsheet.js"></script>
+  <script src="/static/batch_grid.js"></script>
+{% endblock %}

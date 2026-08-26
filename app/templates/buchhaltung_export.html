@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Buchhaltungs-Export — PROSEMA{% endblock %}
+{% block content %}
+  <h1>Buchhaltungs-Export</h1>
+  {% if blocked %}
+  <p class="error-banner">
+    {{ access.message }}
+    <a href="{{ settings_path }}">weclapp-Einstellungen</a>
+  </p>
+  {% else %}
+  <p class="lede">Der Buchhaltungs-Export folgt in Woche 4. weclapp-Zugriff ist vorhanden.</p>
+  {% endif %}
+{% endblock %}

@@ -19,6 +19,7 @@ from openpyxl import load_workbook
 DISCOUNT_PRICE_TYPE = "DISCOUNT_PCT"
 
 RABATT_CATEGORY_COLUMN = "Rabattkategorie_Lieferant"
+MATCHCODE_SOURCE_COLUMN = "Referenz (Matchcode)"
 
 MASTER_COLUMNS = {
     "ARTIKELNAME": "PROSEMA Kurztext",
@@ -29,6 +30,7 @@ MASTER_COLUMNS = {
     "Bruttopreis des zugehörigen Verkaufsartikels": "Verkaufspreis €, BE",
     "Verkaufsartikel-Nummer": "Prosema Artikelnummer",
     "Artikel-Mengeneinheit": "Basiseinheitencode",
+    "Matchcode": MATCHCODE_SOURCE_COLUMN,
 }
 
 FIXED_COLUMNS = {
@@ -196,7 +198,11 @@ def read_master_rows(path: Path) -> list[dict[str, object]]:
     row_iter = ws.iter_rows(values_only=True)
     header_row = next(row_iter)
     headers = ["" if cell is None else str(cell) for cell in header_row]
-    required_columns = (*MASTER_COLUMNS.values(), RABATT_CATEGORY_COLUMN)
+    required_columns = (
+        *MASTER_COLUMNS.values(),
+        RABATT_CATEGORY_COLUMN,
+    )
+    required_columns = tuple(dict.fromkeys(required_columns))
     missing = [src for src in required_columns if src not in headers]
     if missing:
         wb.close()

@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Artikel-Übersicht — PROSEMA{% endblock %}
+{% block content %}
+  <h1>Artikel-Übersicht</h1>
+  <p class="lede">weclapp-Artikel als unveränderlicher Snapshot — filtern und als Excel herunterladen.</p>
+
+  {% if running_snapshot %}
+  <p class="error-banner">Es läuft bereits eine Abfrage.</p>
+  {% endif %}
+
+  <form method="post" action="/artikel-uebersicht/abfragen">
+    <button type="submit" class="btn" {% if running_snapshot %}disabled{% endif %}>
+      Neue Abfrage starten
+    </button>
+  </form>
+
+  {% if snapshots %}
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Stand</th>
+        <th>Status</th>
+        <th>Zeilen</th>
+        <th>Abgefragt von</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in snapshots %}
+      <tr>
+        <td><a href="/artikel-uebersicht/{{ item.id }}">{{ format_timestamp(item.created_at) }}</a></td>
+        <td>
+          {% if item.status == "running" %}Abfrage läuft…
+          {% elif item.status == "complete" %}Abgeschlossen
+          {% else %}Abfrage fehlgeschlagen{% endif %}
+        </td>
+        <td>{% if item.row_count is not none %}{{ format_swiss_number(item.row_count) }}{% else %}—{% endif %}</td>
+        <td>{{ item.created_by_name }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">Noch keine Abfrage vorhanden.</p>
+  {% endif %}
+{% endblock %}

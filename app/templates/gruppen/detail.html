@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}{{ group.code }} {{ group.name }} — PROSEMA{% endblock %}
+{% block main_class %} wide{% endblock %}
+{% block content %}
+  <p class="back-link"><a href="/gruppen">Alle Hauptgruppen</a></p>
+  <h1>
+    <code>{{ group.code }}</code>
+    {{ group.name }}
+  </h1>
+  <p class="status-line">
+    {% if group.deleted_at %}
+    <span class="badge badge-deleted">Gelöscht</span>
+    {% else %}
+    <span class="badge badge-active">Aktiv</span>
+    {% endif %}
+  </p>
+
+  <section class="detail-block">
+    <h2>Code</h2>
+    {% if group.locked_at %}
+    <p><code>{{ group.code }}</code></p>
+    <p class="hint">Es befinden sich bereits Artikel in dieser Hauptgruppe</p>
+    {% elif is_admin and not group.deleted_at %}
+    <form method="post" action="/gruppen/{{ group.id }}/code" class="inline-form">
+      <label>
+        Code
+        <input type="text" name="code" maxlength="3" required pattern="[0-9]{3}" value="{{ group.code }}">
+      </label>
+      <button type="submit" class="btn">Speichern</button>
+    </form>
+    {% else %}
+    <p><code>{{ group.code }}</code></p>
+    {% endif %}
+  </section>
+
+  <section class="detail-block">
+    <h2>Bezeichnung</h2>
+    {% include "gruppen/partials/bezeichnung.html" %}
+  </section>
+
+  {% if is_admin %}
+  <section class="detail-block actions-row">
+    {% if group.deleted_at %}
+    <form method="post" action="/gruppen/{{ group.id }}/wiederherstellen">
+      <button type="submit" class="btn">Wiederherstellen</button>
+    </form>
+    {% else %}
+    <form method="post" action="/gruppen/{{ group.id }}/loeschen">
+      <button type="submit" class="btn btn-danger">Löschen</button>
+    </form>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  {% include "gruppen/partials/untergruppen.html" %}
+
+  <section class="detail-block">
+    <h2>Alias</h2>
+    {% include "gruppen/partials/aliases.html" %}
+  </section>
+{% endblock %}

@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}PROSEMA{% endblock %}
+{% block content %}
+  <h1>Willkommen</h1>
+  <p>Guten Tag, {{ user.name }}.</p>
+
+  <section
+    id="access-overview"
+    class="access-overview"
+    hx-get="/weclapp/status"
+    hx-trigger="load"
+    hx-swap="outerHTML"
+  >
+    <h2>Externe Systeme</h2>
+    <p class="lede">Zugriff auf angebundene Anwendungen. Weitere APIs erscheinen später in dieser Tabelle.</p>
+    <table class="data-table systems-list">
+      <thead>
+        <tr>
+          <th>Anwendung</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>weclapp</td>
+          <td><span class="muted">wird geprüft …</span></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Werkzeuge</h2>
+    <table class="data-table tool-list">
+      <thead>
+        <tr>
+          <th>Werkzeug</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for tool in tools %}
+        <tr>
+          <td><a href="{{ tool.href }}">{{ tool.name }}</a></td>
+          <td>
+            {% if tool.needs_weclapp or tool.refresh_needs_weclapp %}
+            <span class="muted">weclapp wird geprüft</span>
+            {% else %}
+            <span class="tool-mark-ok">Verfügbar</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <p><a href="/me">Mein Konto</a></p>
+{% endblock %}

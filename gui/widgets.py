@@ -195,7 +195,11 @@ class JobForm(ctk.CTkFrame):
         if fld.kind == FieldKind.FILE_IN:
             path = filedialog.askopenfilename(
                 title=fld.label,
-                filetypes=[("Excel", "*.xlsx"), ("Alle Dateien", "*.*")],
+                filetypes=[
+                    ("Excel", "*.xlsx"),
+                    ("CSV", "*.csv"),
+                    ("Alle Dateien", "*.*"),
+                ],
             )
         else:
             initial = entry.get().strip()
