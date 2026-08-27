@@ -17,9 +17,12 @@ export GIT_PAGER=cat
 
 DEV_BRANCH="${DEV_BRANCH:-dev}"
 MAIN_BRANCH="${MAIN_BRANCH:-main}"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DRY_RUN=false
 DO_PUSH=false
 AUTO_MESSAGE=false
+DO_BUMP=false
+BUMP_PART="patch"
 COMMIT_MESSAGE=""
 
 usage() {
@@ -35,6 +38,10 @@ Options:
   --dry-run        Show commits and diff stats without changing branches
   --push           Push main and force-with-lease push dev after squash merge
   --auto-message   Derive the squash commit message from dev commits
+  --bump           Bump app/releases.toml (patch) and add a changelog entry
+  --no-bump        Do not change the version
+  --minor          With --bump, increment minor instead of patch
+  --major          With --bump, increment major instead of patch
   -m, --message    Commit message (required unless --dry-run or --auto-message)
   -h, --help       Show this help
 
@@ -61,6 +68,24 @@ while [[ $# -gt 0 ]]; do
       AUTO_MESSAGE=true
       shift
       ;;
+    --bump)
+      DO_BUMP=true
+      shift
+      ;;
+    --no-bump)
+      DO_BUMP=false
+      shift
+      ;;
+    --minor)
+      DO_BUMP=true
+      BUMP_PART="minor"
+      shift
+      ;;
+    --major)
+      DO_BUMP=true
+      BUMP_PART="major"
+      shift
+      ;;
     -m|--message)
       COMMIT_MESSAGE="${2:-}"
       shift 2
@@ -79,6 +104,35 @@ done
 log() {
   echo ""
   echo "==> $*"
+}
+
+python_bin() {
+  if [[ -x "${REPO_ROOT}/.venv/bin/python" ]]; then
+    echo "${REPO_ROOT}/.venv/bin/python"
+    return 0
+  fi
+  if command -v python3.12 >/dev/null 2>&1; then
+    echo "python3.12"
+    return 0
+  fi
+  echo "python3"
+}
+
+next_versions() {
+  "$(python_bin)" "${REPO_ROOT}/scripts/bump_releases_toml.py" --print-next --part "${BUMP_PART}"
+}
+
+prefix_message_with_version() {
+  local version="$1"
+  local message="$2"
+  local first rest
+  first="$(printf '%s\n' "${message}" | head -n 1)"
+  rest="$(printf '%s\n' "${message}" | tail -n +2)"
+  if [[ -z "${rest}" ]]; then
+    printf '%s: %s\n' "${version}" "${first}"
+  else
+    printf '%s: %s\n%s\n' "${version}" "${first}" "${rest}"
+  fi
 }
 
 auto_commit_message() {
@@ -146,6 +200,16 @@ if [[ "${AUTO_MESSAGE}" == true && -z "${COMMIT_MESSAGE}" ]]; then
   COMMIT_MESSAGE="$(auto_commit_message)"
 fi
 
+NEXT_OLD=""
+NEXT_NEW=""
+CHANGELOG_MESSAGE="${COMMIT_MESSAGE}"
+if [[ "${DO_BUMP}" == true ]]; then
+  read -r NEXT_OLD NEXT_NEW < <(next_versions)
+  if [[ -n "${COMMIT_MESSAGE}" ]]; then
+    COMMIT_MESSAGE="$(prefix_message_with_version "${NEXT_NEW}" "${COMMIT_MESSAGE}")"
+  fi
+fi
+
 echo "Commits on ${DEV_BRANCH} not yet on ${MAIN_BRANCH} (${COMMIT_COUNT}):"
 git log --oneline "${MAIN_BRANCH}..${DEV_BRANCH}"
 echo
@@ -162,6 +226,10 @@ if [[ "${DRY_RUN}" == true ]]; then
   else
     echo
     echo "Provide a commit message when running without --dry-run."
+  fi
+  if [[ "${DO_BUMP}" == true ]]; then
+    echo
+    echo "Would bump version: ${NEXT_OLD} → ${NEXT_NEW} (${BUMP_PART})"
   fi
   if [[ "${DO_PUSH}" == true ]]; then
     echo
@@ -190,6 +258,15 @@ if [[ -n "$(git diff --name-only --diff-filter=U)" ]]; then
   git reset --hard HEAD
   git checkout "${START_BRANCH}"
   exit 1
+fi
+
+if [[ "${DO_BUMP}" == true ]]; then
+  log "Bumping version ${NEXT_OLD} → ${NEXT_NEW}"
+  "$(python_bin)" "${REPO_ROOT}/scripts/bump_releases_toml.py" \
+    --write \
+    --part "${BUMP_PART}" \
+    --message "${CHANGELOG_MESSAGE}"
+  git add "${REPO_ROOT}/app/releases.toml"
 fi
 
 git commit -m "${COMMIT_MESSAGE}"

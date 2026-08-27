@@ -64,7 +64,7 @@ Queued jobs themselves live in PostgreSQL and are picked up after a restart.
 
 ### Release (dev → main → tools.prosema.ch)
 
-Work on `dev`. Deploying squash-merges that work onto `main` as one commit and pushes; GitHub Actions then deploys to Azure.
+Work on `dev`. Deploying squash-merges that work onto `main` as one commit and pushes; GitHub Actions then deploys to Azure. Each `./release.sh --push` also bumps the patch version in `app/releases.toml` (site header and `/changelog`). Use `--minor` or `--major` when the change warrants it, or `--no-bump` to leave the version alone.
 
 ```bash
 # On dev: lint + pytest, then print the next command

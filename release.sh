@@ -31,6 +31,8 @@ DRY_RUN=false
 SKIP_TESTS=false
 SKIP_LINT=false
 DO_PUSH=false
+DO_BUMP=true
+BUMP_ARGS=()
 
 usage() {
   cat <<'EOF'
@@ -45,7 +47,10 @@ Options:
   --dry-run      Run checks, then preview the squash/push (no git changes)
   --skip-tests   Skip pytest
   --skip-lint    Skip ruff
-  --push         Squash-merge dev into main (--auto-message) and push
+  --push         Squash-merge dev into main (--auto-message), bump version, and push
+  --no-bump      Do not change app/releases.toml
+  --minor        Bump minor version (0.2.2 → 0.3.0)
+  --major        Bump major version (0.2.2 → 1.0.0)
   -h, --help     Show this help
 
 Environment:
@@ -71,6 +76,9 @@ while [[ $# -gt 0 ]]; do
     --skip-tests) SKIP_TESTS=true; shift ;;
     --skip-lint) SKIP_LINT=true; shift ;;
     --push) DO_PUSH=true; shift ;;
+    --no-bump) DO_BUMP=false; shift ;;
+    --minor) DO_BUMP=true; BUMP_ARGS=(--minor); shift ;;
+    --major) DO_BUMP=true; BUMP_ARGS=(--major); shift ;;
     -h|--help)
       usage
       exit 0
@@ -182,6 +190,14 @@ step_release() {
   fi
 
   local args=(--auto-message --push)
+  if [[ "${DO_BUMP}" == true ]]; then
+    args+=(--bump)
+    if [[ ${#BUMP_ARGS[@]} -gt 0 ]]; then
+      args+=("${BUMP_ARGS[@]}")
+    fi
+  else
+    args+=(--no-bump)
+  fi
   if [[ "${DRY_RUN}" == true ]]; then
     args+=(--dry-run)
   fi

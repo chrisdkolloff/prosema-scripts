@@ -1,7 +1,16 @@
 # PROSEMA release history — edit this file to bump the version and document changes.
 # The top-level `version` is shown in the site header; `[[releases]]` entries appear on /changelog.
 
-version = "0.2.2"
+version = "0.2.3"
+
+[[releases]]
+version = "0.2.3"
+date = "2026-08-27"
+summary = "Enhance release process by adding version bumping options to release.sh and squash-merge script. Update README to reflect new versioning commands and their usage. Implement logic to automatically bump patch, minor, or major versions based on user input."
+changes = [
+  "Enhance release process by adding version bumping options to release.sh and squash-merge script. Update README to reflect new versioning commands and their usage. Implement logic to automatically bump patch, minor, or major versions based on user input.",
+]
+
 
 [[releases]]
 version = "0.2.2"
