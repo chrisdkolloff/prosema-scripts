@@ -44,8 +44,14 @@ _worker_last_seen: datetime | None = None
 
 
 def worker_last_seen_at() -> datetime | None:
-    """UTC timestamp of the last worker-loop iteration, or None if never started."""
+    """UTC timestamp of the last process-liveness touch, or None if never started."""
     return _worker_last_seen
+
+
+def touch_worker_last_seen() -> None:
+    """Record that the worker process is alive (loop tick or in-job heartbeat)."""
+    global _worker_last_seen
+    _worker_last_seen = datetime.now(UTC)
 
 JOB_TYPE_LABELS = {
     "noop": "Testlauf",
@@ -184,21 +190,26 @@ class _JobHeartbeat:
         self._stop.set()
         self._thread.join(timeout=1.0)
 
+    def tick(self) -> None:
+        """Refresh process liveness and the job lease ``heartbeat_at``."""
+        touch_worker_last_seen()
+        try:
+            with SessionLocal() as db:
+                db.execute(
+                    update(Job)
+                    .where(Job.id == self._job_id)
+                    .values(heartbeat_at=datetime.now(UTC))
+                )
+                db.commit()
+        except Exception:
+            logger.exception(
+                "job heartbeat update failed for %s",
+                self._job_id,
+            )
+
     def _run(self) -> None:
         while not self._stop.wait(30.0):
-            try:
-                with SessionLocal() as db:
-                    db.execute(
-                        update(Job)
-                        .where(Job.id == self._job_id)
-                        .values(heartbeat_at=datetime.now(UTC))
-                    )
-                    db.commit()
-            except Exception:
-                logger.exception(
-                    "job heartbeat update failed for %s",
-                    self._job_id,
-                )
+            self.tick()
 
 
 def _claim_one_job(db: Session) -> Job | None:
@@ -311,14 +322,16 @@ def _execute_job(db: Session, job: Job) -> None:
 
 
 def worker_loop() -> None:
-    global _WORKER_ID, _worker_last_seen
+    global _WORKER_ID
     _WORKER_ID = f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
     logger.info("job worker started worker_id=%s", _WORKER_ID)
+    # Fresh before the first poll so /health is not 503 during startup.
+    touch_worker_last_seen()
     last_heartbeat = 0.0
 
     while not _shutdown.is_set():
         try:
-            _worker_last_seen = datetime.now(UTC)
+            touch_worker_last_seen()
             now = time.monotonic()
             if now - last_heartbeat >= 30:
                 logger.info("job worker heartbeat")

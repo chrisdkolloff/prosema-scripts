@@ -453,7 +453,10 @@ def _add_complete_snapshot(
 @patch("app.config.settings.weclapp_tenant", TENANT)
 def test_retention_deletes_21st_oldest_snapshot(db_session, caplog):
     ids: list[uuid.UUID] = []
-    base = datetime.now(UTC).replace(hour=12, minute=0, second=0, microsecond=0)
+    # All older than RETENTION_KEEP_DAYS so the count floor alone decides.
+    base = (datetime.now(UTC) - timedelta(days=30)).replace(
+        hour=12, minute=0, second=0, microsecond=0
+    )
     for index in range(21):
         snap = _add_complete_snapshot(
             db_session,
@@ -491,7 +494,10 @@ def test_retention_deletes_21st_oldest_snapshot(db_session, caplog):
 @patch("app.config.settings.weclapp_tenant", TENANT)
 def test_retention_keeps_monthly_archive_beyond_recent_20(db_session):
     recent_ids: list[uuid.UUID] = []
-    base = datetime.now(UTC).replace(hour=12, minute=0, second=0, microsecond=0)
+    # Older than RETENTION_KEEP_DAYS so eviction is by count, not the day floor.
+    base = (datetime.now(UTC) - timedelta(days=30)).replace(
+        hour=12, minute=0, second=0, microsecond=0
+    )
     for index in range(25):
         snap = _add_complete_snapshot(
             db_session,
@@ -577,6 +583,106 @@ def test_retention_drops_snapshots_older_than_12_months(db_session):
     assert {item.id for item in recent}.isdisjoint(deleted)
     assert db_session.get(ArticleSnapshot, too_old.id) is None
     assert db_session.get(ArticleSnapshot, boundary_keep.id) is not None
+
+
+@patch("app.config.settings.weclapp_tenant", TENANT)
+def test_retention_keeps_snapshot_within_day_floor_outside_newest_20(db_session):
+    """Keep a 10-day-old complete snapshot that sits outside the newest 20.
+
+    (Prompt said 15-day-old; with RETENTION_KEEP_DAYS=14 that would be deleted.)
+    """
+    base = datetime.now(UTC).replace(hour=12, minute=0, second=0, microsecond=0)
+    for index in range(20):
+        _add_complete_snapshot(
+            db_session,
+            created_at=base + timedelta(minutes=index),
+            number=f"recent-{index}",
+        )
+    within_floor = _add_complete_snapshot(
+        db_session,
+        created_at=base - timedelta(days=10),
+        number="day-floor-10",
+    )
+    outside_floor = _add_complete_snapshot(
+        db_session,
+        created_at=base - timedelta(days=16),
+        number="outside-floor-16",
+    )
+    db_session.commit()
+
+    from app.snapshots import apply_retention
+
+    deleted = apply_retention(db_session, tenant=TENANT)
+    db_session.commit()
+
+    assert within_floor.id not in deleted
+    assert db_session.get(ArticleSnapshot, within_floor.id) is not None
+    assert outside_floor.id in deleted
+    assert db_session.get(ArticleSnapshot, outside_floor.id) is None
+
+
+@patch("app.config.settings.weclapp_tenant", TENANT)
+def test_retention_deletes_incomplete_orphan_older_than_7_days(db_session, caplog):
+    base = datetime.now(UTC)
+    orphan = ArticleSnapshot(
+        status="running",
+        created_by_oid=PLAIN_USER["oid"],
+        created_by_name=PLAIN_USER["name"],
+        weclapp_tenant=TENANT,
+        created_at=base - timedelta(days=8),
+    )
+    db_session.add(orphan)
+    db_session.flush()
+    db_session.add(
+        ArticleSnapshotRow(
+            snapshot_id=orphan.id,
+            position=0,
+            data={"Prosema Artikelnummer": "orphan"},
+            article_number="orphan",
+            article_name="x",
+            hauptgruppe_code="010",
+            untergruppe_code="020",
+            active=True,
+            weclapp_id="orphan",
+        )
+    )
+    db_session.commit()
+
+    from app.snapshots import apply_retention
+
+    with caplog.at_level("INFO", logger="app.snapshots"):
+        apply_retention(db_session, tenant=TENANT)
+    db_session.commit()
+
+    assert db_session.get(ArticleSnapshot, orphan.id) is None
+    assert (
+        db_session.scalar(
+            select(func.count()).where(ArticleSnapshotRow.snapshot_id == orphan.id)
+        )
+        == 0
+    )
+    assert "snapshot retention removed 1 incomplete snapshots, 1 rows" in caplog.text
+
+
+@patch("app.config.settings.weclapp_tenant", TENANT)
+def test_retention_keeps_incomplete_snapshot_younger_than_orphan_days(db_session):
+    base = datetime.now(UTC)
+    in_flight = ArticleSnapshot(
+        status="running",
+        created_by_oid=PLAIN_USER["oid"],
+        created_by_name=PLAIN_USER["name"],
+        weclapp_tenant=TENANT,
+        created_at=base - timedelta(hours=1),
+    )
+    db_session.add(in_flight)
+    db_session.commit()
+
+    from app.snapshots import apply_retention
+
+    apply_retention(db_session, tenant=TENANT)
+    db_session.commit()
+
+    assert db_session.get(ArticleSnapshot, in_flight.id) is not None
 
 
 @patch("app.config.settings.weclapp_tenant", TENANT)

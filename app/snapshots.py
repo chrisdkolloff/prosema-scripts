@@ -33,7 +33,9 @@ EXCEL_MAX_ROWS = 50_000
 # share that disk. Each article snapshot is ~8 MB; keep a short rolling window
 # plus monthly archives, not unbounded history.
 RETENTION_KEEP_RECENT = 20
+RETENTION_KEEP_DAYS = 14
 RETENTION_KEEP_MONTHS = 12
+RETENTION_ORPHAN_DAYS = 7
 
 ARTICLE_NUMBER_FIELD = "Prosema Artikelnummer"
 KURZTEXT_FIELD = "PROSEMA Kurztext"
@@ -292,10 +294,13 @@ def excel_bytes(
 def apply_retention(db: Session, *, tenant: str) -> list[uuid.UUID]:
     """Delete complete snapshots outside the keep set, oldest first, by id.
 
-    Keep the newest ``RETENTION_KEEP_RECENT`` complete snapshots per tenant,
-    plus the newest complete snapshot of each UTC calendar month in the last
-    ``RETENTION_KEEP_MONTHS`` months. Row deletion is CASCADE from the header.
-    Does not commit; the caller must use a transaction separate from the pull.
+    Keep the union of: the newest ``RETENTION_KEEP_RECENT`` complete snapshots
+    per tenant, every complete snapshot from the last ``RETENTION_KEEP_DAYS``
+    days, and the newest complete snapshot of each UTC calendar month in the
+    last ``RETENTION_KEEP_MONTHS`` months. Also delete incomplete (orphan)
+    snapshots older than ``RETENTION_ORPHAN_DAYS``. Row deletion is CASCADE
+    from the header. Does not commit; the caller must use a transaction
+    separate from the pull.
     """
     rows = db.execute(
         text(
@@ -311,6 +316,12 @@ def apply_retention(db: Session, *, tenant: str) -> list[uuid.UUID]:
                 FROM complete
                 ORDER BY created_at DESC, id DESC
                 LIMIT :keep_recent
+            ),
+            keep_days AS (
+                SELECT id
+                FROM complete
+                WHERE created_at >= now()
+                    - CAST(:keep_days AS integer) * INTERVAL '1 day'
             ),
             keep_monthly AS (
                 SELECT DISTINCT ON (
@@ -330,6 +341,8 @@ def apply_retention(db: Session, *, tenant: str) -> list[uuid.UUID]:
             keep AS (
                 SELECT id FROM keep_recent
                 UNION
+                SELECT id FROM keep_days
+                UNION
                 SELECT id FROM keep_monthly
             )
             SELECT complete.id
@@ -341,27 +354,68 @@ def apply_retention(db: Session, *, tenant: str) -> list[uuid.UUID]:
         {
             "tenant": tenant,
             "keep_recent": RETENTION_KEEP_RECENT,
+            "keep_days": RETENTION_KEEP_DAYS,
             "keep_months": RETENTION_KEEP_MONTHS,
         },
     ).all()
     ids = [row[0] if isinstance(row[0], uuid.UUID) else uuid.UUID(str(row[0])) for row in rows]
     if not ids:
         logger.info("snapshot retention removed 0 snapshots, 0 rows")
-        return []
-
-    n_rows = int(
-        db.scalar(
-            select(func.count()).where(ArticleSnapshotRow.snapshot_id.in_(ids))
+    else:
+        n_rows = int(
+            db.scalar(
+                select(func.count()).where(ArticleSnapshotRow.snapshot_id.in_(ids))
+            )
+            or 0
         )
-        or 0
-    )
-    for snapshot_id in ids:
-        db.execute(delete(ArticleSnapshot).where(ArticleSnapshot.id == snapshot_id))
-    logger.info(
-        "snapshot retention removed %s snapshots, %s rows",
-        len(ids),
-        n_rows,
-    )
+        for snapshot_id in ids:
+            db.execute(delete(ArticleSnapshot).where(ArticleSnapshot.id == snapshot_id))
+        logger.info(
+            "snapshot retention removed %s snapshots, %s rows",
+            len(ids),
+            n_rows,
+        )
+
+    orphan_rows = db.execute(
+        text(
+            """
+            SELECT id
+            FROM article_snapshots
+            WHERE weclapp_tenant = :tenant
+              AND status <> 'complete'
+              AND created_at < now()
+                  - CAST(:orphan_days AS integer) * INTERVAL '1 day'
+            ORDER BY created_at ASC, id ASC
+            """
+        ),
+        {
+            "tenant": tenant,
+            "orphan_days": RETENTION_ORPHAN_DAYS,
+        },
+    ).all()
+    orphan_ids = [
+        row[0] if isinstance(row[0], uuid.UUID) else uuid.UUID(str(row[0]))
+        for row in orphan_rows
+    ]
+    if not orphan_ids:
+        logger.info("snapshot retention removed 0 incomplete snapshots, 0 rows")
+    else:
+        orphan_row_count = int(
+            db.scalar(
+                select(func.count()).where(
+                    ArticleSnapshotRow.snapshot_id.in_(orphan_ids)
+                )
+            )
+            or 0
+        )
+        for snapshot_id in orphan_ids:
+            db.execute(delete(ArticleSnapshot).where(ArticleSnapshot.id == snapshot_id))
+        logger.info(
+            "snapshot retention removed %s incomplete snapshots, %s rows",
+            len(orphan_ids),
+            orphan_row_count,
+        )
+
     return ids
 
 

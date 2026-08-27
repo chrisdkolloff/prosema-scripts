@@ -19,7 +19,7 @@ Dependency pins and how to regenerate them: [docs/dependencies.md](docs/dependen
 2. Copy `.env.example` to `.env` and fill in every value. `DATABASE_URL` should look like:
 
    ```
-   DATABASE_URL=postgresql+psycopg://USER@localhost:5432/prosema_dev
+   DATABASE_URL=postgresql+psycopg://USER@localhost:5432/prosema_dev?sslmode=disable
    ```
 
    `ENTRA_REDIRECT_URI` locally is `http://localhost:8000/auth/callback`.
