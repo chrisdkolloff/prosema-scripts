@@ -411,6 +411,20 @@ def create_untergruppe(
     return group
 
 
+def create_hauptgruppe_with_untergruppe(
+    db: Session,
+    *,
+    code: str,
+    name: str,
+    unter_code: str,
+    unter_name: str,
+    actor: Mapping[str, Any],
+) -> tuple[Hauptgruppe, Untergruppe]:
+    parent = create_hauptgruppe(db, code=code, name=name, actor=actor)
+    child = create_untergruppe(db, parent, code=unter_code, name=unter_name, actor=actor)
+    return parent, child
+
+
 def rename_untergruppe(
     db: Session, group: Untergruppe, *, name: str, actor: Mapping[str, Any]
 ) -> Untergruppe:

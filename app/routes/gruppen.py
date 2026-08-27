@@ -17,7 +17,7 @@ from app.groups_service import (
     change_hauptgruppe_code,
     change_untergruppe_code,
     count_active_untergruppen,
-    create_hauptgruppe,
+    create_hauptgruppe_with_untergruppe,
     create_untergruppe,
     list_hauptgruppen,
     remove_alias,
@@ -30,6 +30,12 @@ from app.groups_service import (
 )
 from app.gruppen_diagram import build_sunburst_figure, figure_html, load_active_group_tree
 from app.models import GruppenAlias, Hauptgruppe, Untergruppe
+from app.weclapp import NoWeclappToken, WeclappError, map_weclapp_error, weclapp_client_for
+from app.weclapp_categories import (
+    create_haupt_and_unter_in_weclapp,
+    create_unter_in_weclapp,
+    weclapp_category_writes_allowed,
+)
 
 router = APIRouter()
 
@@ -78,6 +84,20 @@ def _error_page(request: Request, user: SessionUser, message: str) -> HTMLRespon
 
 def _commit(db: Session) -> None:
     db.commit()
+
+
+def _weclapp_write_message(exc: BaseException) -> str:
+    if isinstance(exc, NoWeclappToken):
+        return (
+            "Zum Anlegen von Gruppen auf tools.prosema.ch bitte zuerst ein "
+            "weclapp-Token hinterlegen."
+        )
+    if isinstance(exc, WeclappError):
+        mapped = map_weclapp_error(exc)
+        if mapped is not exc:
+            return str(mapped)
+        return "Gruppe in weclapp konnte nicht angelegt werden."
+    return "Gruppe in weclapp konnte nicht angelegt werden."
 
 
 def _hauptgruppe_aliases(db: Session, group_id: uuid.UUID) -> list[GruppenAlias]:
@@ -214,9 +234,27 @@ def create_hauptgruppe_route(
     db: Session = Depends(get_db),
     code: str = Form(...),
     name: str = Form(...),
+    unter_code: str = Form(...),
+    unter_name: str = Form(...),
 ) -> Response:
     try:
-        group = create_hauptgruppe(db, code=code, name=name, actor=user)
+        group, untergruppe = create_hauptgruppe_with_untergruppe(
+            db,
+            code=code,
+            name=name,
+            unter_code=unter_code,
+            unter_name=unter_name,
+            actor=user,
+        )
+        if weclapp_category_writes_allowed(request):
+            client = weclapp_client_for(db, user["oid"])
+            create_haupt_and_unter_in_weclapp(
+                client,
+                haupt_name=group.name,
+                haupt_code=group.code,
+                unter_name=untergruppe.name,
+                unter_code=untergruppe.code,
+            )
         _commit(db)
     except GroupRegistryError as exc:
         db.rollback()
@@ -233,6 +271,28 @@ def create_hauptgruppe_route(
                 error=exc.message,
                 form_code=code,
                 form_name=name,
+                form_unter_code=unter_code,
+                form_unter_name=unter_name,
+            ),
+            status_code=400,
+        )
+    except (NoWeclappToken, WeclappError) as exc:
+        db.rollback()
+        groups = list_hauptgruppen(db, include_deleted=False)
+        counts = count_active_untergruppen(db, [item.id for item in groups])
+        return request.app.state.templates.TemplateResponse(
+            request,
+            "gruppen/list.html",
+            _ctx(
+                user,
+                groups=groups,
+                counts=counts,
+                show_deleted=False,
+                error=_weclapp_write_message(exc),
+                form_code=code,
+                form_name=name,
+                form_unter_code=unter_code,
+                form_unter_name=unter_name,
             ),
             status_code=400,
         )
@@ -345,10 +405,27 @@ def create_untergruppe_route(
 ) -> Response:
     parent = _get_hauptgruppe(db, group_id)
     try:
-        create_untergruppe(db, parent, code=code, name=name, actor=user)
+        created = create_untergruppe(db, parent, code=code, name=name, actor=user)
+        if weclapp_category_writes_allowed(request):
+            client = weclapp_client_for(db, user["oid"])
+            create_unter_in_weclapp(
+                client,
+                parent_name=parent.name,
+                unter_name=created.name,
+                unter_code=created.code,
+            )
         _commit(db)
     except GroupRegistryError as exc:
         return _write_failure(request, db, user, exc, hauptgruppe=parent, fragment="untergruppen")
+    except (NoWeclappToken, WeclappError) as exc:
+        return _write_failure(
+            request,
+            db,
+            user,
+            GroupRegistryError(_weclapp_write_message(exc)),
+            hauptgruppe=parent,
+            fragment="untergruppen",
+        )
     db.refresh(parent)
     if _is_htmx(request):
         return _render_untergruppen(request, db, parent, user)

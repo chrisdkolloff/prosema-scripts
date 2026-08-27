@@ -154,4 +154,6 @@ v5 API (`worksheets: [{ data, columns }]`) with `parseFormulas: false`.
 pytest
 ```
 
+Teaching notes for Gruppen-Verwaltung (what syncs to weclapp, what does not): [`docs/gruppen-verwaltung.md`](docs/gruppen-verwaltung.md).
+
 To lock groups already referenced by weclapp articles, run `python scripts/lock_groups_from_weclapp.py` (dry-run) then `--commit`. This is a one-off; re-run by hand if articles are created in weclapp outside the registration tool.

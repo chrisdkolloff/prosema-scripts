@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -18,6 +19,7 @@ from app.groups_service import (
     AmbiguousGroupMatch,
     add_alias,
     create_hauptgruppe,
+    create_hauptgruppe_with_untergruppe,
     create_untergruppe,
     normalize_alias,
     resolve_hauptgruppe,
@@ -330,7 +332,12 @@ def test_non_admin_writes_return_403(user_client, db_session):
     assert user_client.get("/gruppen").status_code == 200
     assert user_client.post(
         "/gruppen",
-        data={"code": "777", "name": "X"},
+        data={
+            "code": "777",
+            "name": "X",
+            "unter_code": "001",
+            "unter_name": "Y",
+        },
         follow_redirects=False,
     ).status_code == 403
     assert user_client.post(
@@ -342,3 +349,128 @@ def test_non_admin_writes_return_403(user_client, db_session):
         f"/gruppen/{group.id}/loeschen",
         follow_redirects=False,
     ).status_code == 403
+
+
+def test_create_pair_locally_skips_weclapp(admin_client, db_session):
+    code = _unused_code(db_session)
+    with patch("app.routes.gruppen.weclapp_client_for") as mock_client:
+        response = admin_client.post(
+            "/gruppen",
+            data={
+                "code": code,
+                "name": "Lokalhaupt",
+                "unter_code": "001",
+                "unter_name": "Lokalunter",
+            },
+            follow_redirects=False,
+        )
+    assert response.status_code == 303
+    mock_client.assert_not_called()
+    parent = db_session.scalars(select(Hauptgruppe).where(Hauptgruppe.code == code)).one()
+    assert parent.name == "Lokalhaupt"
+    kids = list(
+        db_session.scalars(select(Untergruppe).where(Untergruppe.hauptgruppe_id == parent.id))
+    )
+    assert len(kids) == 1
+    assert kids[0].code == "001"
+    assert kids[0].name == "Lokalunter"
+
+
+def test_create_pair_on_tools_host_posts_both_to_weclapp(admin_client, db_session):
+    code = _unused_code(db_session)
+    mock_wc = MagicMock()
+    mock_wc.post.side_effect = [
+        {"id": "p1", "name": "Toolshaupt"},
+        {"id": "c1", "name": "Toolsunter"},
+    ]
+    with (
+        patch("app.routes.gruppen.weclapp_category_writes_allowed", return_value=True),
+        patch("app.routes.gruppen.weclapp_client_for", return_value=mock_wc),
+    ):
+        response = admin_client.post(
+            "/gruppen",
+            data={
+                "code": code,
+                "name": "Toolshaupt",
+                "unter_code": "002",
+                "unter_name": "Toolsunter",
+            },
+            follow_redirects=False,
+        )
+    assert response.status_code == 303
+    assert mock_wc.post.call_count == 2
+    assert mock_wc.post.call_args_list[0].kwargs["json"] == {
+        "name": "Toolshaupt",
+        "description": code,
+    }
+    assert mock_wc.post.call_args_list[1].kwargs["json"]["parentCategoryId"] == "p1"
+    parent = db_session.scalars(select(Hauptgruppe).where(Hauptgruppe.code == code)).one()
+    assert parent.name == "Toolshaupt"
+
+
+def test_create_untergruppe_on_tools_host_posts_child(admin_client, db_session):
+    parent = _make_hauptgruppe(db_session, name="Bestehend")
+    db_session.flush()
+    mock_wc = MagicMock()
+    mock_wc.iter_pages.return_value = [
+        {"id": "p1", "name": "Bestehend", "parentCategoryId": None},
+    ]
+    mock_wc.post.return_value = {"id": "c9"}
+    with (
+        patch("app.routes.gruppen.weclapp_category_writes_allowed", return_value=True),
+        patch("app.routes.gruppen.weclapp_client_for", return_value=mock_wc),
+    ):
+        response = admin_client.post(
+            f"/gruppen/{parent.id}/untergruppen",
+            data={"code": "008", "name": "Neueunter"},
+            follow_redirects=False,
+        )
+    assert response.status_code == 303
+    mock_wc.post.assert_called_once()
+    payload = mock_wc.post.call_args.kwargs["json"]
+    assert payload["parentCategoryId"] == "p1"
+    assert payload["name"] == "Neueunter"
+    assert payload["description"] == "008"
+
+
+def test_create_pair_weclapp_failure_rolls_back(admin_client, db_session):
+    from scripts.weclapp.client import WeclappError
+
+    code = _unused_code(db_session)
+    mock_wc = MagicMock()
+    mock_wc.post.side_effect = WeclappError("boom", status_code=400)
+    with (
+        patch("app.routes.gruppen.weclapp_category_writes_allowed", return_value=True),
+        patch("app.routes.gruppen.weclapp_client_for", return_value=mock_wc),
+    ):
+        response = admin_client.post(
+            "/gruppen",
+            data={
+                "code": code,
+                "name": "Failhaupt",
+                "unter_code": "001",
+                "unter_name": "Failunter",
+            },
+            follow_redirects=False,
+        )
+    assert response.status_code == 400
+    assert "weclapp" in response.text
+    found = db_session.scalars(select(Hauptgruppe).where(Hauptgruppe.code == code)).all()
+    assert found == []
+
+
+def test_create_hauptgruppe_with_untergruppe_helper(db_session):
+    code = _unused_code(db_session)
+    parent, child = create_hauptgruppe_with_untergruppe(
+        db_session,
+        code=code,
+        name="Paarhaupt",
+        unter_code="010",
+        unter_name="Paarunter",
+        actor=ACTOR,
+    )
+    db_session.flush()
+    assert parent.code == code
+    assert child.hauptgruppe_id == parent.id
+    assert child.code == "010"
+

@@ -51,15 +51,24 @@
 
   {% if is_admin %}
   <section class="create-panel">
-    <h2>Neue Hauptgruppe</h2>
+    <h2>Neue Hauptgruppe mit Untergruppe</h2>
+    <p class="hint">Beide werden zusammen angelegt. Nur auf tools.prosema.ch werden sie auch in weclapp erstellt.</p>
     <form method="post" action="/gruppen" class="stack-form">
       <label>
-        Code
+        Hauptgruppe Code
         <input type="text" name="code" maxlength="3" required pattern="[0-9]{3}" value="{{ form_code or '' }}">
       </label>
       <label>
-        Bezeichnung
+        Hauptgruppe Bezeichnung
         <input type="text" name="name" required value="{{ form_name or '' }}">
+      </label>
+      <label>
+        Untergruppe Code
+        <input type="text" name="unter_code" maxlength="3" required pattern="[0-9]{3}" value="{{ form_unter_code or '' }}">
+      </label>
+      <label>
+        Untergruppe Bezeichnung
+        <input type="text" name="unter_name" required value="{{ form_unter_name or '' }}">
       </label>
       <button type="submit" class="btn">Speichern</button>
     </form>
