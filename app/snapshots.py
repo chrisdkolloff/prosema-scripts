@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo
 
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, func, or_, select, text
 from sqlalchemy.orm import Session
 
 from app.batches import JSPREADSHEET_CE_VERSION, JSUITES_VERSION
@@ -25,8 +25,15 @@ logger = logging.getLogger(__name__)
 
 ZURICH = ZoneInfo("Europe/Zurich")
 GRID_PAGE_SIZE = 250
-RETENTION_COUNT = 20
 EXCEL_MAX_ROWS = 50_000
+
+# Postgres is capped at 32 GiB with autogrow off. When the volume fills, the
+# database goes read-only and the application fails in a way that looks like a
+# bug rather than a capacity problem. Snapshots, uploads, and generated exports
+# share that disk. Each article snapshot is ~8 MB; keep a short rolling window
+# plus monthly archives, not unbounded history.
+RETENTION_KEEP_RECENT = 20
+RETENTION_KEEP_MONTHS = 12
 
 ARTICLE_NUMBER_FIELD = "Prosema Artikelnummer"
 KURZTEXT_FIELD = "PROSEMA Kurztext"
@@ -283,30 +290,78 @@ def excel_bytes(
 
 
 def apply_retention(db: Session, *, tenant: str) -> list[uuid.UUID]:
-    """Keep the newest RETENTION_COUNT snapshots per tenant; delete older ones."""
-    snapshots = list(
-        db.scalars(
-            select(ArticleSnapshot)
-            .where(
-                ArticleSnapshot.weclapp_tenant == tenant,
-                ArticleSnapshot.status == "complete",
+    """Delete complete snapshots outside the keep set, oldest first, by id.
+
+    Keep the newest ``RETENTION_KEEP_RECENT`` complete snapshots per tenant,
+    plus the newest complete snapshot of each UTC calendar month in the last
+    ``RETENTION_KEEP_MONTHS`` months. Row deletion is CASCADE from the header.
+    Does not commit; the caller must use a transaction separate from the pull.
+    """
+    rows = db.execute(
+        text(
+            """
+            WITH complete AS (
+                SELECT id, created_at
+                FROM article_snapshots
+                WHERE weclapp_tenant = :tenant
+                  AND status = 'complete'
+            ),
+            keep_recent AS (
+                SELECT id
+                FROM complete
+                ORDER BY created_at DESC, id DESC
+                LIMIT :keep_recent
+            ),
+            keep_monthly AS (
+                SELECT DISTINCT ON (
+                    date_trunc('month', created_at AT TIME ZONE 'UTC')
+                )
+                    id
+                FROM complete
+                WHERE created_at >= (
+                    date_trunc('month', now() AT TIME ZONE 'UTC')
+                    - (CAST(:keep_months AS integer) - 1) * INTERVAL '1 month'
+                ) AT TIME ZONE 'UTC'
+                ORDER BY
+                    date_trunc('month', created_at AT TIME ZONE 'UTC'),
+                    created_at DESC,
+                    id DESC
+            ),
+            keep AS (
+                SELECT id FROM keep_recent
+                UNION
+                SELECT id FROM keep_monthly
             )
-            .order_by(ArticleSnapshot.created_at.asc(), ArticleSnapshot.id.asc())
-        )
-    )
-    if len(snapshots) <= RETENTION_COUNT:
+            SELECT complete.id
+            FROM complete
+            WHERE complete.id NOT IN (SELECT id FROM keep)
+            ORDER BY complete.created_at ASC, complete.id ASC
+            """
+        ),
+        {
+            "tenant": tenant,
+            "keep_recent": RETENTION_KEEP_RECENT,
+            "keep_months": RETENTION_KEEP_MONTHS,
+        },
+    ).all()
+    ids = [row[0] if isinstance(row[0], uuid.UUID) else uuid.UUID(str(row[0])) for row in rows]
+    if not ids:
+        logger.info("snapshot retention removed 0 snapshots, 0 rows")
         return []
-    to_delete = snapshots[: len(snapshots) - RETENTION_COUNT]
-    ids = [item.id for item in to_delete]
-    db.execute(delete(ArticleSnapshot).where(ArticleSnapshot.id.in_(ids)))
-    for item in to_delete:
-        logger.info(
-            "snapshot retention: deleted snapshot %s (tenant=%s, created=%s, rows=%s)",
-            item.id,
-            tenant,
-            item.created_at.isoformat(),
-            item.row_count,
+
+    n_rows = int(
+        db.scalar(
+            select(func.count()).where(ArticleSnapshotRow.snapshot_id.in_(ids))
         )
+        or 0
+    )
+    for snapshot_id in ids:
+        db.execute(delete(ArticleSnapshot).where(ArticleSnapshot.id == snapshot_id))
+    logger.info(
+        "snapshot retention removed %s snapshots, %s rows",
+        len(ids),
+        n_rows,
+    )
     return ids
 
 
@@ -316,7 +371,7 @@ def pull_snapshot_rows(
     *,
     oid: str,
 ) -> dict[str, Any]:
-    """Fetch from weclapp (read-only) and persist rows in one transaction."""
+    """Fetch from weclapp (read-only) and persist rows, then retain separately."""
     from app.weclapp import weclapp_client_for
 
     client = weclapp_client_for(db, oid)
@@ -346,8 +401,19 @@ def pull_snapshot_rows(
     snapshot.row_count = len(data_rows)
     snapshot.status = "complete"
     snapshot.error = None
-    deleted = apply_retention(db, tenant=snapshot.weclapp_tenant)
     db.commit()
+
+    deleted: list[uuid.UUID] = []
+    try:
+        deleted = apply_retention(db, tenant=snapshot.weclapp_tenant)
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception(
+            "snapshot retention failed tenant=%s snapshot=%s",
+            snapshot.weclapp_tenant,
+            snapshot.id,
+        )
     return {"row_count": len(data_rows), "deleted_snapshots": [str(i) for i in deleted]}
 
 

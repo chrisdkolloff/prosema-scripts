@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
@@ -16,6 +16,7 @@ from starlette.responses import Response
 
 from app.auth import callback, login, logout
 from app.config import settings
+from app.health import build_health
 from app.jobs import _shutdown as _worker_shutdown
 from app.jobs import worker_loop
 from app.routes import batches as batches_routes
@@ -82,6 +83,13 @@ app.include_router(supply_exports_routes.router)
 app.add_api_route("/auth/login", login, methods=["GET"])
 app.add_api_route("/auth/callback", callback, methods=["GET"])
 app.add_api_route("/auth/logout", logout, methods=["GET"])
+
+
+@app.get("/health")
+def health() -> JSONResponse:
+    """Unauthenticated probe for Azure App Service health check / availability tests."""
+    status_code, body = build_health()
+    return JSONResponse(body, status_code=status_code)
 
 
 @app.exception_handler(HTTPException)

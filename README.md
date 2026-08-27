@@ -3,7 +3,7 @@
 Web application for the PROSEMA internal tools (FastAPI, server-rendered Jinja2 + HTMX).
 Identity comes from Entra ID; jobs are stored in PostgreSQL and executed by an in-process worker thread.
 
-The desktop GUI (`gui.command`) is unchanged and still uses `requirements.txt`.
+Dependency pins and how to regenerate them: [docs/dependencies.md](docs/dependencies.md).
 
 ## Local setup
 
@@ -29,8 +29,11 @@ The desktop GUI (`gui.command`) is unchanged and still uses `requirements.txt`.
    ```bash
    python3.12 -m venv .venv
    source .venv/bin/activate
+   pip install -r requirements.txt
    pip install -e ".[dev]"
    ```
+
+   Install from `requirements.txt` first so local pins match App Service; then editable + `dev` extras for day-to-day work.
 
 4. Apply migrations:
 
@@ -136,13 +139,29 @@ consumes a stored artefact, not transient request state.
 
 ## Artikel-Übersicht (weclapp snapshot viewer)
 
-`GET /artikel-uebersicht` pulls all articles from weclapp into immutable
-PostgreSQL snapshots (job kind `weclapp_article_snapshot`). The feature is
-read-only toward weclapp — no route issues POST or PUT to the API.
+`GET /artikel-uebersicht` pulls all articles from weclapp into PostgreSQL
+snapshots (job kind `weclapp_article_snapshot`). The feature is read-only toward
+weclapp — no route issues POST or PUT to the API.
+
+Each pull **inserts a new** `article_snapshots` header and a full copy of every
+article in `article_snapshot_rows`. This is timestamped history, not a single
+catalog table that is wiped and rebuilt. The job may delete and rewrite rows
+for the snapshot it is currently filling (retry-safe, by that snapshot id
+only). It never overwrites an older snapshot in place. Completed rows are
+write-once; week-5 bidirectional edit-and-save must treat each snapshot as a
+frozen stand, not a live working copy.
 
 Each snapshot stores its own column list at pull time. weclapp's optimistic-lock
 field is captured in `article_snapshot_rows.weclapp_version` from the v2 API
 field `version` (also exported as `weclapp Version` in the flattened row).
+
+After a successful pull **commits**, retention runs in a **separate**
+transaction. It keeps the 20 most recent complete snapshots per tenant, plus
+the most recent complete snapshot of each UTC calendar month for the last 12
+months, and deletes older headers by id (rows follow via `ON DELETE CASCADE`).
+A retention failure is logged at ERROR and does not fail or roll back the pull.
+Postgres is capped at 32 GiB with autogrow off; snapshots, uploads, and
+generated exports share that disk.
 
 Apply migration `006_article_snapshots` before using the viewer:
 

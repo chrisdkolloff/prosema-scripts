@@ -40,6 +40,12 @@ MAX_JOB_ATTEMPTS = 3
 
 _shutdown = threading.Event()
 _WORKER_ID: str | None = None
+_worker_last_seen: datetime | None = None
+
+
+def worker_last_seen_at() -> datetime | None:
+    """UTC timestamp of the last worker-loop iteration, or None if never started."""
+    return _worker_last_seen
 
 JOB_TYPE_LABELS = {
     "noop": "Testlauf",
@@ -305,13 +311,14 @@ def _execute_job(db: Session, job: Job) -> None:
 
 
 def worker_loop() -> None:
-    global _WORKER_ID
+    global _WORKER_ID, _worker_last_seen
     _WORKER_ID = f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
     logger.info("job worker started worker_id=%s", _WORKER_ID)
     last_heartbeat = 0.0
 
     while not _shutdown.is_set():
         try:
+            _worker_last_seen = datetime.now(UTC)
             now = time.monotonic()
             if now - last_heartbeat >= 30:
                 logger.info("job worker heartbeat")

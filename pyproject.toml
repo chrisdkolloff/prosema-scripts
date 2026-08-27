@@ -9,11 +9,8 @@ description = "PROSEMA catalog tools and internal web platform"
 requires-python = ">=3.12"
 dependencies = [
     "openpyxl",
-    "customtkinter",
     "plotly",
     "requests",
-    "pandas",
-    "streamlit",
     "fastapi",
     "uvicorn[standard]",
     "jinja2",

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import uuid
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -24,7 +25,11 @@ from app.snapshots import (
     fetch_filtered_rows,
     pull_snapshot_rows,
 )
-from core.article_flatten import build_snapshot_columns, extract_indexed_fields, master_row_to_snapshot_data
+from core.article_flatten import (
+    build_snapshot_columns,
+    extract_indexed_fields,
+    master_row_to_snapshot_data,
+)
 
 PLAIN_USER = {
     "oid": "user-oid-snapshots",
@@ -400,45 +405,68 @@ def test_snapshot_routes_never_write_to_weclapp(db_session):
     client.put.assert_not_called()
 
 
-@patch("app.config.settings.weclapp_tenant", TENANT)
-def test_retention_deletes_21st_oldest_snapshot(db_session):
-    from datetime import UTC, datetime, timedelta
+def _months_ago(months: int, *, day: int = 15) -> datetime:
+    now = datetime.now(UTC)
+    year = now.year
+    month = now.month - months
+    while month <= 0:
+        month += 12
+        year -= 1
+    return datetime(year, month, day, 12, 0, tzinfo=UTC)
 
-    ids: list[uuid.UUID] = []
-    base = datetime(2026, 1, 1, tzinfo=UTC)
-    for index in range(21):
-        snap = ArticleSnapshot(
-            status="complete",
-            created_by_oid=PLAIN_USER["oid"],
-            created_by_name=PLAIN_USER["name"],
-            weclapp_tenant=TENANT,
-            row_count=1,
-            created_at=base + timedelta(minutes=index),
-            columns=[
-                {"key": "Prosema Artikelnummer", "title": "Prosema Artikelnummer", "width": 160}
-            ],
+
+def _add_complete_snapshot(
+    db_session: Session,
+    *,
+    created_at: datetime,
+    number: str,
+) -> ArticleSnapshot:
+    snap = ArticleSnapshot(
+        status="complete",
+        created_by_oid=PLAIN_USER["oid"],
+        created_by_name=PLAIN_USER["name"],
+        weclapp_tenant=TENANT,
+        row_count=1,
+        created_at=created_at,
+        columns=[
+            {"key": "Prosema Artikelnummer", "title": "Prosema Artikelnummer", "width": 160}
+        ],
+    )
+    db_session.add(snap)
+    db_session.flush()
+    db_session.add(
+        ArticleSnapshotRow(
+            snapshot_id=snap.id,
+            position=0,
+            data={"Prosema Artikelnummer": number},
+            article_number=number,
+            article_name="x",
+            hauptgruppe_code="010",
+            untergruppe_code="020",
+            active=True,
+            weclapp_id=number,
         )
-        db_session.add(snap)
-        db_session.flush()
-        db_session.add(
-            ArticleSnapshotRow(
-                snapshot_id=snap.id,
-                position=0,
-                data={"Prosema Artikelnummer": f"n-{index}"},
-                article_number=f"n-{index}",
-                article_name="x",
-                hauptgruppe_code="010",
-                untergruppe_code="020",
-                active=True,
-                weclapp_id=str(index),
-            )
+    )
+    return snap
+
+
+@patch("app.config.settings.weclapp_tenant", TENANT)
+def test_retention_deletes_21st_oldest_snapshot(db_session, caplog):
+    ids: list[uuid.UUID] = []
+    base = datetime.now(UTC).replace(hour=12, minute=0, second=0, microsecond=0)
+    for index in range(21):
+        snap = _add_complete_snapshot(
+            db_session,
+            created_at=base + timedelta(minutes=index),
+            number=f"n-{index}",
         )
         ids.append(snap.id)
     db_session.commit()
 
     from app.snapshots import apply_retention
 
-    deleted = apply_retention(db_session, tenant=TENANT)
+    with caplog.at_level("INFO", logger="app.snapshots"):
+        deleted = apply_retention(db_session, tenant=TENANT)
     db_session.commit()
 
     assert len(deleted) == 1
@@ -457,6 +485,136 @@ def test_retention_deletes_21st_oldest_snapshot(db_session):
         )
         == 20
     )
+    assert "snapshot retention removed 1 snapshots, 1 rows" in caplog.text
+
+
+@patch("app.config.settings.weclapp_tenant", TENANT)
+def test_retention_keeps_monthly_archive_beyond_recent_20(db_session):
+    recent_ids: list[uuid.UUID] = []
+    base = datetime.now(UTC).replace(hour=12, minute=0, second=0, microsecond=0)
+    for index in range(25):
+        snap = _add_complete_snapshot(
+            db_session,
+            created_at=base + timedelta(minutes=index),
+            number=f"recent-{index}",
+        )
+        recent_ids.append(snap.id)
+    monthly = _add_complete_snapshot(
+        db_session,
+        created_at=_months_ago(3),
+        number="monthly-3",
+    )
+    older_same_month = _add_complete_snapshot(
+        db_session,
+        created_at=_months_ago(3, day=5),
+        number="monthly-3-older",
+    )
+    db_session.commit()
+
+    from app.snapshots import apply_retention
+
+    deleted = apply_retention(db_session, tenant=TENANT)
+    db_session.commit()
+
+    remaining_ids = {
+        item.id
+        for item in db_session.scalars(
+            select(ArticleSnapshot).where(ArticleSnapshot.weclapp_tenant == TENANT)
+        )
+    }
+    assert monthly.id in remaining_ids
+    assert older_same_month.id not in remaining_ids
+    assert set(recent_ids[:5]).issubset(set(deleted))
+    assert set(recent_ids[5:]).issubset(remaining_ids)
+    assert older_same_month.id in set(deleted)
+    assert (
+        db_session.scalar(
+            select(func.count()).where(
+                ArticleSnapshotRow.snapshot_id == older_same_month.id
+            )
+        )
+        == 0
+    )
+    assert (
+        db_session.scalar(
+            select(func.count()).where(ArticleSnapshotRow.snapshot_id == monthly.id)
+        )
+        == 1
+    )
+
+
+@patch("app.config.settings.weclapp_tenant", TENANT)
+def test_retention_drops_snapshots_older_than_12_months(db_session):
+    now = datetime.now(UTC)
+    base = datetime(now.year, now.month, 15, 12, 0, tzinfo=UTC)
+    recent = [
+        _add_complete_snapshot(
+            db_session,
+            created_at=base + timedelta(minutes=index),
+            number=f"r-{index}",
+        )
+        for index in range(20)
+    ]
+    boundary_keep = _add_complete_snapshot(
+        db_session,
+        created_at=_months_ago(11),
+        number="keep-11",
+    )
+    too_old = _add_complete_snapshot(
+        db_session,
+        created_at=_months_ago(12),
+        number="drop-12",
+    )
+    db_session.commit()
+
+    from app.snapshots import apply_retention
+
+    deleted = apply_retention(db_session, tenant=TENANT)
+    db_session.commit()
+
+    assert too_old.id in deleted
+    assert boundary_keep.id not in deleted
+    assert {item.id for item in recent}.isdisjoint(deleted)
+    assert db_session.get(ArticleSnapshot, too_old.id) is None
+    assert db_session.get(ArticleSnapshot, boundary_keep.id) is not None
+
+
+@patch("app.config.settings.weclapp_tenant", TENANT)
+def test_retention_failure_does_not_roll_back_snapshot(db_session, caplog):
+    snapshot = ArticleSnapshot(
+        status="running",
+        created_by_oid=PLAIN_USER["oid"],
+        created_by_name=PLAIN_USER["name"],
+        weclapp_tenant=TENANT,
+    )
+    db_session.add(snapshot)
+    db_session.commit()
+
+    data_rows = [master_row_to_snapshot_data(_sample_master("010.020.0010"))]
+    indexed = [extract_indexed_fields(row) for row in data_rows]
+    columns = build_snapshot_columns(data_rows)
+    client = MagicMock()
+
+    with (
+        patch("app.weclapp.weclapp_client_for", return_value=client),
+        patch("app.snapshots.flatten_articles", return_value=(data_rows, indexed, columns)),
+        patch("app.snapshots.apply_retention", side_effect=RuntimeError("disk")),
+        caplog.at_level("ERROR", logger="app.snapshots"),
+    ):
+        result = pull_snapshot_rows(db_session, snapshot, oid=PLAIN_USER["oid"])
+
+    db_session.refresh(snapshot)
+    assert result["row_count"] == 1
+    assert result["deleted_snapshots"] == []
+    assert snapshot.status == "complete"
+    assert snapshot.row_count == 1
+    assert (
+        db_session.scalar(
+            select(func.count()).where(ArticleSnapshotRow.snapshot_id == snapshot.id)
+        )
+        == 1
+    )
+    assert "snapshot retention failed" in caplog.text
 
 
 def test_job_handler_registered():
