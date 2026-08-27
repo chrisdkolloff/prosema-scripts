@@ -62,6 +62,23 @@ Enable **Always On**. The worker is a `threading.Thread` inside the web process;
 
 Queued jobs themselves live in PostgreSQL and are picked up after a restart.
 
+### Release (dev → main → tools.prosema.ch)
+
+Work on `dev`. Deploying squash-merges that work onto `main` as one commit and pushes; GitHub Actions then deploys to Azure.
+
+```bash
+# On dev: lint + pytest, then print the next command
+./release.sh
+
+# Preview the squash commit message and push plan
+./release.sh --dry-run --push
+
+# Run checks, squash-merge with an auto message from the dev commits, push
+./release.sh --push
+```
+
+`--push` runs `scripts/squash-merge-dev-to-main.sh --push --auto-message`: one commit on `main`, reset `dev` to that commit, push `main`, force-with-lease push `dev`. Azure deploys from `origin/main`.
+
 ## weclapp tokens (per user)
 
 The web app does not use `WECLAPP_API_TOKEN`. Each signed-in user stores their

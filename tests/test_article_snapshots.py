@@ -172,7 +172,12 @@ def test_worker_writes_rows_in_one_transaction_and_failure_leaves_no_rows(db_ses
     db_session.refresh(snapshot)
     assert snapshot.status == "complete"
     assert snapshot.row_count == 2
-    assert db_session.scalar(select(func.count()).select_from(ArticleSnapshotRow)) == 2
+    assert (
+        db_session.scalar(
+            select(func.count()).where(ArticleSnapshotRow.snapshot_id == snapshot.id)
+        )
+        == 2
+    )
 
     failing = ArticleSnapshot(
         status="running",
@@ -234,12 +239,12 @@ def test_stand_banner_fresh_pull_is_green_list_link_is_yellow(db_session, user_c
     fresh = user_client.get(f"/artikel-uebersicht/{snapshot.id}?neu=1")
     assert fresh.status_code == 200
     assert "snapshot-stand-banner--current" in fresh.text
-    assert "snapshot-stand-banner__close" in fresh.text
+    assert 'class="snapshot-stand-banner__close"' in fresh.text
 
     from_list = user_client.get(f"/artikel-uebersicht/{snapshot.id}")
     assert from_list.status_code == 200
     assert "snapshot-stand-banner--archive" in from_list.text
-    assert "snapshot-stand-banner__close" not in from_list.text
+    assert 'class="snapshot-stand-banner__close"' not in from_list.text
 
 
 @patch("app.routes.snapshots.create_snapshot_pull")
@@ -438,10 +443,20 @@ def test_retention_deletes_21st_oldest_snapshot(db_session):
 
     assert len(deleted) == 1
     assert deleted[0] == ids[0]
-    remaining = list(db_session.scalars(select(ArticleSnapshot)))
+    remaining = list(
+        db_session.scalars(
+            select(ArticleSnapshot).where(ArticleSnapshot.weclapp_tenant == TENANT)
+        )
+    )
     assert len(remaining) == 20
     assert db_session.get(ArticleSnapshot, ids[0]) is None
-    assert db_session.scalar(select(func.count()).select_from(ArticleSnapshotRow)) == 20
+    kept_ids = [item.id for item in remaining]
+    assert (
+        db_session.scalar(
+            select(func.count()).where(ArticleSnapshotRow.snapshot_id.in_(kept_ids))
+        )
+        == 20
+    )
 
 
 def test_job_handler_registered():

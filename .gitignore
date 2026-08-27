@@ -5,6 +5,7 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 *.egg-info/
+* [conflicted].*
 output/**/*
 !output/processing/.gitkeep
 !output/export/.gitkeep

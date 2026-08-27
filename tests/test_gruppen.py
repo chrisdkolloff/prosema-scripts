@@ -17,6 +17,7 @@ from app.auth import get_current_user
 from app.db import engine, get_db
 from app.groups_service import (
     AmbiguousGroupMatch,
+    MSG_CODE_LOCKED,
     add_alias,
     create_hauptgruppe,
     create_hauptgruppe_with_untergruppe,
@@ -322,7 +323,7 @@ def test_locked_code_change_returns_german_error_page(admin_client, db_session):
         follow_redirects=False,
     )
     assert response.status_code == 400
-    assert "Es befinden sich bereits Artikel in dieser Hauptgruppe" in response.text
+    assert MSG_CODE_LOCKED in response.text
     assert "Traceback" not in response.text
 
 
