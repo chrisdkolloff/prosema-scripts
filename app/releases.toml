@@ -1,7 +1,16 @@
 # PROSEMA release history — edit this file to bump the version and document changes.
 # The top-level `version` is shown in the site header; `[[releases]]` entries appear on /changelog.
 
-version = "0.2.3"
+version = "0.2.4"
+
+[[releases]]
+version = "0.2.4"
+date = "2026-08-27"
+summary = "Implement job heartbeat mechanism and enhance job management"
+changes = [
+  "Implement job heartbeat mechanism and enhance job management",
+]
+
 
 [[releases]]
 version = "0.2.3"

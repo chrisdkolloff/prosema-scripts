@@ -16,6 +16,7 @@ from starlette.responses import Response
 
 from app.auth import callback, login, logout
 from app.config import settings
+from app.jobs import _shutdown as _worker_shutdown
 from app.jobs import worker_loop
 from app.routes import batches as batches_routes
 from app.routes import einstellungen as einstellungen_routes
@@ -31,31 +32,34 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
+logger = logging.getLogger(__name__)
 
 _APP_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(_APP_DIR / "templates"))
 _version_info = load_version_info()
 templates.env.globals["app_version"] = _version_info.version
 
-_worker_stop = threading.Event()
 _worker_thread: threading.Thread | None = None
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     global _worker_thread
-    _worker_stop.clear()
+    _worker_shutdown.clear()
     _worker_thread = threading.Thread(
         target=worker_loop,
-        args=(_worker_stop,),
         name="job-worker",
         daemon=True,
     )
     _worker_thread.start()
     yield
-    _worker_stop.set()
+    _worker_shutdown.set()
     if _worker_thread is not None:
-        _worker_thread.join(timeout=8)
+        _worker_thread.join(timeout=10)
+        if _worker_thread.is_alive():
+            logger.warning("job worker did not stop within 10s join timeout")
+        else:
+            logger.info("job worker stopped cleanly")
 
 
 app = FastAPI(title="PROSEMA", lifespan=lifespan)

@@ -48,6 +48,8 @@ class Job(Base):
     )
     started_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    heartbeat_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    worker_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by_oid: Mapped[str] = mapped_column(Text, nullable=False)
     created_by_name: Mapped[str] = mapped_column(Text, nullable=False)
     result: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
@@ -60,6 +62,7 @@ class Job(Base):
             name="ck_jobs_status",
         ),
         Index("ix_jobs_status_created_at", "status", "created_at"),
+        Index("ix_jobs_status_heartbeat", "status", "heartbeat_at"),
     )
 
 

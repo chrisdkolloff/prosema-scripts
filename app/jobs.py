@@ -2,21 +2,25 @@
 
 This design assumes a single App Service instance. ``FOR UPDATE SKIP LOCKED``
 is what makes claiming safe if that ever stops being true: concurrent workers
-will not pick up the same queued row.
+will not pick up the same queued row. The same locking is used when sweeping
+stale ``running`` leases after a process restart.
 """
 
 from __future__ import annotations
 
 import inspect
 import logging
+import os
+import socket
 import threading
 import time
 import traceback
+import uuid
 from collections.abc import Callable, Mapping
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
@@ -30,11 +34,24 @@ HANDLERS: dict[str, JobHandler] = {}
 
 TERMINAL_STATUSES = frozenset({"succeeded", "failed"})
 
+# Longest known job (article snapshot) runs ~16 seconds.
+STALE_JOB_TIMEOUT_SECONDS = 300
+MAX_JOB_ATTEMPTS = 3
+
+_shutdown = threading.Event()
+_WORKER_ID: str | None = None
+
 JOB_TYPE_LABELS = {
     "noop": "Testlauf",
     "weclapp_article_snapshot": "Artikel-Abfrage",
     "weclapp_supply_source_export": "Bezugsquellen-Abfrage",
 }
+
+_STALE_FAILURE_ERROR = (
+    "Auftrag nach 3 Versuchen abgebrochen. Der Hintergrundprozess wurde "
+    "mehrfach unterbrochen. Bitte den Auftrag neu starten oder Christopher "
+    "informieren."
+)
 
 
 def job_handler(name: str) -> Callable[[JobHandler], JobHandler]:
@@ -142,6 +159,42 @@ def _invoke_handler(handler: JobHandler, db: Session, job: Job) -> dict:
     return handler(db, payload)
 
 
+class _JobHeartbeat:
+    """Daemon thread that refreshes ``heartbeat_at`` every 30s in its own session."""
+
+    def __init__(self, job_id: uuid.UUID) -> None:
+        self._job_id = job_id
+        self._stop = threading.Event()
+        self._thread = threading.Thread(
+            target=self._run,
+            name=f"job-heartbeat-{job_id}",
+            daemon=True,
+        )
+
+    def start(self) -> None:
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+        self._thread.join(timeout=1.0)
+
+    def _run(self) -> None:
+        while not self._stop.wait(30.0):
+            try:
+                with SessionLocal() as db:
+                    db.execute(
+                        update(Job)
+                        .where(Job.id == self._job_id)
+                        .values(heartbeat_at=datetime.now(UTC))
+                    )
+                    db.commit()
+            except Exception:
+                logger.exception(
+                    "job heartbeat update failed for %s",
+                    self._job_id,
+                )
+
+
 def _claim_one_job(db: Session) -> Job | None:
     stmt = (
         select(Job)
@@ -154,11 +207,76 @@ def _claim_one_job(db: Session) -> Job | None:
     if job is None:
         db.rollback()
         return None
+    now = datetime.now(UTC)
     job.status = "running"
-    job.started_at = datetime.now(UTC)
+    job.started_at = now
+    job.heartbeat_at = now
+    job.worker_id = _WORKER_ID
     job.attempts += 1
     db.commit()
     return job
+
+
+def _requeue_job_row(job: Job) -> None:
+    job.status = "queued"
+    job.started_at = None
+    job.heartbeat_at = None
+    job.worker_id = None
+
+
+def _sweep_stale_jobs(db: Session) -> None:
+    cutoff = datetime.now(UTC) - timedelta(seconds=STALE_JOB_TIMEOUT_SECONDS)
+    stmt = (
+        select(Job)
+        .where(
+            Job.status == "running",
+            or_(Job.heartbeat_at.is_(None), Job.heartbeat_at < cutoff),
+        )
+        .with_for_update(skip_locked=True)
+    )
+    stale = list(db.scalars(stmt).all())
+    if not stale:
+        db.rollback()
+        return
+
+    for job in stale:
+        last_heartbeat = job.heartbeat_at
+        if job.attempts < MAX_JOB_ATTEMPTS:
+            _requeue_job_row(job)
+            logger.warning(
+                "job worker requeued stale job %s type=%s attempts=%s last_heartbeat=%s",
+                job.id,
+                job.job_type,
+                job.attempts,
+                last_heartbeat,
+            )
+        else:
+            job.status = "failed"
+            job.finished_at = datetime.now(UTC)
+            job.error = _STALE_FAILURE_ERROR
+            logger.error(
+                "job worker failed stale job %s type=%s attempts=%s last_heartbeat=%s",
+                job.id,
+                job.job_type,
+                job.attempts,
+                last_heartbeat,
+            )
+    db.commit()
+
+
+def _requeue_on_shutdown(job_id: uuid.UUID) -> None:
+    """Return an in-flight job to queued if shutdown interrupted it mid-run."""
+    with SessionLocal() as db:
+        job = db.get(Job, job_id)
+        if job is None or job.status != "running":
+            return
+        _requeue_job_row(job)
+        db.commit()
+        logger.warning(
+            "job worker requeued job %s type=%s on shutdown",
+            job.id,
+            job.job_type,
+        )
 
 
 def _execute_job(db: Session, job: Job) -> None:
@@ -186,16 +304,24 @@ def _execute_job(db: Session, job: Job) -> None:
     )
 
 
-def worker_loop(stop_event: threading.Event) -> None:
-    logger.info("job worker started")
+def worker_loop() -> None:
+    global _WORKER_ID
+    _WORKER_ID = f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
+    logger.info("job worker started worker_id=%s", _WORKER_ID)
     last_heartbeat = 0.0
 
-    while not stop_event.is_set():
+    while not _shutdown.is_set():
         try:
             now = time.monotonic()
             if now - last_heartbeat >= 30:
                 logger.info("job worker heartbeat")
                 last_heartbeat = now
+
+            with SessionLocal() as db:
+                _sweep_stale_jobs(db)
+
+            if _shutdown.is_set():
+                break
 
             with SessionLocal() as db:
                 claim_started = time.perf_counter()
@@ -214,11 +340,22 @@ def worker_loop(stop_event: threading.Event) -> None:
                         job.id,
                         job.job_type,
                     )
-                    _execute_job(db, job)
+                    heartbeat = _JobHeartbeat(job.id)
+                    heartbeat.start()
+                    try:
+                        if _shutdown.is_set():
+                            # Claimed under shutdown — do not start work.
+                            pass
+                        else:
+                            _execute_job(db, job)
+                    finally:
+                        heartbeat.stop()
+                        if _shutdown.is_set():
+                            _requeue_on_shutdown(job.id)
                     continue
 
-            stop_event.wait(2.0)
+            _shutdown.wait(2.0)
 
         except Exception:
             logger.exception("worker loop iteration failed")
-            stop_event.wait(2.0)
+            _shutdown.wait(2.0)
