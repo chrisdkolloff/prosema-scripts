@@ -187,14 +187,38 @@ def _execute_job(db: Session, job: Job) -> None:
 
 
 def worker_loop(stop_event: threading.Event) -> None:
+    logger.info("job worker started")
+    last_heartbeat = 0.0
+
     while not stop_event.is_set():
         try:
+            now = time.monotonic()
+            if now - last_heartbeat >= 30:
+                logger.info("job worker heartbeat")
+                last_heartbeat = now
+
             with SessionLocal() as db:
+                claim_started = time.perf_counter()
                 job = _claim_one_job(db)
+                claim_duration = time.perf_counter() - claim_started
+
+                if claim_duration > 1.0:
+                    logger.warning(
+                        "job claim took %.2fs",
+                        claim_duration,
+                    )
+
                 if job is not None:
+                    logger.info(
+                        "job worker claimed job %s type=%s",
+                        job.id,
+                        job.job_type,
+                    )
                     _execute_job(db, job)
                     continue
+
             stop_event.wait(2.0)
+
         except Exception:
             logger.exception("worker loop iteration failed")
             stop_event.wait(2.0)
