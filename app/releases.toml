@@ -1,7 +1,19 @@
 # PROSEMA release history — edit this file to bump the version and document changes.
 # The top-level `version` is shown in the site header; `[[releases]]` entries appear on /changelog.
 
-version = "0.2.1"
+version = "0.2.2"
+
+[[releases]]
+version = "0.2.2"
+date = "2026-08-27"
+summary = "Gruppen-Verwaltung legt Haupt- und Untergruppe in weclapp an"
+changes = [
+  "Neue Hauptgruppe wird nur noch zusammen mit der ersten Untergruppe angelegt",
+  "Auf tools.prosema.ch werden beide als Artikelkategorien in weclapp erstellt; lokal bleibt weclapp unberührt",
+  "Scheitert weclapp, speichert die Tools-Website nichts",
+  "Umbenennen, Löschen und Shopify-Auswahllisten werden nicht nach weclapp übernommen",
+  "Schulungsnotiz unter docs/gruppen-verwaltung.md",
+]
 
 [[releases]]
 version = "0.2.1"
