@@ -72,7 +72,6 @@ Squash-merge only (no tests):
 
 Pushing main deploys to Azure App Service (tools.prosema.ch).
 --push runs alembic upgrade head against PRODUCTION_DATABASE_URL first.
-GitHub Actions also migrates from App Service settings before the zip deploy.
 EOF
 }
 

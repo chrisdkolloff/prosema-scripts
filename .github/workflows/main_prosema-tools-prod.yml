@@ -67,33 +67,9 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_385A209FC44D4AEA8A341BF367512754 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_36F423859DBF41BF99BD47389550C51F }}
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Apply database migrations
-        env:
-          AZURE_WEBAPP_NAME: prosema-tools-prod
-          AZURE_WEBAPP_RESOURCE_GROUP: ${{ vars.AZURE_WEBAPP_RESOURCE_GROUP }}
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
-          RG="${AZURE_WEBAPP_RESOURCE_GROUP:-}"
-          if [[ -z "$RG" ]]; then
-            RG="$(az webapp list --query "[?name=='${AZURE_WEBAPP_NAME}'].resourceGroup" -o tsv)"
-          fi
-          if [[ -z "$RG" ]]; then
-            echo "Could not resolve resource group for ${AZURE_WEBAPP_NAME}." >&2
-            exit 1
-          fi
-          SETTINGS="${RUNNER_TEMP}/appsettings.json"
-          az webapp config appsettings list \
-            --name "${AZURE_WEBAPP_NAME}" \
-            --resource-group "$RG" \
-            --output json > "$SETTINGS"
-          python scripts/alembic_upgrade_from_appsettings.py "$SETTINGS"
-          rm -f "$SETTINGS"
+      # Migrations run on the operator laptop in ./release.sh --push
+      # (PRODUCTION_DATABASE_URL). GitHub-hosted runners are not on the
+      # Postgres firewall, so alembic from this job cannot reach the database.
 
       - name: 'Deploy to Azure Web App'
         uses: azure/webapps-deploy@v3

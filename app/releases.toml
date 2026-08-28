@@ -1,7 +1,16 @@
 # PROSEMA release history — edit this file to bump the version and document changes.
 # The top-level `version` is shown in the site header; `[[releases]]` entries appear on /changelog.
 
-version = "1.0.1"
+version = "1.0.2"
+
+[[releases]]
+version = "1.0.2"
+date = "2026-08-28"
+summary = "Update README and release process documentation to clarify migration steps and GitHub Actions limitations. Remove migration commands from GitHub Actions due to Azure Postgres firewall restrictions, ensuring migrations are handled in release.sh. Adjust related documentation for consistency."
+changes = [
+  "Update README and release process documentation to clarify migration steps and GitHub Actions limitations. Remove migration commands from GitHub Actions due to Azure Postgres firewall restrictions, ensuring migrations are handled in release.sh. Adjust related documentation for consistency.",
+]
+
 
 [[releases]]
 version = "1.0.1"
