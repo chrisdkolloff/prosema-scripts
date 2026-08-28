@@ -7,13 +7,15 @@
 #   ./release.sh
 #   ./release.sh --push
 #
-# Checks (pytest, ruff) always run unless skipped. --dry-run only skips the
-# git squash/push.
+# Checks (pytest, ruff) always run unless skipped. --dry-run skips git
+# squash/push and only prints production Alembic current vs head.
 #
 # What each step does:
-#   1. Tests   — pytest (and ruff, if installed)
-#   2. Release — optional squash-merge of dev into main, with an auto message
-#                built from the dev commits, then push main + reset/push dev
+#   1. Tests    — pytest (and ruff, if installed)
+#   2. Migrate  — alembic upgrade head against production (before the push, so
+#                 the schema is ready when Azure starts the new code)
+#   3. Release  — optional squash-merge of dev into main, with an auto message
+#                 built from the dev commits, then push main + reset/push dev
 #
 # Environment overrides:
 #   DEV_BRANCH=dev MAIN_BRANCH=main
@@ -26,6 +28,7 @@ cd "${ROOT}"
 DEV_BRANCH="${DEV_BRANCH:-dev}"
 MAIN_BRANCH="${MAIN_BRANCH:-main}"
 SQUASH_SCRIPT="${ROOT}/scripts/squash-merge-dev-to-main.sh"
+MIGRATE_SCRIPT="${ROOT}/scripts/upgrade_prod_db.sh"
 
 DRY_RUN=false
 SKIP_TESTS=false
@@ -47,7 +50,7 @@ Options:
   --dry-run      Run checks, then preview the squash/push (no git changes)
   --skip-tests   Skip pytest
   --skip-lint    Skip ruff
-  --push         Squash-merge dev into main (--auto-message), bump version, and push
+  --push         Upgrade production DB, squash-merge dev into main, bump version, and push
   --no-bump      Do not change app/releases.toml
   --minor        Bump minor version (0.2.2 → 0.3.0)
   --major        Bump major version (0.2.2 → 1.0.0)
@@ -61,12 +64,15 @@ Prerequisites:
   - checkout on dev before running
   - Python 3.12 venv with the app installed (pip install -e ".[dev]")
   - Postgres available for pytest
+  - PRODUCTION_DATABASE_URL in .env (for --push)
 
 Squash-merge only (no tests):
   ./scripts/squash-merge-dev-to-main.sh --push --auto-message
   ./scripts/squash-merge-dev-to-main.sh --dry-run --auto-message --push
 
 Pushing main deploys to Azure App Service (tools.prosema.ch).
+--push runs alembic upgrade head against PRODUCTION_DATABASE_URL first.
+GitHub Actions also migrates from App Service settings before the zip deploy.
 EOF
 }
 
@@ -150,6 +156,10 @@ preflight() {
     echo "Error: missing executable ${SQUASH_SCRIPT}" >&2
     exit 1
   fi
+  if [[ ! -x "${MIGRATE_SCRIPT}" ]]; then
+    echo "Error: missing executable ${MIGRATE_SCRIPT}" >&2
+    exit 1
+  fi
 }
 
 step_lint() {
@@ -184,6 +194,21 @@ step_tests() {
   "${py}" -m pytest
 }
 
+step_prod_migrate() {
+  if [[ "${DO_PUSH}" != true ]]; then
+    return 0
+  fi
+
+  if [[ "${DRY_RUN}" == true ]]; then
+    log "Production database (dry run)"
+    "${MIGRATE_SCRIPT}" --dry-run
+    return 0
+  fi
+
+  log "Upgrading production database (alembic upgrade head)"
+  "${MIGRATE_SCRIPT}" --yes
+}
+
 step_release() {
   if [[ "${DO_PUSH}" != true ]]; then
     return 0
@@ -216,6 +241,7 @@ main() {
   preflight
   step_lint
   step_tests
+  step_prod_migrate
   step_release
 
   log "Done"
@@ -223,7 +249,8 @@ main() {
   if [[ "${DRY_RUN}" == true ]]; then
     echo "Dry run finished — no next steps."
   elif [[ "${DO_PUSH}" == true ]]; then
-    echo "Release pushed. Azure should deploy tools.prosema.ch from origin/${MAIN_BRANCH}."
+    echo "Release pushed. Production schema is at Alembic head."
+    echo "Azure should deploy tools.prosema.ch from origin/${MAIN_BRANCH}."
   elif [[ -n "$(git status --porcelain)" ]]; then
     echo "Working tree has changes. Commit them on ${DEV_BRANCH} first, then:"
     echo ""

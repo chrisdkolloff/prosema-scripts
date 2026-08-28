@@ -80,7 +80,9 @@ Work on `dev`. Deploying squash-merges that work onto `main` as one commit and p
 ./release.sh --push
 ```
 
-`--push` runs `scripts/squash-merge-dev-to-main.sh --push --auto-message`: one commit on `main`, reset `dev` to that commit, push `main`, force-with-lease push `dev`. Azure deploys from `origin/main`.
+`--push` runs `alembic upgrade head` against `PRODUCTION_DATABASE_URL` first (schema before new code), then `scripts/squash-merge-dev-to-main.sh --push --auto-message`: one commit on `main`, reset `dev` to that commit, push `main`, force-with-lease push `dev`. GitHub Actions migrates again from App Service settings, then deploys the zip. Azure deploys from `origin/main`.
+
+Set `PRODUCTION_DATABASE_URL` in `.env` (same database as App Service `DATABASE_URL`; never commit it). Preview with `./scripts/upgrade_prod_db.sh --dry-run`.
 
 ## weclapp tokens (per user)
 

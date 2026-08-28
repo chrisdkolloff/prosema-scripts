@@ -45,3 +45,6 @@ weclapp's literal label). The registry owns the code; weclapp owns its label.
 Production was at `010_sales_article_number_always` when this feature landed.
 Deploy `011_job_leases`, confirm the app is up, then deploy
 `012_batch_submit_artefacts`. Do not land both on one startup.
+
+Later releases run `alembic upgrade head` from `./release.sh --push` and again
+in GitHub Actions before the App Service zip deploy.

@@ -87,12 +87,14 @@ redact_url() {
 }
 
 looks_local() {
-  local url="${1,,}"
+  local url
+  url="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
   [[ "$url" == *localhost* || "$url" == *127.0.0.1* || "$url" == *"@host.docker.internal"* ]]
 }
 
 looks_production() {
-  local url="${1,,}"
+  local url
+  url="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
   [[ "$url" == *azure* || "$url" == *tools.prosema* || "$url" == *prod* ]]
 }
 

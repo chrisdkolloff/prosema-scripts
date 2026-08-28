@@ -1,7 +1,17 @@
 # PROSEMA release history — edit this file to bump the version and document changes.
 # The top-level `version` is shown in the site header; `[[releases]]` entries appear on /changelog.
 
-version = "1.0.0"
+version = "1.0.1"
+
+[[releases]]
+version = "1.0.1"
+date = "2026-08-28"
+summary = "Refactor URL handling in pull-prod-db.sh and upgrade_prod_db.sh to improve case insensitivity. Replace direct string manipulation with printf and tr for better readability and maintainability. (+1 more)"
+changes = [
+  "Enhance release process by adding production database migration step and updating documentation. Update .env.example to clarify production database URL usage, modify README to reflect new migration commands, and improve release.sh to include alembic upgrade before deployment. Update GitHub Actions workflow to apply database migrations during deployment.",
+  "Refactor URL handling in pull-prod-db.sh and upgrade_prod_db.sh to improve case insensitivity. Replace direct string manipulation with printf and tr for better readability and maintainability.",
+]
+
 
 [[releases]]
 version = "1.0.0"
