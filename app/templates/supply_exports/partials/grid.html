@@ -1,28 +1,28 @@
 <div id="supply-export-grid-panel">
-  <div class="batch-grid-toolbar">
-    <p class="batch-filter-count">
+  <div class="d-flex align-items-baseline justify-content-between gap-3 mb-2 flex-wrap">
+    <p class="mb-0">
       {{ format_swiss_number(total) }} Treffer
       · Mit Änderung: {{ format_swiss_number(blocks.included) }}
     </p>
-    <div class="supply-toolbar-actions">
-      <button type="button" class="btn btn-secondary btn-small" id="supply-column-toggle" aria-expanded="false" aria-controls="supply-column-picker">
+    <div class="d-flex align-items-center gap-2">
+      <button type="button" class="btn btn-outline-secondary btn-sm" id="supply-column-toggle" aria-expanded="false" aria-controls="supply-column-picker">
         Spalten
       </button>
-      <p id="supply-save-status" class="batch-save-status" role="status">Gespeichert</p>
+      <p id="supply-save-status" class="batch-save-status mb-0" role="status">Gespeichert</p>
     </div>
   </div>
   {% if column_picker %}
-  <div id="supply-column-picker" class="supply-column-picker" hidden>
-    <div class="supply-column-presets">
+  <div id="supply-column-picker" class="supply-column-picker mb-3" hidden>
+    <div class="d-flex flex-wrap gap-2 mb-2">
       {% for preset in column_picker.presets %}
-      <button type="button" class="btn btn-secondary btn-small" data-column-preset="{{ preset.id }}">{{ preset.label }}</button>
+      <button type="button" class="btn btn-outline-secondary btn-sm" data-column-preset="{{ preset.id }}">{{ preset.label }}</button>
       {% endfor %}
     </div>
     <div class="supply-column-groups">
       {% for group in column_picker.groups %}
       <details class="supply-column-group" {% if not group.collapsed %}open{% endif %}>
         <summary>{{ group.label }}</summary>
-        {% if group.hint %}<p class="muted supply-column-hint">{{ group.hint }}</p>{% endif %}
+        {% if group.hint %}<p class="text-body-secondary small supply-column-hint">{{ group.hint }}</p>{% endif %}
         <ul>
           {% for entry in group.entries %}
           <li>
@@ -39,7 +39,7 @@
               <span class="supply-column-letter">{{ entry.weclapp_column }}</span>
               {% endif %}
               {% if entry.read_only %}
-              <span class="badge supply-readonly-badge">nur Anzeige</span>
+              <span class="badge text-bg-secondary supply-readonly-badge">nur Anzeige</span>
               {% endif %}
             </label>
           </li>
@@ -50,7 +50,9 @@
     </div>
   </div>
   {% endif %}
-  <div id="supply-spreadsheet" class="batch-spreadsheet supply-export-spreadsheet"></div>
+  <div class="prosema-grid">
+    <div id="supply-spreadsheet" class="batch-spreadsheet supply-export-spreadsheet"></div>
+  </div>
   <script type="application/json" id="supply-grid-config">{{ grid_config | tojson }}</script>
   {% if pages > 1 %}
   <nav class="batch-pagination" aria-label="Seiten">

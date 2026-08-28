@@ -1,20 +1,24 @@
 {% extends "base.html" %}
 {% block title %}Artikel-Ansicht — PROSEMA{% endblock %}
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/">Home</a></li>
+<li class="breadcrumb-item active"><span>Artikel-Ansicht</span></li>
+{% endblock %}
 {% block content %}
-  <h1>Artikel-Ansicht</h1>
-  <p class="lede">Ansehen ist ohne weclapp möglich. Einen Snapshot aktualisieren braucht Zugriff.</p>
+  <h1 class="mb-2">Artikel-Ansicht</h1>
+  <p class="text-body-secondary">Ansehen ist ohne weclapp möglich. Einen Snapshot aktualisieren braucht Zugriff.</p>
   <p>Noch kein Artikel-Snapshot vorhanden.</p>
   {% if refresh_error or access.kind != "ok" %}
-  <p class="error-banner">
+  <div class="alert alert-danger" role="alert">
     {% if access.kind != "ok" %}
       {{ access.message }}
     {% else %}
       Snapshot konnte nicht aktualisiert werden.
     {% endif %}
     <a href="{{ settings_path }}">weclapp-Einstellungen</a>
-  </p>
+  </div>
   {% endif %}
   <form method="post" action="/artikel/aktualisieren">
-    <button type="submit" class="btn">Snapshot aktualisieren</button>
+    <button type="submit" class="btn btn-primary">Snapshot aktualisieren</button>
   </form>
 {% endblock %}

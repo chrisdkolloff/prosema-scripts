@@ -28,7 +28,7 @@ from app.groups_service import (
     soft_delete_hauptgruppe,
     soft_delete_untergruppe,
 )
-from app.gruppen_diagram import build_sunburst_figure, figure_html, load_active_group_tree
+from app.gruppen_diagram import build_sunburst_arcs, load_active_group_tree
 from app.models import GruppenAlias, Hauptgruppe, Untergruppe
 from app.weclapp import NoWeclappToken, WeclappError, map_weclapp_error, weclapp_client_for
 from app.weclapp_categories import (
@@ -208,11 +208,18 @@ def gruppen_diagramm(
     user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
-    fig = build_sunburst_figure(load_active_group_tree(db))
+    tree = load_active_group_tree(db)
+    n_unter = sum(len(children) for _, children in tree)
     return request.app.state.templates.TemplateResponse(
         request,
         "gruppen/diagramm.html",
-        _ctx(user, plot_html=figure_html(fig)),
+        _ctx(
+            user,
+            tree=tree,
+            arcs=build_sunburst_arcs(tree),
+            n_haupt=len(tree),
+            n_unter=n_unter,
+        ),
     )
 
 

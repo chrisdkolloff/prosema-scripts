@@ -1,8 +1,8 @@
-# Gruppen-Verwaltung – was geht und was nicht
+# Gruppenverwaltung – was geht und was nicht
 
 *Stand: August 2026. Zum späteren Schulen der Tools-Website.*
 
-Die **Gruppen-Verwaltung** pflegt Hauptgruppen und Untergruppen. Daraus entstehen die PROSEMA-Artikelnummern (`MMM.SSS.…`).
+Die **Gruppenverwaltung** pflegt Hauptgruppen und Untergruppen. Daraus entstehen die PROSEMA-Artikelnummern (`MMM.SSS.…`).
 
 Adresse: [https://tools.prosema.ch/gruppen](https://tools.prosema.ch/gruppen)
 
@@ -35,7 +35,7 @@ Ausfüllen:
 
 Was danach stimmt:
 
-- Beide Einträge stehen in der Gruppen-Verwaltung.
+- Beide Einträge stehen in der Gruppenverwaltung.
 - In weclapp erscheinen beide als **Artikelkategorien**: zuerst die Hauptgruppe, die Untergruppe darunter.
 
 Wenn weclapp ablehnt, speichert auch die Tools-Website **nichts**. Es bleibt nichts Halbes stehen.

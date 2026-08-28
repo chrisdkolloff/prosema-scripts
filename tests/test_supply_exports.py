@@ -1,4 +1,4 @@
-"""Bezugsquellen-Export: discounts, validation, CSV archive."""
+"""Bezugsquellenexport: discounts, validation, CSV archive."""
 
 from __future__ import annotations
 
@@ -177,7 +177,7 @@ def _add_row(
 def test_list_page(user_client):
     response = user_client.get("/bezugsquellen")
     assert response.status_code == 200
-    assert "Bezugsquellen-Export" in response.text
+    assert "Bezugsquellenexport" in response.text
     assert "Neue Abfrage starten" in response.text
 
 

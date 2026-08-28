@@ -1,73 +1,88 @@
 {# Jspreadsheet CE {{ jspreadsheet_version }} + jSuites {{ jsuites_version }} #}
 {% extends "base.html" %}
-{% block title %}Artikel-Übersicht — PROSEMA{% endblock %}
-{% block main_class %} grid{% endblock %}
+{% block title %}Artikelübersicht — PROSEMA{% endblock %}
+{% block container_class %}container-fluid px-4{% endblock %}
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/">Home</a></li>
+<li class="breadcrumb-item"><a href="/artikel-uebersicht">Artikelübersicht</a></li>
+<li class="breadcrumb-item active"><span>{{ format_timestamp(snapshot.created_at) }}</span></li>
+{% endblock %}
 {% block extra_head %}
   <link rel="stylesheet" href="/static/jsuites.css">
   <link rel="stylesheet" href="/static/jspreadsheet.css">
 {% endblock %}
 {% block content %}
-  <p class="back-link"><a href="/artikel-uebersicht">Zur Übersicht</a></p>
+  <p class="mb-2"><a href="/artikel-uebersicht">Zur Übersicht</a></p>
 
   {% if snapshot.status == "running" %}
-  <h1>Artikel-Übersicht</h1>
-  <p class="snapshot-stand-banner">Abfrage läuft…</p>
+  <h1 class="mb-2">Artikelübersicht</h1>
+  <div class="alert alert-info" role="status">Abfrage läuft…</div>
   <div
     id="snapshot-status-panel"
     hx-get="/artikel-uebersicht/{{ snapshot.id }}/status{% if is_fresh_pull %}?neu=1{% endif %}"
     hx-trigger="every 3s"
     hx-swap="innerHTML"
   >
-    <p class="muted">Die Abfrage kann einige Minuten dauern. Diese Seite aktualisiert sich automatisch.</p>
+    <p class="text-body-secondary">Die Abfrage kann einige Minuten dauern. Diese Seite aktualisiert sich automatisch.</p>
   </div>
 
   {% elif snapshot.status == "failed" %}
-  <h1>Artikel-Übersicht</h1>
-  <p class="error-banner">Abfrage fehlgeschlagen{% if snapshot.error %}: {{ snapshot.error }}{% endif %}</p>
+  <h1 class="mb-2">Artikelübersicht</h1>
+  <div class="alert alert-danger" role="alert">Abfrage fehlgeschlagen{% if snapshot.error %}: {{ snapshot.error }}{% endif %}</div>
 
   {% else %}
   {% include "snapshots/partials/stand_banner.html" %}
 
-  <form
-    class="inline-form batch-filter-bar"
-    method="get"
-    action="/artikel-uebersicht/{{ snapshot.id }}{% if viewer_qs %}?{{ viewer_qs }}{% endif %}"
-    hx-get="/artikel-uebersicht/{{ snapshot.id }}{% if viewer_qs %}?{{ viewer_qs }}{% endif %}"
-    hx-target="#snapshot-grid-panel"
-    hx-select="#snapshot-grid-panel"
-    hx-swap="outerHTML"
-    hx-push-url="true"
-  >
-    {% if is_fresh_pull %}
-    <input type="hidden" name="neu" value="1">
-    {% endif %}
-    <label>
-      Suche
-      <input type="search" name="q" value="{{ filters.query }}" placeholder="Nummer oder Name">
-    </label>
-    <label>
-      Hauptgruppe
-      <select
-        name="hauptgruppe"
-        hx-get="/artikel-uebersicht/{{ snapshot.id }}/untergruppen"
-        hx-target="#snapshot-untergruppe-label"
+  <div class="card mb-4">
+    <div class="card-body">
+      <form
+        class="row g-3 align-items-end"
+        method="get"
+        action="/artikel-uebersicht/{{ snapshot.id }}{% if viewer_qs %}?{{ viewer_qs }}{% endif %}"
+        hx-get="/artikel-uebersicht/{{ snapshot.id }}{% if viewer_qs %}?{{ viewer_qs }}{% endif %}"
+        hx-target="#snapshot-grid-panel"
+        hx-select="#snapshot-grid-panel"
         hx-swap="outerHTML"
-        hx-trigger="change"
+        hx-push-url="true"
       >
-        <option value="">(alle)</option>
-        {% for value in hauptgruppen %}
-        <option value="{{ value }}" {% if filters.hauptgruppe == value %}selected{% endif %}>{{ value }}</option>
-        {% endfor %}
-      </select>
-    </label>
-    {% include "snapshots/partials/untergruppe_select.html" %}
-    <label class="checkbox-label">
-      <input type="hidden" name="nur_aktive" value="0">
-      <input type="checkbox" name="nur_aktive" value="1" {% if filters.nur_aktive %}checked{% endif %}>
-      Nur aktive Artikel
-    </label>
-    <button type="submit" class="btn">Filtern</button>
-  </form>
+        {% if is_fresh_pull %}
+        <input type="hidden" name="neu" value="1">
+        {% endif %}
+        <div class="col-auto">
+          <label class="form-label" for="snapshot-filter-q">Suche</label>
+          <input class="form-control" id="snapshot-filter-q" type="search" name="q" value="{{ filters.query }}" placeholder="Nummer oder Name">
+        </div>
+        <div class="col-auto">
+          <label class="form-label" for="snapshot-filter-hauptgruppe">Hauptgruppe</label>
+          <select
+            class="form-select"
+            id="snapshot-filter-hauptgruppe"
+            name="hauptgruppe"
+            hx-get="/artikel-uebersicht/{{ snapshot.id }}/untergruppen"
+            hx-target="#snapshot-untergruppe-label"
+            hx-swap="outerHTML"
+            hx-trigger="change"
+          >
+            <option value="">(alle)</option>
+            {% for value in hauptgruppen %}
+            <option value="{{ value }}" {% if filters.hauptgruppe == value %}selected{% endif %}>{{ value }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        {% include "snapshots/partials/untergruppe_select.html" %}
+        <div class="col-auto">
+          <div class="form-check mt-4">
+            <input type="hidden" name="nur_aktive" value="0">
+            <input class="form-check-input" type="checkbox" name="nur_aktive" value="1" id="snapshot-filter-aktive" {% if filters.nur_aktive %}checked{% endif %}>
+            <label class="form-check-label" for="snapshot-filter-aktive">Nur aktive Artikel</label>
+          </div>
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-primary">Filtern</button>
+        </div>
+      </form>
+    </div>
+  </div>
 
   {% include "snapshots/partials/grid.html" %}
   {% endif %}

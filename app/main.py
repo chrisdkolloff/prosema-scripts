@@ -8,7 +8,12 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.openapi.docs import (
+    get_redoc_html,
+    get_swagger_ui_html,
+    get_swagger_ui_oauth2_redirect_html,
+)
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
@@ -37,6 +42,7 @@ logger = logging.getLogger(__name__)
 
 _APP_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(_APP_DIR / "templates"))
+templates.env.auto_reload = settings.environment != "production"
 _version_info = load_version_info()
 templates.env.globals["app_version"] = _version_info.version
 
@@ -64,13 +70,39 @@ async def lifespan(_app: FastAPI):
 
 
 _docs_enabled = settings.environment != "production"
+_BRAND_DIR = _APP_DIR / "static" / "brand"
+_BRAND_FAVICON = "/static/brand/favicon.svg"
 app = FastAPI(
     title="PROSEMA",
     lifespan=lifespan,
-    docs_url="/docs" if _docs_enabled else None,
-    redoc_url="/redoc" if _docs_enabled else None,
+    docs_url=None,
+    redoc_url=None,
     openapi_url="/openapi.json" if _docs_enabled else None,
 )
+if _docs_enabled:
+
+    @app.get("/docs", include_in_schema=False)
+    async def swagger_ui_html() -> HTMLResponse:
+        return get_swagger_ui_html(
+            openapi_url=app.openapi_url,
+            title=f"{app.title} — Docs",
+            oauth2_redirect_url="/docs/oauth2-redirect",
+            swagger_favicon_url=_BRAND_FAVICON,
+        )
+
+    @app.get("/docs/oauth2-redirect", include_in_schema=False)
+    async def swagger_ui_redirect() -> HTMLResponse:
+        return get_swagger_ui_oauth2_redirect_html()
+
+    @app.get("/redoc", include_in_schema=False)
+    async def redoc_html() -> HTMLResponse:
+        return get_redoc_html(
+            openapi_url=app.openapi_url,
+            title=f"{app.title} — ReDoc",
+            redoc_favicon_url=_BRAND_FAVICON,
+        )
+
+
 app.state.templates = templates
 app.add_middleware(
     SessionMiddleware,
@@ -90,6 +122,16 @@ app.include_router(supply_exports_routes.router)
 app.add_api_route("/auth/login", login, methods=["GET"])
 app.add_api_route("/auth/callback", callback, methods=["GET"])
 app.add_api_route("/auth/logout", logout, methods=["GET"])
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon() -> FileResponse:
+    """Browsers request this path on their own; keep it public and unauthenticated."""
+    return FileResponse(
+        _BRAND_DIR / "favicon.ico",
+        media_type="image/x-icon",
+        headers={"Cache-Control": "public, max-age=0, must-revalidate"},
+    )
 
 
 @app.get("/health")

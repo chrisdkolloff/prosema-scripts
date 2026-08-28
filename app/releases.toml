@@ -1,7 +1,33 @@
 # PROSEMA release history — edit this file to bump the version and document changes.
 # The top-level `version` is shown in the site header; `[[releases]]` entries appear on /changelog.
 
-version = "0.2.6"
+version = "1.0.0"
+
+[[releases]]
+version = "1.0.0"
+date = "2026-08-28"
+summary = "Refactor timestamp formatting in snapshots context and template (+17 more)"
+changes = [
+  "0.2.7: Implement article batch submission and enhance registration process",
+  "Retire CLI article import functionality and update documentation",
+  "Refactor article batch processing and enhance template management",
+  "Enhance batch processing and UI components",
+  "Refactor batch detail and grid templates for improved filtering and navigation",
+  "Enhance batch detail and action bar UI for improved user experience",
+  "Update CSS styles for batch spreadsheet and data table for improved readability and user experience",
+  "Refactor batch group handling and enhance dropdown functionality",
+  "Refactor UI components and enhance user experience across templates",
+  "Update terminology for consistency and enhance CSV upload functionality",
+  "Enhance sidebar navigation styles for improved layout and consistency",
+  "Enhance article number handling in batch processing",
+  "Refactor group diagram representation and remove Plotly dependency",
+  "Implement sunburst diagram for group representation and update styles",
+  "Enhance sunburst diagram functionality and improve UI components",
+  "Update group diagram and UI components for improved functionality and clarity",
+  "Refine sunburst diagram label handling and enhance UI components",
+  "Refactor timestamp formatting in snapshots context and template",
+]
+
 
 [[releases]]
 version = "0.2.6"
@@ -45,7 +71,7 @@ changes = [
 [[releases]]
 version = "0.2.2"
 date = "2026-08-27"
-summary = "Gruppen-Verwaltung legt Haupt- und Untergruppe in weclapp an"
+summary = "Gruppenverwaltung legt Haupt- und Untergruppe in weclapp an"
 changes = [
   "Neue Hauptgruppe wird nur noch zusammen mit der ersten Untergruppe angelegt",
   "Auf tools.prosema.ch werden beide als Artikelkategorien in weclapp erstellt; lokal bleibt weclapp unberührt",
@@ -57,7 +83,7 @@ changes = [
 [[releases]]
 version = "0.2.1"
 date = "2026-08-25"
-summary = "Bezugsquellen-Export: Verkaufsartikel-Nummer immer setzen"
+summary = "Bezugsquellenexport: Verkaufsartikel-Nummer immer setzen"
 changes = [
   "Spalte W trägt immer die PROSEMA-Artikelnummer — leer legt weclapp einen neuen Verkaufsartikel an",
   "Verkaufsartikel-Währung default EUR (bestätigt korrekt); Preis-Eintritt muss bewusst gesetzt werden",
@@ -69,7 +95,7 @@ version = "0.2.0"
 date = "2026-08-25"
 summary = "Artikel-Snapshots und Übersicht"
 changes = [
-  "Artikel-Übersicht mit weclapp-Snapshots",
+  "Artikelübersicht mit weclapp-Snapshots",
   "Export und Vergleich von Artikelständen",
 ]
 

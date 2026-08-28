@@ -1,37 +1,41 @@
 <div id="bezeichnung-panel">
   {% if name_error %}
-  <p class="error-banner">{{ name_error }}</p>
+  <div class="alert alert-danger" role="alert">{{ name_error }}</div>
   {% endif %}
   {% if editing %}
   <form
     method="post"
     action="/gruppen/{{ group.id }}/umbenennen"
-    class="inline-form"
+    class="row g-3 align-items-end"
     hx-post="/gruppen/{{ group.id }}/umbenennen"
     hx-target="#bezeichnung-panel"
     hx-swap="outerHTML"
   >
-    <label>
-      Bezeichnung
-      <input type="text" name="name" required value="{{ group.name }}">
-    </label>
-    <button type="submit" class="btn">Speichern</button>
-    <button
-      type="button"
-      class="btn btn-secondary"
-      hx-get="/gruppen/{{ group.id }}/bezeichnung"
-      hx-target="#bezeichnung-panel"
-      hx-swap="outerHTML"
-    >
-      Abbrechen
-    </button>
+    <div class="col-auto">
+      <label class="form-label" for="group-name">Bezeichnung</label>
+      <input class="form-control" id="group-name" type="text" name="name" required value="{{ group.name }}">
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-primary">Speichern</button>
+    </div>
+    <div class="col-auto">
+      <button
+        type="button"
+        class="btn btn-outline-secondary"
+        hx-get="/gruppen/{{ group.id }}/bezeichnung"
+        hx-target="#bezeichnung-panel"
+        hx-swap="outerHTML"
+      >
+        Abbrechen
+      </button>
+    </div>
   </form>
   {% else %}
-  <p>{{ group.name }}</p>
+  <p class="mb-2">{{ group.name }}</p>
   {% if is_admin %}
   <button
     type="button"
-    class="btn btn-secondary"
+    class="btn btn-outline-secondary"
     hx-get="/gruppen/{{ group.id }}/bezeichnung?edit=1"
     hx-target="#bezeichnung-panel"
     hx-swap="outerHTML"

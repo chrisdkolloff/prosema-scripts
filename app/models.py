@@ -264,9 +264,70 @@ class GruppenAudit(Base):
         CheckConstraint(
             "action IN ("
             "'created', 'renamed', 'deleted', 'restored', "
-            "'alias_added', 'alias_removed', 'locked_by_backfill'"
+            "'alias_added', 'alias_removed', 'locked_by_backfill', "
+            "'locked_by_registration'"
             ")",
             name="ck_gruppen_audit_action",
+        ),
+    )
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_log"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    occurred_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+    )
+    actor_oid: Mapped[str] = mapped_column(Text, nullable=False)
+    actor_name: Mapped[str] = mapped_column(Text, nullable=False)
+    entity_type: Mapped[str] = mapped_column(Text, nullable=False)
+    entity_id: Mapped[str] = mapped_column(Text, nullable=False)
+    action: Mapped[str] = mapped_column(Text, nullable=False)
+    detail: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+    __table_args__ = (
+        Index("ix_audit_log_entity", "entity_type", "entity_id"),
+        Index("ix_audit_log_occurred_at", "occurred_at"),
+    )
+
+
+class ArticleTemplate(Base):
+    __tablename__ = "article_templates"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False, unique=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    columns: Mapped[list] = mapped_column(JSONB, nullable=False)
+    xlsx_bytes: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    sha256: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+    )
+    created_by_oid: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by_name: Mapped[str] = mapped_column(Text, nullable=False)
+    note: Mapped[str] = mapped_column(Text, nullable=False)
+
+    batches: Mapped[list[ArticleBatch]] = relationship(back_populates="template")
+
+    __table_args__ = (
+        Index(
+            "uq_article_templates_active",
+            "is_active",
+            unique=True,
+            postgresql_where=text("is_active"),
         ),
     )
 
@@ -281,6 +342,13 @@ class ArticleBatch(Base):
     )
     status: Mapped[str] = mapped_column(Text, nullable=False, default="draft")
     filename: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_bytes: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    source_sha256: Mapped[str | None] = mapped_column(Text, nullable=True)
+    template_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("article_templates.id"),
+        nullable=False,
+    )
     created_by_oid: Mapped[str] = mapped_column(Text, nullable=False)
     created_by_name: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
@@ -293,7 +361,20 @@ class ArticleBatch(Base):
         nullable=False,
         server_default=text("now()"),
     )
+    approved_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True),
+        nullable=True,
+    )
+    approved_by_oid: Mapped[str | None] = mapped_column(Text, nullable=True)
+    approved_by_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    submitted_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True),
+        nullable=True,
+    )
+    submitted_by_oid: Mapped[str | None] = mapped_column(Text, nullable=True)
+    submitted_by_name: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    template: Mapped[ArticleTemplate] = relationship(back_populates="batches")
     rows: Mapped[list[ArticleBatchRow]] = relationship(
         back_populates="batch",
         cascade="all, delete-orphan",
@@ -306,9 +387,10 @@ class ArticleBatch(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "status IN ('draft', 'approved', 'submitted')",
+            "status IN ('draft', 'approved', 'submitting', 'submitted', 'discarded')",
             name="ck_article_batches_status",
         ),
+        Index("ix_article_batches_source_sha256", "source_sha256"),
     )
 
 
@@ -361,6 +443,14 @@ class ArticleBatchRow(Base):
         ForeignKey("untergruppen.id", ondelete="SET NULL"),
         nullable=True,
     )
+    approved_payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    weclapp_article_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    write_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    submitted_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True),
+        nullable=True,
+    )
+    submitted_by_oid: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     batch: Mapped[ArticleBatch] = relationship(back_populates="rows")
 
@@ -399,6 +489,12 @@ class ArticleSnapshot(Base):
         server_default=text("'[]'::jsonb"),
     )
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    non_conforming_number_count: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
 
     rows: Mapped[list[ArticleSnapshotRow]] = relationship(
         back_populates="snapshot",

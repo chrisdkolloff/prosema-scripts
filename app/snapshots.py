@@ -1,10 +1,8 @@
-"""Artikel-Übersicht: snapshot pull, filtering, grid config, Excel export."""
+"""Artikelübersicht: snapshot pull, filtering, grid config, Excel export."""
 
 from __future__ import annotations
 
-import io
 import logging
-import re
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
@@ -18,8 +16,10 @@ from sqlalchemy.orm import Session
 
 from app.batches import JSPREADSHEET_CE_VERSION, JSUITES_VERSION
 from app.config import settings
+from app.excel_export import workbook_bytes, write_cell
 from app.models import ArticleSnapshot, ArticleSnapshotRow, Job
 from core.article_flatten import flatten_articles
+from core.numbering import Scheme
 
 logger = logging.getLogger(__name__)
 
@@ -39,19 +39,6 @@ RETENTION_ORPHAN_DAYS = 7
 
 ARTICLE_NUMBER_FIELD = "Prosema Artikelnummer"
 KURZTEXT_FIELD = "PROSEMA Kurztext"
-
-TEXT_EXCEL_COLUMNS = frozenset(
-    {
-        ARTICLE_NUMBER_FIELD,
-        "Hauptgruppe",
-        "Untergruppe",
-        "GTIN (EAN-Nummer)",
-        "Lieferantenartikelnummer",
-    }
-)
-
-_PRICE_RE = re.compile(r"preis|€", re.IGNORECASE)
-
 
 @dataclass
 class SnapshotFilters:
@@ -214,21 +201,6 @@ def build_grid_config(
     }
 
 
-def _parse_price(value: str) -> float | None:
-    text = str(value or "").strip()
-    if not text:
-        return None
-    normalized = text.replace(" ", "").replace("'", "").replace(",", ".")
-    try:
-        return float(normalized)
-    except ValueError:
-        return None
-
-
-def _is_price_column(key: str) -> bool:
-    return bool(_PRICE_RE.search(key))
-
-
 def build_excel_workbook(
     snapshot: ArticleSnapshot,
     rows: list[ArticleSnapshotRow],
@@ -246,21 +218,7 @@ def build_excel_workbook(
     for row_idx, row in enumerate(rows, start=2):
         data = row.data if isinstance(row.data, dict) else {}
         for col_idx, key in enumerate(keys, start=1):
-            raw = data.get(key, "")
-            cell = ws.cell(row=row_idx, column=col_idx)
-            if key in TEXT_EXCEL_COLUMNS:
-                text = str(raw) if raw is not None else ""
-                cell.value = text
-                cell.number_format = "@"
-            elif _is_price_column(key):
-                number = _parse_price(str(raw))
-                if number is not None:
-                    cell.value = number
-                    cell.number_format = "#,##0.00"
-                else:
-                    cell.value = str(raw) if raw else None
-            else:
-                cell.value = str(raw) if raw is not None and raw != "" else None
+            write_cell(ws.cell(row=row_idx, column=col_idx), key, data.get(key, ""))
 
     if keys:
         ws.freeze_panes = "A2"
@@ -285,10 +243,7 @@ def excel_bytes(
     rows: list[ArticleSnapshotRow],
     filters: SnapshotFilters,
 ) -> bytes:
-    wb = build_excel_workbook(snapshot, rows, filters)
-    buffer = io.BytesIO()
-    wb.save(buffer)
-    return buffer.getvalue()
+    return workbook_bytes(build_excel_workbook(snapshot, rows, filters))
 
 
 def apply_retention(db: Session, *, tenant: str) -> list[uuid.UUID]:
@@ -451,8 +406,16 @@ def pull_snapshot_rows(
             )
         )
 
+    pattern = Scheme().pattern()
+    non_conforming = 0
+    for fields in indexed:
+        number = str(fields.get("article_number") or "").strip()
+        if number and pattern.match(number) is None:
+            non_conforming += 1
+
     snapshot.columns = columns
     snapshot.row_count = len(data_rows)
+    snapshot.non_conforming_number_count = non_conforming
     snapshot.status = "complete"
     snapshot.error = None
     db.commit()

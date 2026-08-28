@@ -1,6 +1,10 @@
 {% extends "base.html" %}
 {% block title %}Zugriff verweigert — PROSEMA{% endblock %}
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/">Home</a></li>
+<li class="breadcrumb-item active"><span>Zugriff verweigert</span></li>
+{% endblock %}
 {% block content %}
-  <h1>Zugriff verweigert</h1>
-  <p>Sie haben nicht die erforderliche Berechtigung für diese Seite.</p>
+  <h1 class="mb-2">Zugriff verweigert</h1>
+  <div class="alert alert-danger" role="alert">Sie haben nicht die erforderliche Berechtigung für diese Seite.</div>
 {% endblock %}

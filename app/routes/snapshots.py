@@ -1,4 +1,4 @@
-"""Artikel-Übersicht routes: snapshot list, viewer, filters, Excel."""
+"""Artikelübersicht routes: snapshot list, viewer, filters, Excel."""
 
 from __future__ import annotations
 
@@ -110,7 +110,7 @@ def _viewer_context(
         "viewer_qs": viewer_qs,
         "total_all": total_all,
         "is_fresh_pull": fresh_pull,
-        "format_timestamp": format_snapshot_timestamp(snapshot.created_at),
+        "format_timestamp": format_snapshot_timestamp,
         "format_swiss_number": format_swiss_number,
         "jspreadsheet_version": JSPREADSHEET_CE_VERSION,
         "jsuites_version": JSUITES_VERSION,

@@ -1,9 +1,11 @@
 <div id="batch-grid-panel">
-  <div class="batch-grid-toolbar">
-    <p class="batch-filter-count">Gefiltert: {{ total_rows }} Zeilen</p>
-    <p id="batch-save-status" class="batch-save-status" role="status">Gespeichert</p>
+  <div class="d-flex align-items-baseline justify-content-between gap-3 mb-2">
+    <p class="mb-0">Gefiltert: {{ total_rows }} Zeilen</p>
+    <p id="batch-save-status" class="batch-save-status mb-0" role="status">Gespeichert</p>
   </div>
-  <div id="batch-spreadsheet" class="batch-spreadsheet"></div>
+  <div class="prosema-grid">
+    <div id="batch-spreadsheet" class="batch-spreadsheet"></div>
+  </div>
   <script type="application/json" id="batch-grid-config">{{ grid_config | tojson }}</script>
   {% if pages > 1 %}
   <nav class="batch-pagination" aria-label="Seiten">
@@ -12,14 +14,7 @@
       <span class="is-current">{{ n }}</span>
       {% else %}
       {% set qs = filter_qs ~ ('&' if filter_qs else '') ~ 'seite=' ~ n %}
-      <a
-        href="/batches/{{ batch.id }}?{{ qs }}"
-        hx-get="/batches/{{ batch.id }}?{{ qs }}"
-        hx-target="#batch-grid-panel"
-        hx-select="#batch-grid-panel"
-        hx-swap="outerHTML"
-        hx-push-url="true"
-      >{{ n }}</a>
+      <a href="/batches/{{ batch.id }}?{{ qs }}">{{ n }}</a>
       {% endif %}
     {% endfor %}
   </nav>

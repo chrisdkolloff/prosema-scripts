@@ -1,44 +1,46 @@
 <div id="aliases-panel">
   {% if alias_error %}
-  <p class="error-banner">{{ alias_error }}</p>
+  <div class="alert alert-danger" role="alert">{{ alias_error }}</div>
   {% endif %}
   {% if aliases %}
-  <ul class="alias-list">
+  <ul class="list-unstyled mb-3">
     {% for item in aliases %}
-    <li>
+    <li class="d-flex align-items-center gap-2 mb-2">
       <span>{{ item.alias }}</span>
       {% if is_admin %}
       <form
         method="post"
         action="/aliases/{{ item.id }}/loeschen"
-        class="inline-form"
+        class="d-inline"
         hx-post="/aliases/{{ item.id }}/loeschen"
         hx-target="#aliases-panel"
         hx-swap="outerHTML"
       >
-        <button type="submit" class="btn btn-danger btn-small">Löschen</button>
+        <button type="submit" class="btn btn-danger btn-sm">Löschen</button>
       </form>
       {% endif %}
     </li>
     {% endfor %}
   </ul>
   {% else %}
-  <p class="muted">Keine Aliase.</p>
+  <p class="text-body-secondary">Keine Aliase.</p>
   {% endif %}
   {% if is_admin %}
   <form
     method="post"
     action="/gruppen/{{ group.id }}/aliases"
-    class="inline-form"
+    class="row g-3 align-items-end"
     hx-post="/gruppen/{{ group.id }}/aliases"
     hx-target="#aliases-panel"
     hx-swap="outerHTML"
   >
-    <label>
-      Alias
-      <input type="text" name="alias" required>
-    </label>
-    <button type="submit" class="btn">Speichern</button>
+    <div class="col-auto">
+      <label class="form-label" for="alias-input">Alias</label>
+      <input class="form-control" id="alias-input" type="text" name="alias" required>
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-primary">Speichern</button>
+    </div>
   </form>
   {% endif %}
 </div>

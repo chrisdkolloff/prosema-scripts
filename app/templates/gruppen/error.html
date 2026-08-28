@@ -1,7 +1,12 @@
 {% extends "base.html" %}
 {% block title %}{{ message }} — PROSEMA{% endblock %}
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/">Home</a></li>
+<li class="breadcrumb-item"><a href="/gruppen">Gruppenverwaltung</a></li>
+<li class="breadcrumb-item active"><span>Änderung nicht möglich</span></li>
+{% endblock %}
 {% block content %}
-  <h1>Änderung nicht möglich</h1>
-  <p class="error-banner">{{ message }}</p>
-  <p><a href="/gruppen">Zurück zur Gruppen-Verwaltung</a></p>
+  <h1 class="mb-3">Änderung nicht möglich</h1>
+  <div class="alert alert-danger" role="alert">{{ message }}</div>
+  <p><a href="/gruppen">Zurück zur Gruppenverwaltung</a></p>
 {% endblock %}

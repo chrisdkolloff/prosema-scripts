@@ -19,14 +19,14 @@ from app.groups_service import (
     resolve_untergruppe,
 )
 from app.models import ArticleBatch, ArticleBatchPresence, ArticleBatchRow
+from app.numbering_high_water import register_kept_numbers, seed_high_water
+from core.article_fields import IMPORT_COLUMNS
+from core.article_payload import DEFAULTS, NUMBER_PLACEHOLDER, row_to_payload
 from core.numbering import Scheme
 from scripts.weclapp.article_import import (
-    DEFAULTS,
-    IMPORT_COLUMNS,
     RESTRICTED_SELECT_COLUMNS,
     LookupTables,
     dropdown_options,
-    row_to_payload,
 )
 
 JSPREADSHEET_CE_VERSION = "5.0.4"
@@ -38,6 +38,7 @@ FLUSH_IDLE_MS = 400
 
 MSG_FIELD_NOT_EDITABLE = "Feld nicht bearbeitbar"
 MSG_BATCH_APPROVED = "Stapel bereits genehmigt — keine Änderungen möglich"
+MSG_NUMBER_REASSIGNED = "Artikelnummer wurde neu vergeben."
 MSG_UNKNOWN_HAUPT = "Unbekannte Hauptgruppe"
 MSG_UNKNOWN_UNTER = "Unbekannte Untergruppe"
 MSG_MISSING_HAUPT = "Hauptgruppe fehlt"
@@ -123,6 +124,40 @@ GRID_FIELD_ORDER: tuple[str, ...] = (
     ),
 )
 
+
+def grid_field_order_for_batch(batch: ArticleBatch) -> tuple[str, ...]:
+    """Grid columns follow the batch's pinned template; fallback is the catalogue."""
+    template = getattr(batch, "template", None)
+    columns = template.columns if template is not None else None
+    if not isinstance(columns, list) or not columns:
+        return GRID_FIELD_ORDER
+    labels = [
+        str(col.get("key") or col.get("label") or "")
+        for col in columns
+        if col.get("key") or col.get("label")
+    ]
+    # Always show number + Kurztext near the front even if template order differs.
+    body = [
+        label
+        for label in labels
+        if label and label not in {ARTICLE_NUMBER_FIELD, KURZTEXT_FIELD}
+    ]
+    # Keep Artikelnummer / Kurztext if present in template; otherwise still show number.
+    has_number = ARTICLE_NUMBER_FIELD in labels
+    has_kurz = KURZTEXT_FIELD in labels
+    ordered: list[str] = ["_zeile"]
+    if has_number:
+        ordered.append(ARTICLE_NUMBER_FIELD)
+    else:
+        ordered.append(ARTICLE_NUMBER_FIELD)
+    if has_kurz:
+        ordered.append(KURZTEXT_FIELD)
+    ordered.append("_status")
+    ordered.append(INCLUDE_FIELD)
+    ordered.extend(body)
+    return tuple(ordered)
+
+
 COLUMN_TITLES: dict[str, str] = {
     "_zeile": "Zeile",
     "_status": "Status",
@@ -152,6 +187,7 @@ class RowEditResult:
     validation_error: str
     include: bool
     corrected: dict[str, Any] = field(default_factory=dict)
+    number_reassigned: bool = False
 
 
 def group_label(name: str, code: str) -> str:
@@ -198,6 +234,14 @@ def effective_values(row: ArticleBatchRow) -> dict[str, str]:
     return merged
 
 
+def display_proposed_article_number(row: ArticleBatchRow) -> str:
+    """Grid/API display value — pending numbers show the placeholder, not blank."""
+    number = (row.proposed_article_number or "").strip()
+    if number:
+        return number
+    return NUMBER_PLACEHOLDER
+
+
 _LOOKUPS: LookupTables | None = None
 _DROPDOWN_CACHE: dict[str, list[str]] | None = None
 
@@ -221,26 +265,51 @@ def schema_dropdowns() -> dict[str, list[str]]:
     return _DROPDOWN_CACHE
 
 
-def group_dropdowns(db: Session) -> tuple[list[str], list[str]]:
+def group_dropdowns(db: Session) -> tuple[list[str], dict[str, list[str]]]:
+    """Active Hauptgruppe labels and Untergruppe labels keyed by parent label."""
     haupt: list[str] = []
-    unter: list[str] = []
+    unter_by_haupt: dict[str, list[str]] = {}
     for group in list_active_hauptgruppen(db):
-        haupt.append(group_label(group.name, group.code))
-        for child in list_active_untergruppen(db, group.id):
-            unter.append(group_label(child.name, child.code))
-    return haupt, unter
+        label = group_label(group.name, group.code)
+        haupt.append(label)
+        unter_by_haupt[label] = [
+            group_label(child.name, child.code)
+            for child in list_active_untergruppen(db, group.id)
+        ]
+    return haupt, unter_by_haupt
 
 
-def build_columns(db: Session, *, editable: bool) -> list[dict[str, Any]]:
+def _flat_untergruppe_labels(unter_by_haupt: dict[str, list[str]]) -> list[str]:
+    seen: set[str] = set()
+    flat: list[str] = []
+    for children in unter_by_haupt.values():
+        for label in children:
+            if label not in seen:
+                seen.add(label)
+                flat.append(label)
+    return flat
+
+
+def build_columns(
+    db: Session,
+    *,
+    editable: bool,
+    field_order: tuple[str, ...] | None = None,
+    group_sources: tuple[list[str], dict[str, list[str]]] | None = None,
+) -> list[dict[str, Any]]:
     schema_sources = schema_dropdowns()
-    haupt, unter = group_dropdowns(db)
+    if group_sources is None:
+        haupt, unter_by_haupt = group_dropdowns(db)
+    else:
+        haupt, unter_by_haupt = group_sources
     sources = {
         **schema_sources,
         HAUPTGRUPPE_FIELD: haupt,
-        UNTERGRUPPE_FIELD: unter,
+        UNTERGRUPPE_FIELD: _flat_untergruppe_labels(unter_by_haupt),
     }
+    order = field_order if field_order is not None else GRID_FIELD_ORDER
     columns: list[dict[str, Any]] = []
-    for field_name in GRID_FIELD_ORDER:
+    for field_name in order:
         read_only = (
             (not editable)
             or field_name in SYNTHETIC_FIELDS
@@ -267,16 +336,23 @@ def build_columns(db: Session, *, editable: bool) -> list[dict[str, Any]]:
     return columns
 
 
-def grid_row_values(row: ArticleBatchRow) -> list[Any]:
+def grid_row_values(
+    row: ArticleBatchRow,
+    *,
+    field_order: tuple[str, ...] | None = None,
+) -> list[Any]:
     values = effective_values(row)
+    order = field_order if field_order is not None else GRID_FIELD_ORDER
     out: list[Any] = []
-    for field_name in GRID_FIELD_ORDER:
+    for field_name in order:
         if field_name == "_zeile":
             out.append(row.position)
         elif field_name == "_status":
             out.append(row.validation_error or "")
         elif field_name == INCLUDE_FIELD:
             out.append(bool(row.include))
+        elif field_name == ARTICLE_NUMBER_FIELD:
+            out.append(display_proposed_article_number(row))
         else:
             out.append(values.get(field_name, ""))
     return out
@@ -342,29 +418,35 @@ def _number_matches(number: str, main: str, sub: str) -> bool:
 
 
 def _assign_numbers(
-    rows: list[ArticleBatchRow], affected_ids: set[uuid.UUID]
-) -> None:
+    db: Session,
+    batch: ArticleBatch,
+    rows: list[ArticleBatchRow],
+    affected_ids: set[uuid.UUID],
+) -> set[uuid.UUID]:
     scheme = Scheme()
-    pattern = scheme.pattern()
     need_new: list[ArticleBatchRow] = []
-    reserved: dict[tuple[str, str], int] = {}
+    reassigned: set[uuid.UUID] = set()
+    reserved = seed_high_water(db, exclude_batch_id=batch.id)
+    register_kept_numbers(rows, reserved, skip_ids=affected_ids)
 
     for row in rows:
+        if row.id not in affected_ids:
+            continue
         existing = (row.proposed_article_number or "").strip()
-        match = pattern.match(existing)
         haupt = getattr(row, "_resolved_haupt", None)
         unter = getattr(row, "_resolved_unter", None)
-        if (
-            row.id in affected_ids
-            and haupt is not None
-            and unter is not None
-            and not _number_matches(existing, haupt.code, unter.code)
-        ):
-            need_new.append(row)
+        if haupt is None or unter is None:
+            if existing:
+                row.proposed_article_number = ""
+                reassigned.add(row.id)
             continue
-        if match:
-            key = (match.group(1), match.group(2))
-            reserved[key] = max(reserved.get(key, 0), int(match.group(3)))
+        if _number_matches(existing, haupt.code, unter.code):
+            key = (haupt.code, unter.code)
+            match = scheme.pattern().match(existing)
+            if match:
+                reserved[key] = max(reserved.get(key, 0), int(match.group(3)))
+            continue
+        need_new.append(row)
 
     for row in need_new:
         haupt = row._resolved_haupt
@@ -378,7 +460,11 @@ def _assign_numbers(
             )
             continue
         reserved[key] = nxt
-        row.proposed_article_number = scheme.format(haupt.code, unter.code, nxt)
+        new_number = scheme.format(haupt.code, unter.code, nxt)
+        if new_number != (row.proposed_article_number or ""):
+            reassigned.add(row.id)
+        row.proposed_article_number = new_number
+    return reassigned
 
 
 def _write_edit(row: ArticleBatchRow, field_name: str, value: Any) -> None:
@@ -434,38 +520,56 @@ def apply_edits(
     by_id = {row.id: row for row in rows}
 
     affected: dict[uuid.UUID, ArticleBatchRow] = {}
+    edited_fields: dict[uuid.UUID, set[str]] = {}
     for edit in edits:
         row = by_id.get(edit.row_id)
         if row is None:
             raise BatchEditError("Zeile gehört nicht zu diesem Stapel", field=edit.field)
         affected[row.id] = row
+        edited_fields.setdefault(row.id, set()).add(edit.field)
 
     for edit in edits:
         _write_edit(by_id[edit.row_id], edit.field, edit.value)
 
+    cleared_unter: set[uuid.UUID] = set()
     for row in affected.values():
         values = effective_values(row)
         haupt, unter, group_error = resolve_row_groups(db, values)
+        # Changing Hauptgruppe invalidates a foreign Untergruppe — clear it.
+        if (
+            HAUPTGRUPPE_FIELD in edited_fields.get(row.id, set())
+            and UNTERGRUPPE_FIELD not in edited_fields.get(row.id, set())
+            and haupt is not None
+            and unter is None
+            and (values.get(UNTERGRUPPE_FIELD) or "").strip()
+        ):
+            _write_edit(row, UNTERGRUPPE_FIELD, "")
+            cleared_unter.add(row.id)
+            values = effective_values(row)
+            haupt, unter, group_error = resolve_row_groups(db, values)
         row._resolved_haupt = haupt
         row._resolved_unter = unter
         row._group_error = group_error
         row.resolved_hauptgruppe_id = haupt.id if haupt is not None else None
         row.resolved_untergruppe_id = unter.id if unter is not None else None
 
-    _assign_numbers(rows, set(affected))
+    reassigned = _assign_numbers(db, batch, rows, set(affected))
 
     results: list[RowEditResult] = []
     for row in affected.values():
         corrected = _canonical_group_edits(row)
+        if row.id in cleared_unter:
+            corrected[UNTERGRUPPE_FIELD] = ""
         values = effective_values(row)
         row.validation_error = validate_effective(values, getattr(row, "_group_error", None))
         results.append(
             RowEditResult(
                 id=row.id,
-                proposed_article_number=row.proposed_article_number or "",
+                proposed_article_number=display_proposed_article_number(row),
                 validation_error=row.validation_error or "",
                 include=bool(row.include),
                 corrected=corrected,
+                number_reassigned=row.id in reassigned,
             )
         )
     batch.updated_at = datetime.now(UTC)
@@ -539,14 +643,23 @@ def build_grid_config(
     rows: list[ArticleBatchRow],
 ) -> dict[str, Any]:
     editable = batch.status == "draft"
+    field_order = grid_field_order_for_batch(batch)
+    group_sources = group_dropdowns(db)
+    _haupt, unter_by_haupt = group_sources
     return {
         "editsUrl": f"/batches/{batch.id}/edits",
+        "actionsUrl": f"/batches/{batch.id}/aktionen",
         "editable": editable,
         "parseFormulas": False,
         "freezeColumns": 3,
         "idleMs": FLUSH_IDLE_MS,
-        "columns": build_columns(db, editable=editable),
-        "data": [grid_row_values(row) for row in rows],
+        "columns": build_columns(
+            db,
+            editable=editable,
+            field_order=field_order,
+            group_sources=group_sources,
+        ),
+        "data": [grid_row_values(row, field_order=field_order) for row in rows],
         "rowIds": [str(row.id) for row in rows],
         "rowState": [
             {
@@ -555,7 +668,9 @@ def build_grid_config(
             }
             for row in rows
         ],
-        "fields": list(GRID_FIELD_ORDER),
+        "fields": list(field_order),
+        # Client filter: Untergruppe dropdown options per Hauptgruppe label.
+        "untergruppeByHauptgruppe": unter_by_haupt,
     }
 
 

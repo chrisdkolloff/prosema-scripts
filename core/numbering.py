@@ -47,6 +47,21 @@ class Scheme:
         )
 
 
+# First two segments of the Prosema number. The canonical shape is
+# MMM.SSS.NNNN; a small number of live articles have a shorter running part
+# (e.g. 060.010.800) but still encode the groups.
+_NUMBER_PREFIX = re.compile(r"^(\d{3})\.(\d{3})(?:\.|$)")
+
+
+def parse_group_codes(article_number: object) -> tuple[str, str] | None:
+    """Return (Hauptgruppe code, Untergruppe code) or None if not a Prosema number."""
+    text = str(article_number or "").strip()
+    match = _NUMBER_PREFIX.match(text)
+    if match is None:
+        return None
+    return match.group(1), match.group(2)
+
+
 @dataclass
 class RowResolutionError:
     row: int

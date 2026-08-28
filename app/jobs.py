@@ -55,8 +55,9 @@ def touch_worker_last_seen() -> None:
 
 JOB_TYPE_LABELS = {
     "noop": "Testlauf",
-    "weclapp_article_snapshot": "Artikel-Abfrage",
-    "weclapp_supply_source_export": "Bezugsquellen-Abfrage",
+    "weclapp_article_snapshot": "Artikelabfrage",
+    "weclapp_supply_source_export": "Bezugsquellenabfrage",
+    "article_batch_submit": "Artikelregistrierung senden",
 }
 
 _STALE_FAILURE_ERROR = (
@@ -128,6 +129,43 @@ def handle_weclapp_supply_source_export(
         if run is not None:
             message = job_error_message(exc) or "Abfrage fehlgeschlagen"
             fail_export(db, run, message)
+        raise
+
+
+@job_handler("article_batch_submit")
+def handle_article_batch_submit(
+    db: Session,
+    payload: dict,
+    oid: str,
+) -> dict:
+    import uuid as uuid_mod
+
+    from app.batch_submit import LicenceAbort, run_batch_submit
+    from app.models import ArticleBatch
+
+    batch_id = uuid_mod.UUID(str(payload["batch_id"]))
+    actor_oid = str(payload.get("actor_oid") or oid)
+    actor_name = str(payload.get("actor_name") or "")
+    try:
+        return run_batch_submit(
+            db,
+            batch_id=batch_id,
+            actor_oid=actor_oid,
+            actor_name=actor_name or None,
+        )
+    except LicenceAbort as exc:
+        db.rollback()
+        batch = db.get(ArticleBatch, batch_id)
+        if batch is not None and batch.status == "submitting":
+            batch.status = "approved"
+            db.commit()
+        raise ValueError(exc.message) from exc
+    except Exception:
+        db.rollback()
+        batch = db.get(ArticleBatch, batch_id)
+        if batch is not None and batch.status == "submitting":
+            batch.status = "approved"
+            db.commit()
         raise
 
 

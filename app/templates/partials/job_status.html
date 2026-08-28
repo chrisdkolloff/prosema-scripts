@@ -8,7 +8,7 @@
   {% endif %}
 >
   <p>
-    <span class="job-label">Status</span>
+    <span class="text-body-secondary">Status</span>
     <strong>{{ status_label }}</strong>
   </p>
   {% if job.status == "succeeded" and job.result and job.result.get("message") %}
@@ -16,10 +16,10 @@
   {% endif %}
   {% if job.status == "failed" %}
     {% if error_message %}
-    <p class="error-banner">
+    <div class="alert alert-danger" role="alert">
       {{ error_message }}
       <a href="{{ settings_path }}">weclapp-Einstellungen</a>
-    </p>
+    </div>
     {% else %}
     <p>Der Auftrag ist fehlgeschlagen.</p>
     {% endif %}
@@ -31,7 +31,7 @@
       hx-target="#job-status"
       hx-swap="outerHTML"
     >
-      <button type="submit" class="btn">Erneut versuchen</button>
+      <button type="submit" class="btn btn-primary">Erneut versuchen</button>
     </form>
     {% endif %}
   {% endif %}

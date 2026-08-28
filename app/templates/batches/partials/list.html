@@ -1,0 +1,41 @@
+<div id="batch-list-panel">
+  {% if batches %}
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead>
+        <tr>
+          <th>Batch</th>
+          <th>Datei</th>
+          <th>Hochgeladen</th>
+          <th>Hochgeladen von</th>
+          <th>Zeilen</th>
+          <th>Fehler</th>
+          <th>Geschrieben</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in batches %}
+        <tr>
+          <td><a href="/batches/{{ item.batch.id }}">Batch #{{ item.short_id }}</a></td>
+          <td>{{ item.filename_label }}</td>
+          <td>{{ item.uploaded_at }}</td>
+          <td>{{ item.batch.created_by_name }}</td>
+          <td>{{ item.row_count }}</td>
+          <td>{{ item.error_count }}</td>
+          <td>{{ item.written_count }}</td>
+          <td>
+            <span class="status-badge status-{{ item.batch.status }}">{{ item.status_label }}</span>
+            {% if item.batch.status == "approved" %}
+            <p class="text-body-secondary small mb-0">Diese Nummern existieren noch nicht in weclapp.</p>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-body-secondary">Noch keine Batches vorhanden.</p>
+  {% endif %}
+</div>

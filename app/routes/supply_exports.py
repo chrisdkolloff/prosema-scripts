@@ -1,4 +1,4 @@
-"""Bezugsquellen-Export routes."""
+"""Bezugsquellenexport routes."""
 
 from __future__ import annotations
 

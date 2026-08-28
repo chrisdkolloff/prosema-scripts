@@ -1,9 +1,9 @@
-<label id="snapshot-untergruppe-label">
-  Untergruppe
-  <select name="untergruppe" id="snapshot-untergruppe">
+<div class="col-auto" id="snapshot-untergruppe-label">
+  <label class="form-label" for="snapshot-untergruppe">Untergruppe</label>
+  <select class="form-select" name="untergruppe" id="snapshot-untergruppe">
     <option value="">(alle)</option>
     {% for value in untergruppen %}
     <option value="{{ value }}" {% if filters.untergruppe == value %}selected{% endif %}>{{ value }}</option>
     {% endfor %}
   </select>
-</label>
+</div>

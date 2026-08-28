@@ -1,17 +1,145 @@
 {% extends "base.html" %}
-{% block title %}Artikel-Registrierung — PROSEMA{% endblock %}
+{% block title %}Artikelregistrierung — PROSEMA{% endblock %}
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/">Home</a></li>
+<li class="breadcrumb-item active"><span>Artikelregistrierung</span></li>
+{% endblock %}
 {% block content %}
-  <h1>Artikel-Registrierung</h1>
+{% set upload_accept = ".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" %}
+  <h1 class="mb-3">Artikelregistrierung</h1>
   {% if blocked %}
-  <p class="error-banner">
+  <div class="alert alert-danger" role="alert">
     {{ access.message }}
     <a href="{{ settings_path }}">weclapp-Einstellungen</a>
-  </p>
+  </div>
   {% else %}
-  <p class="lede">Die Artikel-Registrierung folgt in Woche 3. weclapp-Zugriff ist vorhanden.</p>
-  <p class="hint">
-    Woche 3: den freigegebenen Satz zuerst speichern, danach nach weclapp schreiben.
-    Ein Lizenzfehler beim Schreiben darf Upload, Vorschau und Freigabe nicht verwerfen.
+  <p class="text-body-secondary">
+    Lieferanten-Excel oder CSV hochladen, prüfen, freigeben und nach weclapp senden —
+    oder Zeilen direkt im Browser erfassen.
   </p>
+
+  {% if error %}
+  <div class="alert alert-danger" role="alert">{{ error }}</div>
+  {% endif %}
+  {% if notices %}
+  <ul class="text-body-secondary small">
+    {% for notice in notices %}
+    <li>{{ notice }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  <div class="card mb-4">
+    <div class="card-body">
+      <p class="mb-2">
+        Vorlage v{{ template_version }} · Stand {{ template_stand }}
+      </p>
+      <div class="d-flex flex-wrap gap-2 mb-2">
+        <a class="btn btn-outline-secondary" href="/artikel-registrierung/vorlage">Vorlage herunterladen</a>
+        <a class="btn btn-outline-secondary" href="#felduebersicht">Feldübersicht</a>
+      </div>
+      <p class="text-body-secondary small mb-0">
+        Die Spaltenreihenfolge spielt keine Rolle — die Spaltenüberschriften
+        müssen mit der Vorlage übereinstimmen.
+      </p>
+    </div>
+  </div>
+
+  {% if duplicate %}
+  <div class="alert alert-danger" role="alert">
+    Diese Datei wurde bereits am {{ duplicate_date }} als Batch #{{ duplicate_short }} hochgeladen.
+    Trotzdem fortfahren?
+  </div>
+  <form method="post" action="/artikel-registrierung/upload" enctype="multipart/form-data" class="row g-3 align-items-end mb-4">
+    <input type="hidden" name="bestaetigt" value="1">
+    <input type="hidden" name="source_sha256" value="{{ duplicate_sha }}">
+    <div class="col-auto">
+      <input class="form-control" type="file" name="datei" accept="{{ upload_accept }}" required>
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-primary">Trotzdem hochladen</button>
+    </div>
+  </form>
+  {% else %}
+  <form method="post" action="/artikel-registrierung/upload" enctype="multipart/form-data" class="row g-3 align-items-end mb-4">
+    <div class="col-auto">
+      <label class="form-label" for="upload-datei">Excel- oder CSV-Datei hochladen</label>
+      <input class="form-control" id="upload-datei" type="file" name="datei" accept="{{ upload_accept }}" required>
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-primary">Neue Datei auswählen</button>
+    </div>
+  </form>
+  {% endif %}
+
+  <form method="post" action="/artikel-registrierung/manuell" class="row g-3 align-items-end mb-4">
+    <div class="col-auto">
+      <label class="form-label" for="manual-zeilen">Manuell erfassen — Zeilen</label>
+      <input class="form-control" id="manual-zeilen" type="number" name="zeilen" min="1" max="200" value="{{ manual_default_rows }}">
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-outline-secondary">Manuell erfassen</button>
+    </div>
+  </form>
+
+  <div class="card mb-4">
+    <div class="card-body">
+      <form
+        class="row g-3 align-items-end"
+        method="get"
+        action="/artikel-registrierung"
+        hx-get="/artikel-registrierung"
+        hx-target="#batch-list-panel"
+        hx-select="#batch-list-panel"
+        hx-swap="outerHTML"
+        hx-push-url="true"
+      >
+        <div class="col-auto">
+          <label class="form-label" for="batch-status">Status</label>
+          <select class="form-select" id="batch-status" name="status">
+            <option value="">ohne Verworfen</option>
+            <option value="all" {% if status_filter == "all" %}selected{% endif %}>alle</option>
+            <option value="draft" {% if status_filter == "draft" %}selected{% endif %}>Entwurf</option>
+            <option value="approved" {% if status_filter == "approved" %}selected{% endif %}>Freigegeben</option>
+            <option value="submitting" {% if status_filter == "submitting" %}selected{% endif %}>Wird gesendet</option>
+            <option value="submitted" {% if status_filter == "submitted" %}selected{% endif %}>Gesendet</option>
+            <option value="discarded" {% if status_filter == "discarded" %}selected{% endif %}>Verworfen</option>
+          </select>
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-primary">Filtern</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  {% include "batches/partials/list.html" %}
+
+  <section id="felduebersicht" class="mb-4">
+    <h2 class="h4">Feldübersicht</h2>
+    <p class="text-body-secondary small">Spaltennamen müssen exakt mit der Vorlage übereinstimmen (Gross/Klein egal).</p>
+    <div class="table-responsive">
+      <table class="table table-hover align-middle">
+        <thead>
+          <tr>
+            <th>Spalte</th>
+            <th>Pflichtfeld</th>
+            <th>Typ</th>
+            <th>Beispiel</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for field in catalogue %}
+          <tr>
+            <td>{{ field.label }}</td>
+            <td>{% if field.required_for_upload %}Ja{% else %}Nein{% endif %}</td>
+            <td>{{ field.field_type }}</td>
+            <td>{{ field.example }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
   {% endif %}
 {% endblock %}

@@ -12,7 +12,6 @@ number; category names and custom attributes are not used.
 from __future__ import annotations
 
 import argparse
-import re
 import sys
 from collections import defaultdict
 from collections.abc import Iterable
@@ -37,13 +36,9 @@ from app.groups_service import (
     snapshot_untergruppe,
 )
 from app.models import Hauptgruppe, Untergruppe
+from core.numbering import parse_group_codes
 
 BACKFILL_ACTOR = {"oid": "backfill-script", "name": "Lock-Backfill (weclapp)"}
-
-# First two segments of the Prosema number. The canonical shape is
-# MMM.SSS.NNNN (see core.numbering.Scheme); a small number of live articles
-# have a shorter running part (e.g. 060.010.800) but still encode the groups.
-_NUMBER_PREFIX = re.compile(r"^(\d{3})\.(\d{3})(?:\.|$)")
 
 
 @dataclass
@@ -68,15 +63,6 @@ class LockPlan:
     skipped_haupt: int = 0
     skipped_unter: int = 0
     unresolved: list[UnresolvedArticle] = field(default_factory=list)
-
-
-def parse_group_codes(article_number: object) -> tuple[str, str] | None:
-    """Return (Hauptgruppe code, Untergruppe code) or None if not a Prosema number."""
-    text = str(article_number or "").strip()
-    match = _NUMBER_PREFIX.match(text)
-    if match is None:
-        return None
-    return match.group(1), match.group(2)
 
 
 def _article_id(article: dict[str, Any]) -> str:
@@ -249,7 +235,7 @@ def main(argv: list[str] | None = None) -> int:
             "Gruppen im Register sperren, die bereits von weclapp-Artikeln "
             "referenziert werden. Einmaliges Hand-Skript, kein Auftrag und kein "
             "Zeitplan. Werden Artikel direkt in weclapp angelegt (ausserhalb des "
-            "Artikel-Registrierungs-Tools), dieses Skript vor Week 3 erneut "
+            "Artikelregistrierungs-Tools), dieses Skript vor Week 3 erneut "
             "von Hand ausführen."
         )
     )

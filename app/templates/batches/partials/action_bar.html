@@ -1,0 +1,136 @@
+{% set status_names = {
+  "draft": "Entwurf",
+  "approved": "Freigegeben",
+  "submitting": "Wird gesendet",
+  "submitted": "Gesendet",
+  "discarded": "Verworfen",
+} %}
+{% set batch_short_id = short_id if short_id is defined else (batch.id|string).split("-")[0] %}
+<div id="batch-action-bar">
+  <div class="card mb-4">
+    <div class="card-header">Batch #{{ batch_short_id }}</div>
+    <div class="card-body">
+      <p class="mb-1">
+        Status: {{ status_names.get(batch.status, batch.status) }}
+        · {{ batch.filename or "Manuell erfasst" }}
+        {% if batch.template %} · Vorlage v{{ batch.template.version }}{% endif %}
+      </p>
+      <p class="mb-0 text-body-secondary">
+        {{ counts.row_count }} Zeilen · {{ counts.error_count }} Fehler ·
+        Stand der Artikelübersicht:
+        {% if snapshot %}
+        <a href="/artikel-uebersicht/{{ snapshot.id }}">{{ snapshot_ts }}</a>
+        {% else %}
+        (keine)
+        {% endif %}
+      </p>
+    </div>
+  </div>
+
+  {% if snapshot_warning %}
+  <div class="alert alert-danger" role="alert">{{ snapshot_warning }}</div>
+  {% endif %}
+  {% if action_error %}
+  <div class="alert alert-danger" role="alert">{{ action_error }}</div>
+  {% endif %}
+
+  <div class="card mb-4">
+    <div class="card-body d-flex flex-wrap align-items-center gap-3">
+      {% if batch.status == "draft" %}
+      <div class="d-flex flex-wrap gap-2 align-items-center">
+        {% if counts.error_count > 0 %}
+        <button
+          type="button"
+          class="btn btn-primary"
+          disabled
+          title="Freigabe nicht möglich: {{ counts.error_count }} Zeilen mit Fehlern"
+        >Freigeben</button>
+        <span class="text-body-secondary small">Freigabe nicht möglich: {{ counts.error_count }} Zeilen mit Fehlern</span>
+        {% else %}
+        <form
+          method="post"
+          action="/batches/{{ batch.id }}/freigeben"
+          class="d-inline"
+          onsubmit="return confirm(this.dataset.confirmMessage);"
+          data-confirm-message="{{ approve_count }} Artikel werden in weclapp angelegt.
+Nummern {{ first_number }} bis {{ last_number }}.
+Stand der Artikelübersicht: {{ snapshot_ts or '(keine)' }}
+Dieser Schritt kann nicht rückgängig gemacht werden."
+        >
+          <button type="submit" class="btn btn-primary">Freigeben</button>
+        </form>
+        {% endif %}
+        <a class="btn btn-outline-primary" href="/batches/{{ batch.id }}/excel">Als Excel herunterladen</a>
+      </div>
+
+      <div class="d-flex flex-wrap gap-2 align-items-center">
+        <form method="post" action="/batches/{{ batch.id }}/zeilen" class="input-group" style="width: 280px;">
+          <input
+            type="number"
+            name="anzahl"
+            min="1"
+            max="200"
+            value="{{ manual_default_rows }}"
+            class="form-control"
+            aria-label="Anzahl Zeilen"
+            title="Anzahl neuer Zeilen"
+          >
+          <button type="submit" class="btn btn-outline-secondary">Zeilen hinzufügen</button>
+        </form>
+        <form
+          method="post"
+          action="/batches/{{ batch.id }}/leere-zeilen"
+          class="d-inline"
+          onsubmit="return confirm('Leere Zeilen von der Übernahme ausnehmen?');"
+        >
+          <button type="submit" class="btn btn-outline-secondary">Leere Zeilen entfernen</button>
+        </form>
+      </div>
+
+      <div class="ms-auto">
+        <button
+          class="btn btn-danger"
+          type="button"
+          data-coreui-toggle="modal"
+          data-coreui-target="#verwerfenModal"
+        >Verwerfen</button>
+      </div>
+
+      <div class="modal fade" id="verwerfenModal" tabindex="-1" aria-labelledby="verwerfenModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title" id="verwerfenModalLabel">Batch verwerfen</h5>
+              <button type="button" class="btn-close" data-coreui-dismiss="modal" aria-label="Schliessen"></button>
+            </div>
+            <div class="modal-body">
+              Batch wirklich verwerfen?
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-outline-secondary" data-coreui-dismiss="modal">Abbrechen</button>
+              <form method="post" action="/batches/{{ batch.id }}/verwerfen">
+                <button type="submit" class="btn btn-danger">Verwerfen</button>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {% elif batch.status == "approved" %}
+      <div class="d-flex flex-wrap gap-2 align-items-center">
+        <form method="post" action="/batches/{{ batch.id }}/senden" class="d-inline">
+          <button type="submit" class="btn btn-primary">An weclapp senden</button>
+        </form>
+        <a class="btn btn-outline-primary" href="/batches/{{ batch.id }}/excel">Als Excel herunterladen</a>
+        <span class="text-body-secondary small">Diese Nummern existieren noch nicht in weclapp.</span>
+      </div>
+
+      {% elif batch.status == "submitting" %}
+      <span class="text-body-secondary">Wird gesendet…</span>
+
+      {% elif batch.status == "submitted" %}
+      <a class="btn btn-outline-primary" href="/batches/{{ batch.id }}/excel">Als Excel herunterladen</a>
+      {% endif %}
+    </div>
+  </div>
+</div>

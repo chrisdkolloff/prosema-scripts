@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block title %}Artikel-Vorlage — PROSEMA{% endblock %}
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/">Home</a></li>
+<li class="breadcrumb-item"><a href="{{ settings_path }}">Einstellungen</a></li>
+<li class="breadcrumb-item active"><span>Artikel-Vorlage</span></li>
+{% endblock %}
+{% block content %}
+  <p class="mb-2"><a href="{{ settings_path }}">Zu den Einstellungen</a></p>
+  <h1 class="mb-2">Artikel-Vorlage</h1>
+  <p class="text-body-secondary mb-4">
+    Welche Katalogfelder in der Upload-Vorlage stehen, und in welcher Reihenfolge.
+    Feldbedeutung und Pflichtregeln liegen im Code — hier nur Auswahl und Reihenfolge.
+  </p>
+
+  {% if form_error %}
+  <div class="alert alert-danger" role="alert">{{ form_error }}</div>
+  {% endif %}
+  {% if success %}
+  <div class="alert alert-success" role="alert">Neue Vorlage ist aktiv.</div>
+  {% endif %}
+
+  <div class="card mb-4">
+    <div class="card-header">Aktuelle Vorlage</div>
+    <div class="card-body">
+      <p>
+        Vorlage v{{ active.version }} · Aktiviert am {{ active_created_label }} ·
+        Aktiviert von {{ active.created_by_name }} · {{ column_count }} Spalten
+      </p>
+      <p class="text-body-secondary small">{{ active.note }}</p>
+      <a class="btn btn-primary" href="{{ vorlage_path }}/{{ active.id }}/download">Vorlage herunterladen</a>
+    </div>
+  </div>
+
+  {% if pending %}
+  <div class="card mb-4">
+    <div class="card-header">Änderung bestätigen</div>
+    <div class="card-body">
+      <p>
+        Vorlage v{{ pending.diff.from_version }} → v{{ pending.diff.to_version }}
+      </p>
+      <ul>
+        <li>
+          Neue Spalten:
+          {% if pending.diff.added %}{{ pending.diff.added | join(", ") }}{% else %}keine{% endif %}
+        </li>
+        <li>
+          Entfernte Spalten:
+          {% if pending.diff.removed %}{{ pending.diff.removed | join(", ") }}{% else %}keine{% endif %}
+        </li>
+        <li>Neue Reihenfolge: {% if pending.diff.order_changed %}ja{% else %}nein{% endif %}</li>
+      </ul>
+      <p>
+        {{ pending.diff.draft_count }} Entwürfe verwenden noch v{{ pending.diff.from_version }}
+        und bleiben unverändert.
+      </p>
+      <p class="text-body-secondary small">
+        Entfernte Spalten werden bei künftigen Uploads nicht mehr eingelesen.
+        Bestehende Batches sind nicht betroffen.
+      </p>
+      <p class="text-body-secondary small">Grund: {{ pending.note }}</p>
+      <form method="post" action="{{ vorlage_path }}" enctype="multipart/form-data" class="row g-3 align-items-end">
+        <input type="hidden" name="bestaetigt" value="1">
+        <input type="hidden" name="note" value="{{ pending.note }}">
+        <div class="col-md-6">
+          <label class="form-label" for="vorlage-confirm-datei">Dieselbe Datei erneut auswählen</label>
+          <input class="form-control" id="vorlage-confirm-datei" type="file" name="datei" accept=".xlsx" required>
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-primary">Änderung bestätigen</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  {% else %}
+  <div class="card mb-4">
+    <div class="card-header">Neue Vorlage hochladen</div>
+    <div class="card-body">
+      <p class="text-body-secondary small">Beispielzeilen im Upload werden ignoriert.</p>
+      <form method="post" action="{{ vorlage_path }}" enctype="multipart/form-data" class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label" for="vorlage-datei">Excel-Datei (.xlsx)</label>
+          <input class="form-control" id="vorlage-datei" type="file" name="datei" accept=".xlsx" required>
+        </div>
+        <div class="col-12">
+          <label class="form-label" for="vorlage-note">Grund der Änderung</label>
+          <textarea class="form-control" id="vorlage-note" name="note" rows="3" required></textarea>
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-primary">Vorlage ersetzen</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  {% endif %}
+
+  <div id="felduebersicht" class="mb-4">
+    <h2 class="h4 mb-2">Feldübersicht</h2>
+    <p class="text-body-secondary">
+      Zulässige Spaltennamen für die Vorlage. Pflichtfelder und geschützte Spalten
+      können nicht entfernt werden.
+    </p>
+    <div class="table-responsive">
+      <table class="table table-hover align-middle">
+        <thead>
+          <tr>
+            <th>Spalte</th>
+            <th>Pflichtfeld</th>
+            <th>Typ</th>
+            <th>Beispiel</th>
+            <th>Beschreibung</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for field in catalogue %}
+          <tr>
+            <td>{{ field.label }}</td>
+            <td>
+              {% if field.required_for_upload %}Ja{% else %}Nein{% endif %}
+              {% if field.protected_reason %}
+              <p class="text-body-secondary small mb-0">{{ field.protected_reason }}</p>
+              {% endif %}
+            </td>
+            <td>{{ field.field_type }}</td>
+            <td>{{ field.example }}</td>
+            <td>{{ field.description }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="mb-4">
+    <h2 class="h4 mb-2">Versionsverlauf</h2>
+    <div class="table-responsive">
+      <table class="table table-hover align-middle">
+        <thead>
+          <tr>
+            <th>Version</th>
+            <th>Aktiviert am</th>
+            <th>Aktiviert von</th>
+            <th>Spalten</th>
+            <th>Notiz</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in history %}
+          <tr>
+            <td>
+              v{{ item.template.version }}
+              {% if item.template.is_active %}(aktiv){% endif %}
+            </td>
+            <td>{{ item.created_label }}</td>
+            <td>{{ item.template.created_by_name }}</td>
+            <td>{{ item.column_count }}</td>
+            <td>{{ item.template.note }}</td>
+            <td>
+              <a href="{{ vorlage_path }}/{{ item.template.id }}/download">Vorlage herunterladen</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endblock %}

@@ -137,7 +137,20 @@ Persist the approved batch **before** any weclapp write. A licence failure at
 the write step must not discard upload, preview, or approval. The write step
 consumes a stored artefact, not transient request state.
 
-## Artikel-Übersicht (weclapp snapshot viewer)
+Acceptance criteria and write-test rules (including **only `999.999` for live
+writes**): [`docs/artikel-registrierung.md`](docs/artikel-registrierung.md).
+
+CLI `scripts/weclapp/article_import.py` is **retired** for creating articles.
+Use `/artikel-registrierung`. The module remains as a library (columns, lookups,
+validation) for the web app. `--write-template` still works.
+
+**Week 5 note (article PUT):** weclapp v2 can reject updates with
+`platform.read_only_property` / `lowLevelCode is read-only` even when that
+field is absent from the PUT body. A GET-then-PUT round trip is the likely
+source. Do not assume “omit read-only keys” is enough; verify against live
+update before building write-back.
+
+## Artikelübersicht (weclapp snapshot viewer)
 
 `GET /artikel-uebersicht` pulls all articles from weclapp into PostgreSQL
 snapshots (job kind `weclapp_article_snapshot`). The feature is read-only toward
@@ -176,7 +189,6 @@ No CDN at runtime. Libraries live in `app/static/` and are committed.
 | File | Version |
 | --- | --- |
 | `htmx.min.js` | 2.0.4 |
-| `plotly.min.js` | Plotly.js (local copy) |
 | `jspreadsheet.js` / `jspreadsheet.css` | Jspreadsheet CE **5.0.4** |
 | `jsuites.js` / `jsuites.css` | jSuites **5.13.5** |
 
@@ -190,6 +202,6 @@ v5 API (`worksheets: [{ data, columns }]`) with `parseFormulas: false`.
 pytest
 ```
 
-Teaching notes for Gruppen-Verwaltung (what syncs to weclapp, what does not): [`docs/gruppen-verwaltung.md`](docs/gruppen-verwaltung.md).
+Teaching notes for Gruppenverwaltung (what syncs to weclapp, what does not): [`docs/gruppen-verwaltung.md`](docs/gruppen-verwaltung.md).
 
 To lock groups already referenced by weclapp articles, run `python scripts/lock_groups_from_weclapp.py` (dry-run) then `--commit`. This is a one-off; re-run by hand if articles are created in weclapp outside the registration tool.

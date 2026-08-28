@@ -228,7 +228,7 @@ def _build_job_spec():
 
     return JobSpec(
         id="gruppen_diagram",
-        title="Gruppen-Diagramm",
+        title="Gruppendiagramm",
         description=(
             "Interaktives Diagramm der Haupt- und Untergruppen aus dem Gruppenschlüssel "
             "erzeugen und im Browser öffnen."

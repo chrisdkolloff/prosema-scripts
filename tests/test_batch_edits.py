@@ -16,6 +16,7 @@ from app.db import engine, get_db
 from app.groups_service import create_hauptgruppe, create_untergruppe
 from app.main import app
 from app.models import ArticleBatch, ArticleBatchRow, Hauptgruppe
+from core.article_payload import NUMBER_PLACEHOLDER
 
 ACTOR = {"oid": "test-oid", "name": "Test User"}
 PLAIN_USER = {
@@ -89,11 +90,14 @@ def _make_batch(
     rows: list[dict[str, str]] | None = None,
     numbers: list[str] | None = None,
 ) -> tuple[ArticleBatch, list[ArticleBatchRow]]:
+    from app.article_templates import get_active_template
+
     batch = ArticleBatch(
         status=status,
         created_by_oid=PLAIN_USER["oid"],
         created_by_name=PLAIN_USER["name"],
         filename="test.csv",
+        template_id=get_active_template(db_session).id,
     )
     db_session.add(batch)
     db_session.flush()
@@ -123,6 +127,21 @@ def _raw_sql_data(db_session, row_id: uuid.UUID):
         text("SELECT raw_data FROM article_batch_rows WHERE id = CAST(:id AS uuid)"),
         {"id": str(row_id)},
     ).scalar()
+
+
+def test_edits_without_groups_keeps_article_number_placeholder(user_client, db_session):
+    batch, rows = _make_batch(db_session, rows=[_raw_article()])
+    row = rows[0]
+    assert row.proposed_article_number == ""
+    response = user_client.post(
+        f"/batches/{batch.id}/edits",
+        json=[{"row_id": str(row.id), "field": "PROSEMA Kurztext", "value": "Neuer Name"}],
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["rows"][0]["proposed_article_number"] == NUMBER_PLACEHOLDER
+    db_session.refresh(row)
+    assert row.proposed_article_number == ""
 
 
 def test_edits_rejects_non_whitelisted_field(user_client, db_session):
@@ -183,6 +202,73 @@ def test_edits_group_change_returns_new_article_number(user_client, db_session):
     db_session.refresh(row)
     assert row.proposed_article_number == f"{code}.002.0010"
     assert row.edits["Untergruppe"] == "Zweite - 002"
+
+
+def test_edits_hauptgruppe_change_clears_foreign_untergruppe(user_client, db_session):
+    code_a = _unused_code(db_session, prefix="7")
+    code_b = _unused_code(db_session, prefix="6")
+    haupt_a = create_hauptgruppe(db_session, code=code_a, name="Alpha", actor=ACTOR)
+    haupt_b = create_hauptgruppe(db_session, code=code_b, name="Beta", actor=ACTOR)
+    create_untergruppe(db_session, haupt_a, code="010", name="KindA", actor=ACTOR)
+    create_untergruppe(db_session, haupt_b, code="020", name="KindB", actor=ACTOR)
+    batch, rows = _make_batch(
+        db_session,
+        rows=[
+            _raw_article(
+                Hauptgruppe=f"Alpha - {code_a}",
+                Untergruppe="KindA - 010",
+            )
+        ],
+        numbers=[f"{code_a}.010.0010"],
+    )
+    row = rows[0]
+    response = user_client.post(
+        f"/batches/{batch.id}/edits",
+        json=[
+            {
+                "row_id": str(row.id),
+                "field": "Hauptgruppe",
+                "value": f"Beta - {code_b}",
+            }
+        ],
+    )
+    assert response.status_code == 200
+    body = response.json()["rows"][0]
+    assert body["corrected"]["Untergruppe"] == ""
+    assert "Untergruppe fehlt" in body["validation_error"]
+    db_session.refresh(row)
+    assert row.edits["Hauptgruppe"] == f"Beta - {code_b}"
+    assert row.edits["Untergruppe"] == ""
+
+
+def test_grid_config_untergruppe_map_follows_registry(user_client, db_session):
+    code_a = _unused_code(db_session, prefix="5")
+    code_b = _unused_code(db_session, prefix="4")
+    haupt_a = create_hauptgruppe(db_session, code=code_a, name="HolzMap", actor=ACTOR)
+    haupt_b = create_hauptgruppe(db_session, code=code_b, name="MetallMap", actor=ACTOR)
+    create_untergruppe(db_session, haupt_a, code="011", name="Bretter", actor=ACTOR)
+    create_untergruppe(db_session, haupt_b, code="022", name="Schrauben", actor=ACTOR)
+    batch, _rows = _make_batch(db_session)
+    response = user_client.get(f"/batches/{batch.id}")
+    assert response.status_code == 200
+    match = re.search(
+        r'<script type="application/json" id="batch-grid-config">(.*?)</script>',
+        response.text,
+        re.DOTALL,
+    )
+    assert match is not None
+    config = json.loads(match.group(1))
+    mapping = config["untergruppeByHauptgruppe"]
+    label_a = f"HolzMap - {code_a}"
+    label_b = f"MetallMap - {code_b}"
+    assert mapping[label_a] == ["Bretter - 011"]
+    assert mapping[label_b] == ["Schrauben - 022"]
+    assert "Schrauben - 022" not in mapping[label_a]
+    assert "Bretter - 011" not in mapping[label_b]
+    js = user_client.get("/static/batch_grid.js")
+    assert js.status_code == 200
+    assert "attachUntergruppeFilter" in js.text
+    assert "untergruppeByHauptgruppe" in js.text
 
 
 def test_edits_rejects_approved_batch(user_client, db_session):

@@ -18,6 +18,7 @@ from app.main import app
 
 PUBLIC_EXACT = {
     "/health",  # unauthenticated probe for App Service health check
+    "/favicon.ico",  # browsers fetch the tab icon without a session
     "/artikel",  # legacy 301 to /artikel-uebersicht; no data, target is protected
     "/einstellungen/weclapp",  # legacy 303 to /einstellungen; no data, target is protected
 }

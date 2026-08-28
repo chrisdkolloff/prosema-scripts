@@ -1,100 +1,136 @@
 {% extends "base.html" %}
 {% block title %}Einstellungen — PROSEMA{% endblock %}
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/">Home</a></li>
+<li class="breadcrumb-item active"><span>Einstellungen</span></li>
+{% endblock %}
 {% block content %}
-  <h1>Einstellungen</h1>
-  <p class="lede">
+  <h1 class="mb-2">Einstellungen</h1>
+  <p class="text-body-secondary mb-4">
     Zugangsdaten für angebundene Anwendungen. Weitere APIs erscheinen später
     in dieser Tabelle. Jede Person hinterlegt nur die eigenen Tokens; ein
     gespeichertes Token wird nie wieder angezeigt.
   </p>
 
-  <h2>Externe Systeme</h2>
-  <table class="data-table systems-list">
-    <thead>
-      <tr>
-        <th>Anwendung</th>
-        <th>Status</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td><a href="#weclapp">weclapp</a></td>
-        <td>
-          {% if stored %}
-          <span class="tool-mark-ok">Token hinterlegt</span>
-          {% if created_at_label %}
-          <span class="muted">Hinterlegt am {{ created_at_label }}</span>
-          {% endif %}
-          {% if last_verified_label %}
-          <span class="muted">
-            Zuletzt geprüft: {{ last_verified_label }}
-            {% if last_verified_ok is false %}(nicht erfolgreich){% endif %}
-          </span>
-          {% else %}
-          <span class="muted">Noch nie geprüft</span>
-          {% endif %}
-          {% else %}
-          <span class="tool-mark-warn">Kein Token hinterlegt</span>
-          {% endif %}
-        </td>
-      </tr>
-    </tbody>
-  </table>
+  <h2 class="h4 mb-2">Externe Systeme</h2>
+  <div class="table-responsive mb-4">
+    <table class="table table-hover align-middle systems-list">
+      <thead>
+        <tr>
+          <th>Anwendung</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><a href="#weclapp">weclapp</a></td>
+          <td>
+            {% if stored %}
+            <span class="tool-mark-ok">Token hinterlegt</span>
+            {% if created_at_label %}
+            <span class="text-body-secondary">Hinterlegt am {{ created_at_label }}</span>
+            {% endif %}
+            {% if last_verified_label %}
+            <span class="text-body-secondary">
+              Zuletzt geprüft: {{ last_verified_label }}
+              {% if last_verified_ok is false %}(nicht erfolgreich){% endif %}
+            </span>
+            {% else %}
+            <span class="text-body-secondary">Noch nie geprüft</span>
+            {% endif %}
+            {% else %}
+            <span class="tool-mark-warn">Kein Token hinterlegt</span>
+            {% endif %}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
 
-  <section id="weclapp" class="system-detail">
-    <h2>weclapp</h2>
-    <p class="lede">
-      PROSEMA handelt in weclapp als die Person, die die Arbeit auslöst.
-      Dafür ist ein persönliches API-Token nötig
-      (weclapp: Benutzermenü → Einstellungen → API-Token).
-    </p>
+  <h2 class="h4 mb-2">Artikelregistrierung</h2>
+  <div class="table-responsive mb-4">
+    <table class="table table-hover align-middle systems-list">
+      <thead>
+        <tr>
+          <th>Einstellung</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Artikel-Vorlage</td>
+          <td>
+            {% if is_admin %}
+            <a href="{{ vorlage_path }}">Vorlage verwalten</a>
+            {% else %}
+            <span class="text-body-secondary">Nur für Admins</span>
+            {% endif %}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
 
-    {% if form_error %}
-    <p class="error-banner">{{ form_error }}</p>
-    {% endif %}
+  <div id="weclapp" class="card mb-4">
+    <div class="card-header">weclapp</div>
+    <div class="card-body">
+      <p class="text-body-secondary">
+        PROSEMA handelt in weclapp als die Person, die die Arbeit auslöst.
+        Dafür ist ein persönliches API-Token nötig
+        (weclapp: Benutzermenü → Einstellungen → API-Token).
+      </p>
 
-    <form
-      class="stack-form"
-      method="post"
-      action="{{ weclapp_token_path }}"
-      autocomplete="off"
-    >
-      <label>
-        API-Token
-        <input
-          type="password"
-          name="token"
-          autocomplete="new-password"
-          spellcheck="false"
-          {% if not stored %}required{% endif %}
-        >
-      </label>
-      <div class="actions-row">
-        <button type="submit" class="btn">Token speichern</button>
+      {% if form_error %}
+      <div class="alert alert-danger" role="alert">{{ form_error }}</div>
+      {% endif %}
+
+      <form
+        method="post"
+        action="{{ weclapp_token_path }}"
+        autocomplete="off"
+        class="row g-3 align-items-end"
+      >
+        <div class="col-md-6">
+          <label class="form-label" for="weclapp-token">API-Token</label>
+          <input
+            class="form-control"
+            id="weclapp-token"
+            type="password"
+            name="token"
+            autocomplete="new-password"
+            spellcheck="false"
+            {% if not stored %}required{% endif %}
+          >
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-primary">Token speichern</button>
+        </div>
+        <div class="col-auto">
+          <button
+            type="submit"
+            class="btn btn-outline-secondary"
+            formaction="{{ weclapp_token_path }}/testen"
+            hx-post="{{ weclapp_token_path }}/testen"
+            hx-target="#weclapp-test-result"
+            hx-swap="innerHTML"
+          >
+            Verbindung testen
+          </button>
+        </div>
+      </form>
+      <div id="weclapp-test-result" class="mt-3"></div>
+
+      {% if stored %}
+      <form method="post" action="{{ weclapp_token_path }}/entfernen" class="mt-3">
         <button
           type="submit"
-          class="btn btn-secondary"
-          formaction="{{ weclapp_token_path }}/testen"
-          hx-post="{{ weclapp_token_path }}/testen"
-          hx-target="#weclapp-test-result"
-          hx-swap="innerHTML"
+          class="btn btn-danger"
+          hx-confirm="weclapp-Token wirklich entfernen?"
         >
-          Verbindung testen
+          Token entfernen
         </button>
-      </div>
-    </form>
-    <div id="weclapp-test-result"></div>
-
-    {% if stored %}
-    <form method="post" action="{{ weclapp_token_path }}/entfernen" class="toolbar">
-      <button
-        type="submit"
-        class="btn btn-danger"
-        hx-confirm="weclapp-Token wirklich entfernen?"
-      >
-        Token entfernen
-      </button>
-    </form>
-    {% endif %}
-  </section>
+      </form>
+      {% endif %}
+    </div>
+  </div>
 {% endblock %}

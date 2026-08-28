@@ -7,11 +7,10 @@ from scripts.processing.fill_prosema_prices import JOB_SPEC as fill_prosema_pric
 from scripts.processing.replace_legacy_names import JOB_SPEC as legacy_names
 from scripts.reports.gruppen_diagram import JOB_SPEC as gruppen_diagram
 from scripts.reports.master_dashboard import JOB_SPEC as master_dashboard
-from scripts.weclapp.article_editor import JOB_SPEC as weclapp_article_editor
-from scripts.weclapp.article_import import JOB_SPEC as weclapp_import_articles
 from scripts.weclapp.export_articles import JOB_SPEC as weclapp_export_articles
 from scripts.weclapp.test_connection import JOB_SPEC as weclapp_test
 
+# weclapp article create jobs removed: use /artikel-registrierung in the web app.
 JOBS: list[JobSpec] = [
     artikelnummern,
     legacy_names,
@@ -19,8 +18,6 @@ JOBS: list[JobSpec] = [
     fill_prosema_prices,
     weclapp_test,
     weclapp_export_articles,
-    weclapp_import_articles,
-    weclapp_article_editor,
     gruppen_diagram,
     master_dashboard,
 ]

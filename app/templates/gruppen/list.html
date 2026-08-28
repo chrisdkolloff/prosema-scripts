@@ -1,77 +1,86 @@
 {% extends "base.html" %}
-{% block title %}Gruppen — PROSEMA{% endblock %}
-{% block main_class %} wide{% endblock %}
+{% block title %}Gruppenverwaltung — PROSEMA{% endblock %}
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/">Home</a></li>
+<li class="breadcrumb-item active"><span>Gruppenverwaltung</span></li>
+{% endblock %}
 {% block content %}
-  <h1>Gruppen-Verwaltung</h1>
-  <p class="lede">Haupt- und Untergruppen sind die Grundlage für Artikelnummern. Codes sind nach der ersten Verwendung gesperrt.</p>
+  <h1 class="mb-2">Gruppenverwaltung</h1>
+  <p class="text-body-secondary">Haupt- und Untergruppen sind die Grundlage für Artikelnummern. Codes sind nach der ersten Verwendung gesperrt.</p>
 
   {% if error %}
-  <p class="error-banner">{{ error }}</p>
+  <div class="alert alert-danger" role="alert">{{ error }}</div>
   {% endif %}
 
-  <p class="toolbar">
+  <div class="d-flex flex-wrap gap-3 mb-3">
     <a href="/gruppen/diagramm">Diagramm</a>
     {% if show_deleted %}
     <a href="/gruppen">Gelöschte ausblenden</a>
     {% else %}
     <a href="/gruppen?geloeschte=1">Gelöschte anzeigen</a>
     {% endif %}
-  </p>
+  </div>
 
-  <table class="data-table">
-    <thead>
-      <tr>
-        <th>Code</th>
-        <th>Bezeichnung</th>
-        <th>Untergruppen</th>
-        <th>Status</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for group in groups %}
-      <tr class="{% if group.deleted_at %}is-deleted{% endif %}">
-        <td><a href="/gruppen/{{ group.id }}"><code>{{ group.code }}</code></a></td>
-        <td><a href="/gruppen/{{ group.id }}">{{ group.name }}</a></td>
-        <td>{{ counts.get(group.id, 0) }}</td>
-        <td>
-          {% if group.deleted_at %}
-          <span class="badge badge-deleted">Gelöscht</span>
-          {% else %}
-          <span class="badge badge-active">Aktiv</span>
-          {% endif %}
-        </td>
-      </tr>
-      {% else %}
-      <tr>
-        <td colspan="4">Keine Hauptgruppen vorhanden.</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead>
+        <tr>
+          <th>Code</th>
+          <th>Bezeichnung</th>
+          <th>Untergruppen</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for group in groups %}
+        <tr class="{% if group.deleted_at %}text-body-secondary{% endif %}">
+          <td><a href="/gruppen/{{ group.id }}"><code>{{ group.code }}</code></a></td>
+          <td><a href="/gruppen/{{ group.id }}">{{ group.name }}</a></td>
+          <td>{{ counts.get(group.id, 0) }}</td>
+          <td>
+            {% if group.deleted_at %}
+            <span class="badge text-bg-danger">Gelöscht</span>
+            {% else %}
+            <span class="badge text-bg-success">Aktiv</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="4">Keine Hauptgruppen vorhanden.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 
   {% if is_admin %}
-  <section class="create-panel">
-    <h2>Neue Hauptgruppe mit Untergruppe</h2>
-    <p class="hint">Beide werden zusammen angelegt. Nur auf tools.prosema.ch werden sie auch in weclapp erstellt.</p>
-    <form method="post" action="/gruppen" class="stack-form">
-      <label>
-        Hauptgruppe Code
-        <input type="text" name="code" maxlength="3" required pattern="[0-9]{3}" value="{{ form_code or '' }}">
-      </label>
-      <label>
-        Hauptgruppe Bezeichnung
-        <input type="text" name="name" required value="{{ form_name or '' }}">
-      </label>
-      <label>
-        Untergruppe Code
-        <input type="text" name="unter_code" maxlength="3" required pattern="[0-9]{3}" value="{{ form_unter_code or '' }}">
-      </label>
-      <label>
-        Untergruppe Bezeichnung
-        <input type="text" name="unter_name" required value="{{ form_unter_name or '' }}">
-      </label>
-      <button type="submit" class="btn">Speichern</button>
-    </form>
-  </section>
+  <div class="card mb-4">
+    <div class="card-header">Neue Hauptgruppe mit Untergruppe</div>
+    <div class="card-body">
+      <p class="text-body-secondary small">Beide werden zusammen angelegt. Nur auf tools.prosema.ch werden sie auch in weclapp erstellt.</p>
+      <form method="post" action="/gruppen" class="row g-3 align-items-end">
+        <div class="col-auto">
+          <label class="form-label" for="hg-code">Hauptgruppe Code</label>
+          <input class="form-control" id="hg-code" type="text" name="code" maxlength="3" required pattern="[0-9]{3}" value="{{ form_code or '' }}">
+        </div>
+        <div class="col-auto">
+          <label class="form-label" for="hg-name">Hauptgruppe Bezeichnung</label>
+          <input class="form-control" id="hg-name" type="text" name="name" required value="{{ form_name or '' }}">
+        </div>
+        <div class="col-auto">
+          <label class="form-label" for="ug-code">Untergruppe Code</label>
+          <input class="form-control" id="ug-code" type="text" name="unter_code" maxlength="3" required pattern="[0-9]{3}" value="{{ form_unter_code or '' }}">
+        </div>
+        <div class="col-auto">
+          <label class="form-label" for="ug-name">Untergruppe Bezeichnung</label>
+          <input class="form-control" id="ug-name" type="text" name="unter_name" required value="{{ form_unter_name or '' }}">
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-primary">Speichern</button>
+        </div>
+      </form>
+    </div>
+  </div>
   {% endif %}
 {% endblock %}

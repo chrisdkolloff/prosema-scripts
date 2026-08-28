@@ -1,74 +1,97 @@
 {% extends "base.html" %}
-{% block title %}Gruppen-Diagramm — PROSEMA{% endblock %}
-{% block main_class %} wide diagram{% endblock %}
+{% block title %}Gruppendiagramm — PROSEMA{% endblock %}
+{% block container_class %}container-fluid px-4{% endblock %}
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/">Home</a></li>
+<li class="breadcrumb-item"><a href="/gruppen">Gruppenverwaltung</a></li>
+<li class="breadcrumb-item active"><span>Gruppendiagramm</span></li>
+{% endblock %}
 {% block content %}
-  <p class="back-link"><a href="/gruppen">Zur Gruppen-Verwaltung</a></p>
-  <h1>Gruppen-Diagramm</h1>
-  <div class="gruppen-diagram">
-    <script src="/static/plotly.min.js"></script>
-    {{ plot_html | safe }}
+  <p class="mb-2"><a href="/gruppen">Zur Gruppenverwaltung</a></p>
+  <h1 class="mb-3">Gruppendiagramm</h1>
+  <div class="card mb-4">
+    <div class="card-body p-2">
+      <div class="sunburst-wrap">
+        <svg class="sunburst" viewBox="0 0 720 720"
+             aria-label="{{ n_haupt }} {{ 'Hauptgruppe' if n_haupt == 1 else 'Hauptgruppen' }}, {{ n_unter }} {{ 'Untergruppe' if n_unter == 1 else 'Untergruppen' }}">
+          {% for arc in arcs %}
+          <a href="{{ arc.href }}" title="{{ arc.title }}">
+            <path d="{{ arc.d }}" fill="{{ arc.fill }}"
+                  data-code="{{ arc.code }}"
+                  data-name="{{ arc.name }}"
+                  data-context="{{ arc.context }}"></path>
+          </a>
+          {% endfor %}
+          {% for arc in arcs %}
+          {% if arc.show_label %}
+          <text class="label-{{ arc.ring }}"
+                transform="{{ arc.label_transform }}"
+                text-anchor="{{ arc.text_anchor }}"
+                dominant-baseline="middle">{{ arc.label }}</text>
+          {% endif %}
+          {% endfor %}
+          <g id="sunburst-idle">
+            <text class="sunburst-centre" x="360" y="348"
+                  text-anchor="middle" dominant-baseline="middle">{{ n_haupt }} {{ "Hauptgruppe" if n_haupt == 1 else "Hauptgruppen" }}</text>
+            <text class="sunburst-centre-sub" x="360" y="374"
+                  text-anchor="middle" dominant-baseline="middle">{{ n_unter }} {{ "Untergruppe" if n_unter == 1 else "Untergruppen" }}</text>
+          </g>
+          <g id="sunburst-detail" visibility="hidden">
+            <text id="sunburst-detail-code" class="sunburst-detail-code" x="360" y="332"
+                  text-anchor="middle" dominant-baseline="middle"></text>
+            <text id="sunburst-detail-name" class="sunburst-detail-name" x="360" y="356"
+                  text-anchor="middle" dominant-baseline="middle"></text>
+            <text id="sunburst-detail-context" class="sunburst-detail-context" x="360" y="380"
+                  text-anchor="middle" dominant-baseline="middle"></text>
+          </g>
+        </svg>
+      </div>
+    </div>
   </div>
-  <script>
-    (function () {
-      var el = document.getElementById("gruppen-sunburst");
-      if (!el) return;
-
-      function ellipsizeLabels() {
-        var slices = el.querySelectorAll("g.slice");
-        for (var i = 0; i < slices.length; i++) {
-          var slice = slices[i];
-          var path = slice.querySelector("path");
-          var text = slice.querySelector("text");
-          if (!path || !text) continue;
-          var full = text.getAttribute("data-full-label");
-          if (!full) {
-            full = (text.textContent || "").replace(/\s+/g, " ").trim();
-            text.setAttribute("data-full-label", full);
-          }
-          var maxWidth = 24;
-          try {
-            var box = path.getBBox();
-            // Use the long side of the wedge so labels fill the sector;
-            // Plotly's auto orientation already follows that axis.
-            maxWidth = Math.max(24, Math.max(box.width, box.height) - 4);
-          } catch (err) {}
-          text.textContent = full;
-          if (typeof text.getComputedTextLength !== "function") continue;
-          if (text.getComputedTextLength() <= maxWidth) continue;
-          var lo = 0;
-          var hi = full.length;
-          while (lo < hi) {
-            var mid = Math.ceil((lo + hi) / 2);
-            text.textContent = full.slice(0, mid).replace(/\s+$/, "") + "...";
-            if (text.getComputedTextLength() <= maxWidth) lo = mid;
-            else hi = mid - 1;
-          }
-          text.textContent = lo <= 0 ? "..." : full.slice(0, lo).replace(/\s+$/, "") + "...";
-        }
-      }
-
-      function bind() {
-        if (typeof el.on !== "function") {
-          window.requestAnimationFrame(bind);
-          return;
-        }
-        el.on("plotly_afterplot", ellipsizeLabels);
-        el.on("plotly_relayout", ellipsizeLabels);
-        ellipsizeLabels();
-        el.on("plotly_click", function (event) {
-          var pt = event.points && event.points[0];
-          if (!pt || !pt.customdata) return;
-          var id = pt.customdata[0];
-          var kind = pt.customdata[1];
-          var parentId = pt.customdata[2];
-          if (kind === "hauptgruppe" && id) {
-            window.location.assign("/gruppen/" + id);
-          } else if (kind === "untergruppe" && parentId && id) {
-            window.location.assign("/gruppen/" + parentId + "#untergruppe-" + id);
-          }
-        });
-      }
-      bind();
-    })();
-  </script>
+  <h2 class="h4 mb-3">Alle Gruppen</h2>
+  <div class="accordion" id="gruppenAccordion">
+    {% for hg, untergruppen in tree %}
+    {% set n = untergruppen|length %}
+    <div class="accordion-item">
+      <h2 class="accordion-header" id="heading-{{ hg.code }}">
+        <button class="accordion-button collapsed" type="button"
+                data-coreui-toggle="collapse"
+                data-coreui-target="#collapse-{{ hg.code }}"
+                aria-expanded="false" aria-controls="collapse-{{ hg.code }}">
+          <span class="gruppen-acc-start">
+            <span class="badge bg-secondary me-2 gruppen-code">{{ hg.code }}</span>
+            {{ hg.name }}
+          </span>
+          <span class="gruppen-acc-count">
+            <span class="badge bg-light text-dark">
+              {{ n }} {{ "Untergruppe" if n == 1 else "Untergruppen" }}
+            </span>
+          </span>
+        </button>
+      </h2>
+      <div class="accordion-collapse collapse" id="collapse-{{ hg.code }}"
+           aria-labelledby="heading-{{ hg.code }}" data-coreui-parent="#gruppenAccordion">
+        {% if untergruppen %}
+        <div class="accordion-body p-0">
+          <ul class="list-group list-group-flush">
+            {% for ug in untergruppen %}
+            <li class="list-group-item d-flex align-items-center gruppen-sub">
+              <span class="badge bg-secondary me-3 gruppen-code">{{ ug.code }}</span>
+              {{ ug.name }}
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% else %}
+        <div class="accordion-body">
+          <span class="text-body-secondary">Keine Untergruppen</span>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+{% endblock %}
+{% block extra_scripts %}
+  <script src="/static/js/gruppen_diagramm.js?v={{ app_version }}"></script>
 {% endblock %}

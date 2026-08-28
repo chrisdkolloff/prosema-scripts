@@ -1,12 +1,16 @@
 {% extends "base.html" %}
 {% block title %}Gruppenclaim fehlt — PROSEMA{% endblock %}
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/">Home</a></li>
+<li class="breadcrumb-item active"><span>Gruppenclaim fehlt</span></li>
+{% endblock %}
 {% block content %}
-  <h1>Gruppenclaim fehlt im Anmeldetoken</h1>
-  <p>
+  <h1 class="mb-3">Gruppenclaim fehlt im Anmeldetoken</h1>
+  <div class="alert alert-danger" role="alert">
     Die Anmeldung war erfolgreich, aber das ID-Token enthält keinen
     <code>groups</code>-Claim. Ohne diesen Claim kann die Anwendung die
     Gruppenmitgliedschaft nicht auswerten — weder erlauben noch verweigern.
-  </p>
+  </div>
   <p>
     In der App-Registrierung unter
     <strong>Token configuration → Add groups claim</strong>

@@ -1,4 +1,4 @@
-"""Bezugsquellen-Export column catalog.
+"""Bezugsquellenexport column catalog.
 
 Source of truth for field_alias seed, grid, picker, write_policy, and serialisation.
 Visibility is a user preference; write_policy decides what reaches the CSV.

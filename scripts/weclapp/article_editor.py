@@ -130,7 +130,6 @@ def render_app() -> None:
         IMPORT_COLUMNS,
         dropdown_options,
         generate_article_numbers,
-        import_articles,
         save_import_rows,
         validate_import_rows,
     )
@@ -140,8 +139,10 @@ def render_app() -> None:
         layout="wide",
         initial_sidebar_state="expanded",
     )
-    st.title("weclapp-Artikelimport")
-    st.caption("CSV laden, filtern, Werte zuweisen und nach weclapp anlegen.")
+    st.title("weclapp-Artikelimport (abgelöst)")
+    st.caption(
+        "CSV laden und prüfen ist noch möglich. Anlegen nur noch über /artikel-registrierung."
+    )
 
     options = dropdown_options()
     default_path = _default_csv_path()
@@ -323,20 +324,11 @@ def render_app() -> None:
 
     with right:
         st.subheader("nach weclapp")
-        dry = st.button("Dry-Run", use_container_width=True)
-        create = st.button("Artikel anlegen", type="primary", use_container_width=True)
-        if dry or create:
-            target = Path(st.session_state.source_path)
-            save_import_rows(target, rows)
-            stats = import_articles(target, dry_run=not create)
-            for line in stats.summary_lines():
-                st.write(line)
-            if stats.errors and not (stats.created and not create):
-                st.error("Es gab Fehler. Details stehen in der Zusammenfassung.")
-            elif create:
-                st.success("Anlegen abgeschlossen.")
-            else:
-                st.info("Dry-Run abgeschlossen. Es wurde nichts gespeichert in weclapp.")
+        st.error(
+            "Der Desktop-Artikelimport ist abgelöst. "
+            "Neue Artikel in der Web-App anlegen: /artikel-registrierung"
+        )
+        st.caption("Dry-Run und Anlegen sind hier deaktiviert.")
 
 
 def _filter_mask(
@@ -415,10 +407,10 @@ def _build_job_spec():
 
     return JobSpec(
         id="weclapp_article_editor",
-        title="Artikel-Import Editor",
+        title="Artikel-Import Editor (abgelöst)",
         description=(
-            "Öffnet einen Browser-Editor für die standardisierte Import-CSV: "
-            "filtern, Dropdowns zuweisen, speichern und Artikel in weclapp anlegen."
+            "CSV-Editor noch nutzbar zum Prüfen. Anlegen nur noch über "
+            "/artikel-registrierung in der Web-App."
         ),
         fields=(
             FieldSpec(

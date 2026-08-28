@@ -1,53 +1,59 @@
 {% extends "base.html" %}
-{% block title %}Bezugsquellen-Export — PROSEMA{% endblock %}
+{% block title %}Bezugsquellenexport — PROSEMA{% endblock %}
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/">Home</a></li>
+<li class="breadcrumb-item active"><span>Bezugsquellenexport</span></li>
+{% endblock %}
 {% block content %}
-  <h1>Bezugsquellen-Export</h1>
-  <p class="lede">
+  <h1 class="mb-2">Bezugsquellenexport</h1>
+  <p class="text-body-secondary mb-4">
     weclapp-Bezugsquellen für Lieferant {{ supplier_id }} (Dural) abfragen,
     Rabatte verbindlich setzen und Import-CSV erzeugen. Kein API-Schreiben —
     die Datei wird manuell im weclapp-Assistenten importiert.
   </p>
 
   {% if running %}
-  <p class="error-banner">Es läuft bereits eine Abfrage.</p>
+  <div class="alert alert-danger" role="alert">Es läuft bereits eine Abfrage.</div>
   {% endif %}
 
-  <form method="post" action="/bezugsquellen/abfragen">
+  <form method="post" action="/bezugsquellen/abfragen" class="mb-4">
     <input type="hidden" name="supplier_id" value="{{ supplier_id }}">
-    <button type="submit" class="btn" {% if running %}disabled{% endif %}>
+    <button type="submit" class="btn btn-primary" {% if running %}disabled{% endif %}>
       Neue Abfrage starten
     </button>
   </form>
 
   {% if runs %}
-  <table class="data-table">
-    <thead>
-      <tr>
-        <th>Stand</th>
-        <th>Status</th>
-        <th>Zeilen</th>
-        <th>Mit Änderung</th>
-        <th>Abgefragt von</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for item in runs %}
-      <tr>
-        <td><a href="/bezugsquellen/{{ item.id }}">{{ format_timestamp(item.created_at) }}</a></td>
-        <td>
-          {% if item.status == "running" %}Abfrage läuft…
-          {% elif item.status == "draft" %}Entwurf
-          {% elif item.status == "exported" %}Exportiert
-          {% else %}Fehlgeschlagen{% endif %}
-        </td>
-        <td>{% if item.row_count is not none %}{{ format_swiss_number(item.row_count) }}{% else %}—{% endif %}</td>
-        <td>{% if item.included_count is not none %}{{ format_swiss_number(item.included_count) }}{% else %}—{% endif %}</td>
-        <td>{{ item.created_by_name }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead>
+        <tr>
+          <th>Stand</th>
+          <th>Status</th>
+          <th>Zeilen</th>
+          <th>Mit Änderung</th>
+          <th>Abgefragt von</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in runs %}
+        <tr>
+          <td><a href="/bezugsquellen/{{ item.id }}">{{ format_timestamp(item.created_at) }}</a></td>
+          <td>
+            {% if item.status == "running" %}Abfrage läuft…
+            {% elif item.status == "draft" %}Entwurf
+            {% elif item.status == "exported" %}Exportiert
+            {% else %}Fehlgeschlagen{% endif %}
+          </td>
+          <td>{% if item.row_count is not none %}{{ format_swiss_number(item.row_count) }}{% else %}—{% endif %}</td>
+          <td>{% if item.included_count is not none %}{{ format_swiss_number(item.included_count) }}{% else %}—{% endif %}</td>
+          <td>{{ item.created_by_name }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
   {% else %}
-  <p class="muted">Noch keine Abfrage vorhanden.</p>
+  <p class="text-body-secondary">Noch keine Abfrage vorhanden.</p>
   {% endif %}
 {% endblock %}

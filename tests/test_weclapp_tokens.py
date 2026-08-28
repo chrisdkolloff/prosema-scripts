@@ -16,6 +16,7 @@ from app.jobs import HANDLERS, _execute_job, job_handler
 from app.main import app
 from app.models import Job
 from app.weclapp import (
+    LANDING_TOOLS,
     MSG_INVALID,
     MSG_NO_LICENCE,
     MSG_NO_TOKEN,
@@ -205,24 +206,25 @@ def test_landing_lists_every_tool(user_client):
     assert "Externe Systeme" in response.text
     assert "Anwendung" in response.text
     assert "weclapp" in response.text
-    for name in (
-        "Gruppen-Verwaltung",
-        "Gruppen-Diagramm",
-        "Artikel-Registrierung",
-        "Artikel-Übersicht",
-        "Bezugsquellen-Export",
-        "Buchhaltungs-Export",
-    ):
-        assert name in response.text
-    assert 'href="/gruppen"' in response.text
-    assert 'href="/artikel-registrierung"' in response.text
-    assert 'href="/bezugsquellen"' in response.text
-    assert 'href="/buchhaltung-export"' in response.text
+    assert ">Beschreibung<" in response.text
+    for tool in LANDING_TOOLS:
+        assert tool["name"] in response.text
+        assert tool["description"] in response.text
+        assert f'href="{tool["href"]}"' in response.text
+    assert "d-none d-md-table-cell" in response.text
+    systems = response.text.split("Werkzeuge", 1)[0]
+    assert ">Beschreibung<" not in systems
     fragment = user_client.get("/weclapp/status")
     assert fragment.status_code == 200
     assert "<td>weclapp</td>" in fragment.text
     assert "Kein Token hinterlegt" in fragment.text
     assert "Externe Systeme" in fragment.text
+    assert 'class="system-status-detail"' in fragment.text
+    assert ">Beschreibung<" in fragment.text
+    for tool in LANDING_TOOLS:
+        assert tool["description"] in fragment.text
+    fragment_systems = fragment.text.split("Werkzeuge", 1)[0]
+    assert ">Beschreibung<" not in fragment_systems
 
 
 def test_active_jobs_banner_names_triggering_user(user_client, db_session):

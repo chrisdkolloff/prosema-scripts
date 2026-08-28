@@ -1,4 +1,4 @@
-"""Bezugsquellen-Export: pull, edit, validate, diff."""
+"""Bezugsquellenexport: pull, edit, validate, diff."""
 
 from __future__ import annotations
 

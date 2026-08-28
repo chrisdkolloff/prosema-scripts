@@ -1,29 +1,35 @@
 {% extends "base.html" %}
 {% block title %}Änderungsprotokoll — PROSEMA{% endblock %}
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/">Home</a></li>
+<li class="breadcrumb-item active"><span>Änderungsprotokoll</span></li>
+{% endblock %}
 {% block content %}
-  <h1>Änderungsprotokol</h1>
-  <p class="lede">Version <strong>{{ app_version }}</strong> — Übersicht aller veröffentlichten Versionen.</p>
+  <h1 class="mb-2">Änderungsprotokol</h1>
+  <p class="text-body-secondary mb-4">Version <strong>{{ app_version }}</strong> — Übersicht aller veröffentlichten Versionen.</p>
 
   <div class="changelog">
     {% for release in releases %}
-    <section class="changelog-release">
-      <h2>
+    <div class="card mb-3">
+      <div class="card-header">
         Version {{ release.version }}
         {% if release.date %}
-        <span class="changelog-date">{{ release.date }}</span>
+        <span class="text-body-secondary small ms-2">{{ release.date }}</span>
         {% endif %}
-      </h2>
-      {% if release.summary %}
-      <p class="changelog-summary">{{ release.summary }}</p>
-      {% endif %}
-      {% if release.changes %}
-      <ul>
-        {% for change in release.changes %}
-        <li>{{ change }}</li>
-        {% endfor %}
-      </ul>
-      {% endif %}
-    </section>
+      </div>
+      <div class="card-body">
+        {% if release.summary %}
+        <p class="mb-2">{{ release.summary }}</p>
+        {% endif %}
+        {% if release.changes %}
+        <ul class="mb-0">
+          {% for change in release.changes %}
+          <li>{{ change }}</li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+      </div>
+    </div>
     {% endfor %}
   </div>
 {% endblock %}

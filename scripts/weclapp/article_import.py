@@ -11,8 +11,23 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-NUMBER_PLACEHOLDER = "wird autogeneriert"
+from core.article_fields import IMPORT_COLUMNS
+from core.article_payload import (
+    BOOLEAN_CUSTOM_ATTRS,
+    DEFAULTS,
+    FALSE_VALUES,
+    LIST_CUSTOM_ATTRS,
+    NUMBER_PLACEHOLDER,
+    STRING_CUSTOM_ATTRS,
+    TRUE_VALUES,
+    _norm,
+    _parse_bool,
+    _row_value,
+    row_to_payload,
+)
+
 GROUP_CODE_RE = re.compile(r"-\s*(\d+)\s*$")
+_GROUP_LABEL_RE = re.compile(r"^(.*?)\s*-\s*(\d+)\s*$")
 RESTRICTED_SELECT_COLUMNS: tuple[str, ...] = (
     "Artikeltyp",
     "Einheit",
@@ -28,100 +43,6 @@ RESTRICTED_SELECT_COLUMNS: tuple[str, ...] = (
     "Landschaftsgärtner",
     "Plattenleger",
 )
-
-
-IMPORT_COLUMNS: tuple[str, ...] = (
-    "Prosema Artikelnummer",
-    "Lieferantenartikelnummer",
-    "Hauptgruppe",
-    "Untergruppe",
-    "PROSEMA Kurztext",
-    "PROSEMA Langtext",
-    "Kurzbeschreibung",
-    "Referenz (Matchcode)",
-    "GTIN (EAN-Nummer)",
-    "Artikeltyp",
-    "Einheit",
-    "Kategorie",
-    "Aktiv",
-    "Im Verkauf",
-    "Steuersatz",
-    "Im Shop verfügbar",
-    "Im Shop aktiv",
-    "Bestand übertragen",
-    "Gewichtseinheit",
-    "Grundmaterial",
-    "Oberfläche",
-    "Farbe",
-    "Produktfamilie",
-    "Rabattcode",
-    "Verkaufseinheit",
-    "Verpackung",
-    "VPE 1",
-    "VPE 2",
-    "VPE 3",
-    "Breite in mm",
-    "Länge in cm",
-    "Höhe in mm",
-    "Bodenleger",
-    "Dachdecker",
-    "Landschaftsgärtner",
-    "Plattenleger",
-    "Artikelbeschreibung HTML",
-    "Nettogewicht kg",
-    "Produkt-ID (Prosema)",
-    "Varianten-ID (Prosema)",
-)
-
-STRING_CUSTOM_ATTRS: dict[str, str] = {
-    "Grundmaterial": "Grundmaterial",
-    "Oberfläche": "Oberfläche",
-    "Farbe": "Farbe",
-    "Produktfamilie": "Produktfamilie",
-    "Rabattcode": "Rabattcode",
-    "Verkaufseinheit": "Verkaufseinheit",
-    "Verpackung": "Verpackung",
-    "VPE 1": "VPE 1",
-    "VPE 2": "VPE 2",
-    "VPE 3": "VPE 3",
-    "Breite in mm": "Breite in mm",
-    "Länge in cm": "Länge in cm",
-    "Höhe in mm": "Höhe in mm",
-    "Gewichtseinheit": "Gewichtseinheit",
-    "Produkt-ID (Prosema)": "Produkt-ID (Prosema)",
-    "Varianten-ID (Prosema)": "Varianten-ID (Prosema)",
-}
-
-BOOLEAN_CUSTOM_ATTRS: dict[str, str] = {
-    "Im Shop verfügbar": "Im Shop verfügbar (Prosema)",
-    "Im Shop aktiv": "Im Shop aktiv (Prosema)",
-    "Bestand übertragen": "Bestand übertragen (Prosema)",
-    "Bodenleger": "Bodenleger",
-    "Dachdecker": "Dachdecker",
-    "Landschaftsgärtner": "Landschaftsgärtner",
-    "Plattenleger": "Plattenleger",
-}
-
-LIST_CUSTOM_ATTRS: dict[str, str] = {
-    "Hauptgruppe": "Hauptwarengruppe (Auswahl)",
-    "Untergruppe": "Warengruppe (Auswahl)",
-}
-
-DEFAULTS: dict[str, str] = {
-    "Prosema Artikelnummer": NUMBER_PLACEHOLDER,
-    "Artikeltyp": "BASIC",
-    "Einheit": "Stk.",
-    "Aktiv": "Ja",
-    "Im Verkauf": "Ja",
-    "Steuersatz": "STANDARD",
-    "Im Shop verfügbar": "Ja",
-    "Im Shop aktiv": "Ja",
-    "Bestand übertragen": "Ja",
-    "Gewichtseinheit": "kg",
-}
-
-TRUE_VALUES = {"ja", "true", "1", "yes", "x"}
-FALSE_VALUES = {"nein", "false", "0", "no", ""}
 
 
 @dataclass
@@ -165,26 +86,13 @@ def _load_schema() -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _norm(value: object) -> str:
-    return str(value or "").strip()
-
-
-def _parse_bool(value: object, *, default: bool | None = None) -> bool | None:
-    text = _norm(value).lower()
-    if not text:
-        return default
-    if text in TRUE_VALUES:
-        return True
-    if text in FALSE_VALUES:
-        return False
-    raise ValueError(f"Ungültiger Ja/Nein-Wert: {value!r}")
-
-
-def _row_value(row: dict[str, str], column: str) -> str:
-    raw = _norm(row.get(column, ""))
-    if raw:
-        return raw
-    return DEFAULTS.get(column, "")
+def _split_group_label(text: str) -> tuple[str, int | None]:
+    """Split ``Name - NNN`` into (name, integer code). Code padding is ignored."""
+    cleaned = _norm(text)
+    match = _GROUP_LABEL_RE.match(cleaned)
+    if match is None:
+        return cleaned, None
+    return match.group(1).strip(), int(match.group(2))
 
 
 class LookupTables:
@@ -238,17 +146,61 @@ class LookupTables:
         return category_id
 
     def list_value_id(self, attr_label: str, value: str) -> str:
+        """Resolve a selectable-value id.
+
+        Group labels may disagree on zero-padding (``Nivelliersystem - 010`` in
+        the registry vs ``Nivelliersystem - 10`` in weclapp). Match on the
+        display name plus the integer code; never rewrite either side's label.
+        Returns weclapp's own option id so the payload uses weclapp's literal.
+        """
         attr = self.attrs_by_label.get(attr_label)
         if not attr:
             raise ValueError(f"Zusatzfeld nicht gefunden: {attr_label}")
-        wanted = _norm(value).lower()
+        wanted = _norm(value)
+        if not wanted:
+            raise ValueError(f"Ungültiger Wert für {attr_label}: {value}")
+        wanted_lower = wanted.lower()
+        wanted_name, wanted_code = _split_group_label(wanted)
+
+        exact_id: str | None = None
+        code_name_id: str | None = None
+        prefix_id: str | None = None
         for option in attr.get("selectableValues") or []:
             option_value = _norm(option.get("value"))
-            if option_value.lower() == wanted:
-                return str(option.get("id"))
-            prefix = option_value.split(" - ", 1)[0].lower()
-            if prefix == wanted:
-                return str(option.get("id"))
+            option_id = str(option.get("id") or "")
+            if not option_value or not option_id:
+                continue
+            if option_value.lower() == wanted_lower:
+                exact_id = option_id
+                break
+            opt_name, opt_code = _split_group_label(option_value)
+            if (
+                wanted_code is not None
+                and opt_code is not None
+                and wanted_code == opt_code
+                and opt_name.lower() == wanted_name.lower()
+            ):
+                code_name_id = option_id
+            if opt_name.lower() == wanted_lower:
+                prefix_id = option_id
+
+        if exact_id is not None:
+            return exact_id
+        if code_name_id is not None:
+            return code_name_id
+        if prefix_id is not None:
+            return prefix_id
+        raise ValueError(f"Ungültiger Wert für {attr_label}: {value}")
+
+    def list_value_literal(self, attr_label: str, value: str) -> str:
+        """Return weclapp's own selectable-value string for ``value``."""
+        attr = self.attrs_by_label.get(attr_label)
+        if not attr:
+            raise ValueError(f"Zusatzfeld nicht gefunden: {attr_label}")
+        option_id = self.list_value_id(attr_label, value)
+        for option in attr.get("selectableValues") or []:
+            if str(option.get("id") or "") == option_id:
+                return _norm(option.get("value"))
         raise ValueError(f"Ungültiger Wert für {attr_label}: {value}")
 
     def attr_id(self, label: str) -> str:
@@ -452,95 +404,6 @@ def validate_import_rows(rows: list[dict[str, str]]) -> list[ImportErrorRow]:
     return errors
 
 
-def row_to_payload(row: dict[str, str], lookups: LookupTables) -> dict[str, Any]:
-    article_number = _row_value(row, "Prosema Artikelnummer")
-    name = _row_value(row, "PROSEMA Kurztext")
-    if not article_number or article_number == NUMBER_PLACEHOLDER:
-        raise ValueError(
-            "Prosema Artikelnummer fehlt. Bitte Hauptgruppe und Untergruppe setzen "
-            "und Artikelnummern erzeugen."
-        )
-    if not name:
-        raise ValueError("PROSEMA Kurztext fehlt")
-
-    unit_value = _row_value(row, "Einheit")
-    payload: dict[str, Any] = {
-        "articleNumber": article_number,
-        "name": name,
-        "articleType": _row_value(row, "Artikeltyp").upper() or "BASIC",
-        "unitId": lookups.unit_id(unit_value),
-        "taxRateType": _row_value(row, "Steuersatz").upper() or "STANDARD",
-        "active": _parse_bool(_row_value(row, "Aktiv"), default=True),
-        "availableInSale": _parse_bool(_row_value(row, "Im Verkauf"), default=True),
-    }
-
-    match_code = _row_value(row, "Referenz (Matchcode)")
-    if match_code:
-        payload["matchCode"] = match_code
-    ean = _row_value(row, "GTIN (EAN-Nummer)")
-    if ean:
-        payload["ean"] = ean
-    short_description = _row_value(row, "Kurzbeschreibung") or name
-    payload["shortDescription1"] = short_description
-    long_text = _row_value(row, "PROSEMA Langtext")
-    if long_text:
-        payload["longText"] = long_text
-    category = _row_value(row, "Kategorie")
-    if category:
-        payload["articleCategoryId"] = lookups.category_id(category)
-    weight = _row_value(row, "Nettogewicht kg")
-    if weight:
-        payload["articleNetWeight"] = weight.replace(",", ".")
-
-    custom_attributes: list[dict[str, Any]] = []
-    html = _row_value(row, "Artikelbeschreibung HTML")
-    if html:
-        custom_attributes.append(
-            {
-                "attributeDefinitionId": lookups.attr_id("Artikelbeschreibung (Prosema)"),
-                "stringValue": html,
-            }
-        )
-
-    for column, label in STRING_CUSTOM_ATTRS.items():
-        value = _row_value(row, column)
-        if not value:
-            continue
-        custom_attributes.append(
-            {
-                "attributeDefinitionId": lookups.attr_id(label),
-                "stringValue": value,
-            }
-        )
-
-    for column, label in BOOLEAN_CUSTOM_ATTRS.items():
-        value = _row_value(row, column)
-        parsed = _parse_bool(value, default=None)
-        if parsed is None:
-            continue
-        custom_attributes.append(
-            {
-                "attributeDefinitionId": lookups.attr_id(label),
-                "booleanValue": parsed,
-            }
-        )
-
-    for column, label in LIST_CUSTOM_ATTRS.items():
-        value = _row_value(row, column)
-        if not value:
-            continue
-        custom_attributes.append(
-            {
-                "attributeDefinitionId": lookups.attr_id(label),
-                "selectedValueId": lookups.list_value_id(label, value),
-            }
-        )
-
-    if custom_attributes:
-        payload["customAttributes"] = custom_attributes
-    return payload
-
-
 COLUMN_ALIASES = {
     "Artikelnr.": "Lieferantenartikelnummer",
     "Hauptwarengruppe": "Hauptgruppe",
@@ -622,6 +485,12 @@ def write_template(path: Path, *, include_dummy: bool = True) -> None:
             writer.writerow(dummy)
 
 
+MSG_CLI_RETIRED = (
+    "Der CLI-/Desktop-Artikelimport ist abgelöst. "
+    "Neue Artikel über die Web-App anlegen: /artikel-registrierung"
+)
+
+
 def _article_exists(client, article_number: str) -> dict[str, Any] | None:
     data = client.get(
         "/article",
@@ -638,69 +507,18 @@ def import_articles(
     limit: int | None = None,
     article_numbers: set[str] | None = None,
 ) -> ImportStats:
-    from scripts.weclapp.client import WeclappClient, WeclappError
-    from scripts.weclapp.config import load_config
+    """Retired: do not POST articles from the CLI or desktop GUI.
 
-    lookups = LookupTables(_load_schema())
-    rows = load_import_rows(input_path)
-    if article_numbers is not None:
-        rows = [row for row in rows if row.get("Prosema Artikelnummer") in article_numbers]
-    if limit is not None:
-        rows = rows[:limit]
-
-    client = WeclappClient(load_config())
-    stats = ImportStats(rows_read=len(rows))
-    params = {"dryRun": "true"} if dry_run else None
-
-    for row in rows:
-        article_number = _row_value(row, "Prosema Artikelnummer") or "(ohne Nummer)"
-        try:
-            payload = row_to_payload(row, lookups)
-            existing = _article_exists(client, payload["articleNumber"])
-            if existing is not None:
-                stats.skipped += 1
-                stats.errors.append(
-                    ImportErrorRow(
-                        article_number,
-                        f"existiert bereits (id={existing.get('id')})",
-                    )
-                )
-                continue
-            created = client.post("/article", params=params, json=payload)
-            article_id = str((created or {}).get("id") or "")
-            stats.created += 1
-            stats.created_ids.append((payload["articleNumber"], article_id or "(dry-run)"))
-        except WeclappError as exc:
-            detail = exc.detail
-            message = str(exc)
-            if isinstance(detail, dict):
-                message = str(detail.get("error") or detail.get("detail") or exc)
-            stats.errors.append(ImportErrorRow(article_number, message))
-        except ValueError as exc:
-            stats.errors.append(ImportErrorRow(article_number, str(exc)))
-
-    return stats
+    Shared helpers in this module (columns, lookups, validation) remain for the
+    web Artikelregistrierung. Offline CSV checks can use ``validate_import_rows``.
+    """
+    raise RuntimeError(MSG_CLI_RETIRED)
 
 
 def run_job(params: dict):
-    from gui.job_spec import RunResult, coerce_params, validate_params
-    from scripts.paths import resolve_path
+    from gui.job_spec import RunResult
 
-    params = coerce_params(JOB_SPEC, params)
-    validate_params(JOB_SPEC, params)
-
-    input_path = resolve_path(params["input"])
-    dry_run = not bool(params.get("create"))
-    try:
-        stats = import_articles(input_path, dry_run=dry_run)
-    except Exception as exc:  # noqa: BLE001
-        return RunResult(summary=f"Fehler: {exc}", details=[])
-
-    mode = "Dry-Run" if dry_run else "Import"
-    return RunResult(
-        summary=f"{mode}: {stats.created} erstellt, {len(stats.errors)} Fehler",
-        details=stats.summary_lines(),
-    )
+    return RunResult(summary=MSG_CLI_RETIRED, details=[])
 
 
 def _build_job_spec():
@@ -708,23 +526,14 @@ def _build_job_spec():
 
     return JobSpec(
         id="weclapp_import_articles",
-        title="weclapp-Artikel anlegen",
-        description=(
-            "Liest die standardisierte Import-CSV und legt Artikel in weclapp an. "
-            "Ohne Haken 'Wirklich anlegen' nur Dry-Run."
-        ),
+        title="weclapp-Artikel anlegen (abgelöst)",
+        description=MSG_CLI_RETIRED,
         fields=(
             FieldSpec(
                 "input",
                 "Import-CSV",
                 FieldKind.FILE_IN,
                 "data/weclapp_article_import_template.csv",
-            ),
-            FieldSpec(
-                "create",
-                "Wirklich anlegen (sonst nur prüfen)",
-                FieldKind.BOOL,
-                False,
             ),
         ),
         run=run_job,
@@ -736,7 +545,10 @@ def main(argv: list[str] | None = None) -> int:
     from scripts.paths import DATA_DIR, resolve_path
 
     parser = argparse.ArgumentParser(
-        description="weclapp-Artikel aus der standardisierten Import-CSV anlegen.",
+        description=(
+            "ABGELÖST — Artikel anlegen über /artikel-registrierung. "
+            "Dieses Skript schreibt nur noch das Template oder bricht ab."
+        ),
     )
     parser.add_argument(
         "--input",
@@ -747,19 +559,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--create",
         action="store_true",
-        help="Artikel wirklich anlegen (sonst nur weclapp-Dry-Run)",
+        help="(abgelöst)",
     )
     parser.add_argument(
         "--limit",
         type=int,
         default=None,
-        help="Nur die ersten N Zeilen",
+        help="(abgelöst)",
     )
     parser.add_argument(
         "--article",
         action="append",
         default=[],
-        help="Nur diese Artikelnummer(n)",
+        help="(abgelöst)",
     )
     parser.add_argument(
         "--write-template",
@@ -774,24 +586,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Template geschrieben: {input_path}")
         return 0
 
-    mode = "ANLEGEN" if args.create else "Dry-Run"
-    print(f"Datei: {input_path}", file=sys.stderr)
-    print(f"Modus: {mode}", file=sys.stderr)
-    try:
-        stats = import_articles(
-            input_path,
-            dry_run=not args.create,
-            limit=args.limit,
-            article_numbers=set(args.article) if args.article else None,
-        )
-    except Exception as exc:  # noqa: BLE001
-        print(f"Fehler: {exc}", file=sys.stderr)
-        return 1
-
-    print("\nZusammenfassung", file=sys.stderr)
-    for line in stats.summary_lines():
-        print(f"  {line}", file=sys.stderr)
-    return 0 if not stats.errors else 2
+    print(MSG_CLI_RETIRED, file=sys.stderr)
+    return 1
 
 
 _ensure_project_root()

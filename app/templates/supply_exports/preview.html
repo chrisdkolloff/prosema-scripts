@@ -1,76 +1,88 @@
 {% extends "base.html" %}
-{% block title %}Vorschau — Bezugsquellen-Export — PROSEMA{% endblock %}
+{% block title %}Vorschau — Bezugsquellenexport — PROSEMA{% endblock %}
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/">Home</a></li>
+<li class="breadcrumb-item"><a href="/bezugsquellen">Bezugsquellenexport</a></li>
+<li class="breadcrumb-item"><a href="/bezugsquellen/{{ run.id }}">{{ format_timestamp(run.created_at) }}</a></li>
+<li class="breadcrumb-item active"><span>Vorschau</span></li>
+{% endblock %}
 {% block content %}
-  <p class="back-link"><a href="/bezugsquellen/{{ run.id }}">Zurück zum Editor</a></p>
-  <h1>Vorschau &amp; Validierung</h1>
-  <p class="lede">
+  <p class="mb-2"><a href="/bezugsquellen/{{ run.id }}">Zurück zum Editor</a></p>
+  <h1 class="mb-2">Vorschau &amp; Validierung</h1>
+  <p class="text-body-secondary mb-4">
     Lieferant {{ run.supplier_id }} · Stand {{ format_timestamp(run.created_at) }}
   </p>
 
-  <section class="supply-run-settings">
-    <h2>Import-Einstellungen</h2>
-    <p>
-      Preis-Eintritt {{ format_display_date(run.price_entry_date) or "nicht gesetzt" }}
-      · Verkaufsartikel-Währung {{ run.sales_article_currency or "nicht gesetzt" }}
-      {% if run.status == "draft" %}
-      · <a href="/bezugsquellen/{{ run.id }}">im Editor ändern</a>
-      {% endif %}
-    </p>
-  </section>
+  <div class="card mb-4">
+    <div class="card-header">Import-Einstellungen</div>
+    <div class="card-body">
+      <p class="mb-0">
+        Preis-Eintritt {{ format_display_date(run.price_entry_date) or "nicht gesetzt" }}
+        · Verkaufsartikel-Währung {{ run.sales_article_currency or "nicht gesetzt" }}
+        {% if run.status == "draft" %}
+        · <a href="/bezugsquellen/{{ run.id }}">im Editor ändern</a>
+        {% endif %}
+      </p>
+    </div>
+  </div>
 
-  <section class="preview-summary">
-    <p>
-      <strong>{{ format_swiss_number(report.included_count) }}</strong> Zeilen mit Änderung (werden exportiert)
-      {% if report.explicit_zero_count %}
-      · <strong class="warn-text">{{ report.explicit_zero_count }} explizit 0&nbsp;% (Rabatt wird in weclapp entfernt)</strong>
+  <div class="card mb-4">
+    <div class="card-body">
+      <p class="mb-2">
+        <strong>{{ format_swiss_number(report.included_count) }}</strong> Zeilen mit Änderung (werden exportiert)
+        {% if report.explicit_zero_count %}
+        · <strong class="text-danger">{{ report.explicit_zero_count }} explizit 0&nbsp;% (Rabatt wird in weclapp entfernt)</strong>
+        {% endif %}
+      </p>
+      <p class="mb-2">
+        EK vor Rabatt Σ {{ report.ek_before_sum }} · EK nach Rabatt Σ {{ report.ek_after_sum }}
+      </p>
+      {% if report.by_category %}
+      <ul class="mb-0">
+        {% for cat, n in report.by_category.items() %}
+        <li>{{ cat }}: {{ n }}</li>
+        {% endfor %}
+      </ul>
       {% endif %}
-    </p>
-    <p>
-      EK vor Rabatt Σ {{ report.ek_before_sum }} · EK nach Rabatt Σ {{ report.ek_after_sum }}
-    </p>
-    {% if report.by_category %}
-    <ul>
-      {% for cat, n in report.by_category.items() %}
-      <li>{{ cat }}: {{ n }}</li>
-      {% endfor %}
-    </ul>
-    {% endif %}
-  </section>
+    </div>
+  </div>
 
-  <section>
-    <h2>Spalten, die geschrieben werden</h2>
-    <p class="muted">
+  <div class="mb-4">
+    <h2 class="h4 mb-2">Spalten, die geschrieben werden</h2>
+    <p class="text-body-secondary">
       Unabhängig von der aktuellen Spaltenansicht — das schreibt die Datei nach weclapp.
       Ein ausgeblendetes Feld mit Wert wird trotzdem exportiert.
     </p>
     {% if report.written_columns %}
-    <table class="data-table">
-      <thead>
-        <tr>
-          <th>Spalte</th>
-          <th>weclapp</th>
-          <th>Zeilen mit Wert</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for col in report.written_columns %}
-        <tr>
-          <td>{{ col.label }}</td>
-          <td>{% if col.weclapp_column %}{{ col.weclapp_column }}{% else %}—{% endif %}</td>
-          <td>{{ format_swiss_number(col.non_empty_count) }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    <div class="table-responsive">
+      <table class="table table-hover align-middle">
+        <thead>
+          <tr>
+            <th>Spalte</th>
+            <th>weclapp</th>
+            <th>Zeilen mit Wert</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for col in report.written_columns %}
+          <tr>
+            <td>{{ col.label }}</td>
+            <td>{% if col.weclapp_column %}{{ col.weclapp_column }}{% else %}—{% endif %}</td>
+            <td>{{ format_swiss_number(col.non_empty_count) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
     {% else %}
-    <p class="muted">Keine Zeilen mit Änderung — es wird nichts geschrieben.</p>
+    <p class="text-body-secondary">Keine Zeilen mit Änderung — es wird nichts geschrieben.</p>
     {% endif %}
-  </section>
+  </div>
 
   {% if report.errors %}
-  <section class="error-banner">
-    <h2>Fehler (Download blockiert)</h2>
-    <ul>
+  <div class="alert alert-danger mb-4" role="alert">
+    <h2 class="h5">Fehler (Download blockiert)</h2>
+    <ul class="mb-0">
       {% for issue in report.errors %}
       <li>
         {% if issue.article_number or issue.supplier_article_number %}
@@ -80,12 +92,12 @@
       </li>
       {% endfor %}
     </ul>
-  </section>
+  </div>
   {% endif %}
 
   {% if report.warnings %}
-  <section>
-    <h2>Warnungen</h2>
+  <div class="mb-4">
+    <h2 class="h4 mb-2">Warnungen</h2>
     <ul>
       {% for issue in report.warnings[:50] %}
       <li>
@@ -96,66 +108,72 @@
       </li>
       {% endfor %}
     </ul>
-  </section>
+  </div>
   {% endif %}
 
-  <section>
-    <h2>Diff zu weclapp (aktueller Stand)</h2>
+  <div class="mb-4">
+    <h2 class="h4 mb-2">Diff zu weclapp (aktueller Stand)</h2>
     {% if report.weclapp_diff %}
-    <table class="data-table">
-      <thead><tr><th>Art</th><th>Lief.-Artikelnr.</th><th>Feld</th><th>Alt</th><th>Neu</th></tr></thead>
-      <tbody>
-        {% for d in report.weclapp_diff[:200] %}
-        <tr>
-          <td>{{ d.kind }}</td>
-          <td>{{ d.supplier_article_number }}</td>
-          <td>{{ d.field }}</td>
-          <td>{{ d.old_value }}</td>
-          <td>{{ d.new_value }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    <div class="table-responsive">
+      <table class="table table-hover align-middle">
+        <thead><tr><th>Art</th><th>Lief.-Artikelnr.</th><th>Feld</th><th>Alt</th><th>Neu</th></tr></thead>
+        <tbody>
+          {% for d in report.weclapp_diff[:200] %}
+          <tr>
+            <td>{{ d.kind }}</td>
+            <td>{{ d.supplier_article_number }}</td>
+            <td>{{ d.field }}</td>
+            <td>{{ d.old_value }}</td>
+            <td>{{ d.new_value }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
     {% else %}
-    <p class="muted">Keine Abweichungen zum weclapp-Stand (oder Rabatte in weclapp nicht auslesbar).</p>
+    <p class="text-body-secondary">Keine Abweichungen zum weclapp-Stand (oder Rabatte in weclapp nicht auslesbar).</p>
     {% endif %}
-  </section>
+  </div>
 
-  <section>
-    <h2>Diff zum vorherigen Export</h2>
+  <div class="mb-4">
+    <h2 class="h4 mb-2">Diff zum vorherigen Export</h2>
     {% if report.prior_run_diff %}
-    <table class="data-table">
-      <thead><tr><th>Art</th><th>Lief.-Artikelnr.</th><th>Artikel</th><th>Alt</th><th>Neu</th></tr></thead>
-      <tbody>
-        {% for d in report.prior_run_diff[:200] %}
-        <tr {% if d.kind == 'dropped' %}class="row-unresolved"{% endif %}>
-          <td>{{ d.kind }}</td>
-          <td>{{ d.supplier_article_number }}</td>
-          <td>{{ d.article_number }}</td>
-          <td>{{ d.old_value }}</td>
-          <td>{{ d.new_value }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    <div class="table-responsive">
+      <table class="table table-hover align-middle">
+        <thead><tr><th>Art</th><th>Lief.-Artikelnr.</th><th>Artikel</th><th>Alt</th><th>Neu</th></tr></thead>
+        <tbody>
+          {% for d in report.prior_run_diff[:200] %}
+          <tr {% if d.kind == 'dropped' %}class="row-unresolved"{% endif %}>
+            <td>{{ d.kind }}</td>
+            <td>{{ d.supplier_article_number }}</td>
+            <td>{{ d.article_number }}</td>
+            <td>{{ d.old_value }}</td>
+            <td>{{ d.new_value }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
     {% else %}
-    <p class="muted">Kein vorheriger Export oder keine Unterschiede.</p>
+    <p class="text-body-secondary">Kein vorheriger Export oder keine Unterschiede.</p>
     {% endif %}
-  </section>
+  </div>
 
-  <section class="download-panel">
-    <p class="error-banner">
-      Datei nicht in Excel öffnen — führende Nullen, Dezimalformat und Encoding gehen verloren.
-      Während des Imports kein anderes weclapp-Fenster offen lassen.
-    </p>
-    {% if can_download or run.status == 'exported' %}
-    <form method="post" action="/bezugsquellen/{{ run.id }}/download">
-      <button type="submit" class="btn">
-        {% if run.status == 'exported' %}Archiv erneut herunterladen{% else %}CSV herunterladen &amp; archivieren{% endif %}
-      </button>
-    </form>
-    {% else %}
-    <p class="muted">Download erst möglich, wenn alle Fehler behoben sind.</p>
-    {% endif %}
-  </section>
+  <div class="card mb-4">
+    <div class="card-body">
+      <div class="alert alert-danger" role="alert">
+        Datei nicht in Excel öffnen — führende Nullen, Dezimalformat und Encoding gehen verloren.
+        Während des Imports kein anderes weclapp-Fenster offen lassen.
+      </div>
+      {% if can_download or run.status == 'exported' %}
+      <form method="post" action="/bezugsquellen/{{ run.id }}/download">
+        <button type="submit" class="btn btn-primary">
+          {% if run.status == 'exported' %}Archiv erneut herunterladen{% else %}CSV herunterladen &amp; archivieren{% endif %}
+        </button>
+      </form>
+      {% else %}
+      <p class="text-body-secondary mb-0">Download erst möglich, wenn alle Fehler behoben sind.</p>
+      {% endif %}
+    </div>
+  </div>
 {% endblock %}

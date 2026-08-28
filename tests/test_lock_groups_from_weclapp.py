@@ -11,10 +11,10 @@ from sqlalchemy.orm import Session
 from app.db import engine
 from app.groups_service import create_hauptgruppe, create_untergruppe
 from app.models import GruppenAudit, Hauptgruppe
+from core.numbering import parse_group_codes
 from scripts.lock_groups_from_weclapp import (
     apply_locks,
     collect_locks,
-    parse_group_codes,
 )
 
 ACTOR = {"oid": "test-oid", "name": "Test User"}

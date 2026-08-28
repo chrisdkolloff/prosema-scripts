@@ -1,16 +1,21 @@
 {% extends "base.html" %}
-{% block title %}Bezugsquellen-Export — PROSEMA{% endblock %}
-{% block main_class %} grid{% endblock %}
+{% block title %}Bezugsquellenexport — PROSEMA{% endblock %}
+{% block container_class %}container-fluid px-4{% endblock %}
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/">Home</a></li>
+<li class="breadcrumb-item"><a href="/bezugsquellen">Bezugsquellenexport</a></li>
+<li class="breadcrumb-item active"><span>{{ format_timestamp(run.created_at) }}</span></li>
+{% endblock %}
 {% block extra_head %}
   <link rel="stylesheet" href="/static/jsuites.css">
   <link rel="stylesheet" href="/static/jspreadsheet.css">
 {% endblock %}
 {% block content %}
-  <p class="back-link"><a href="/bezugsquellen">Zur Übersicht</a></p>
+  <p class="mb-2"><a href="/bezugsquellen">Zur Übersicht</a></p>
 
   {% if run.status == "running" %}
-  <h1>Bezugsquellen-Export</h1>
-  <p class="snapshot-stand-banner">Abfrage läuft…</p>
+  <h1 class="mb-2">Bezugsquellenexport</h1>
+  <div class="alert alert-info" role="status">Abfrage läuft…</div>
   <div
     id="export-status-panel"
     hx-get="/bezugsquellen/{{ run.id }}/status"
@@ -21,53 +26,57 @@
   </div>
 
   {% elif run.status == "failed" %}
-  <h1>Bezugsquellen-Export</h1>
-  <p class="error-banner">Abfrage fehlgeschlagen{% if run.error %}: {{ run.error }}{% endif %}</p>
+  <h1 class="mb-2">Bezugsquellenexport</h1>
+  <div class="alert alert-danger" role="alert">Abfrage fehlgeschlagen{% if run.error %}: {{ run.error }}{% endif %}</div>
 
   {% else %}
-  <h1>Bezugsquellen-Export</h1>
-  <p class="lede">
+  <h1 class="mb-2">Bezugsquellenexport</h1>
+  <p class="text-body-secondary mb-4">
     Lieferant {{ run.supplier_id }} · Stand {{ format_timestamp(run.created_at) }}
     · {% if run.status == "exported" %}exportiert (schreibgeschützt){% else %}Entwurf{% endif %}
   </p>
 
-  <section class="supply-run-settings">
-    <h2>Import-Einstellungen</h2>
-    <p>
-      Spalte&nbsp;W (Verkaufsartikel-Nummer) trägt immer die PROSEMA-Nummer.
-      Leer legt weclapp einen neuen Verkaufsartikel aus der Lieferantenartikelnummer an.
-      Preis-Eintritt (R) bewusst setzen — kein stilles «heute».
-      Verkaufsartikel-Währung (Y) ist für PROSEMA-Artikel <strong>EUR</strong> (die CHF-Zahl in der Maske ist Planungszahl, nicht weclapp).
-    </p>
-    {% if editable %}
-    <form class="inline-form" method="post" action="/bezugsquellen/{{ run.id }}/einstellungen">
-      <label>
-        Preis-Eintritt
-        <input type="date" name="price_entry_date" value="{{ format_iso_date(run.price_entry_date) }}" required>
-      </label>
-      <label>
-        Verkaufsartikel-Währung
-        <select name="sales_article_currency" required>
-          <option value="" {% if not run.sales_article_currency %}selected{% endif %}>wählen…</option>
-          {% for code in sales_currencies %}
-          <option value="{{ code }}" {% if run.sales_article_currency == code %}selected{% endif %}>{{ code }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <button type="submit" class="btn">Einstellungen speichern</button>
-    </form>
-    {% else %}
-    <p>
-      Preis-Eintritt {{ format_display_date(run.price_entry_date) or "nicht gesetzt" }}
-      · Verkaufsartikel-Währung {{ run.sales_article_currency or "nicht gesetzt" }}
-    </p>
-    {% endif %}
-  </section>
+  <div class="card mb-4">
+    <div class="card-header">Import-Einstellungen</div>
+    <div class="card-body">
+      <p>
+        Spalte&nbsp;W (Verkaufsartikel-Nummer) trägt immer die PROSEMA-Nummer.
+        Leer legt weclapp einen neuen Verkaufsartikel aus der Lieferantenartikelnummer an.
+        Preis-Eintritt (R) bewusst setzen — kein stilles «heute».
+        Verkaufsartikel-Währung (Y) ist für PROSEMA-Artikel <strong>EUR</strong> (die CHF-Zahl in der Maske ist Planungszahl, nicht weclapp).
+      </p>
+      {% if editable %}
+      <form class="row g-3 align-items-end" method="post" action="/bezugsquellen/{{ run.id }}/einstellungen">
+        <div class="col-auto">
+          <label class="form-label" for="price-entry-date">Preis-Eintritt</label>
+          <input class="form-control" id="price-entry-date" type="date" name="price_entry_date" value="{{ format_iso_date(run.price_entry_date) }}" required>
+        </div>
+        <div class="col-auto">
+          <label class="form-label" for="sales-article-currency">Verkaufsartikel-Währung</label>
+          <select class="form-select" id="sales-article-currency" name="sales_article_currency" required>
+            <option value="" {% if not run.sales_article_currency %}selected{% endif %}>wählen…</option>
+            {% for code in sales_currencies %}
+            <option value="{{ code }}" {% if run.sales_article_currency == code %}selected{% endif %}>{{ code }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-primary">Einstellungen speichern</button>
+        </div>
+      </form>
+      {% else %}
+      <p class="mb-0">
+        Preis-Eintritt {{ format_display_date(run.price_entry_date) or "nicht gesetzt" }}
+        · Verkaufsartikel-Währung {{ run.sales_article_currency or "nicht gesetzt" }}
+      </p>
+      {% endif %}
+    </div>
+  </div>
 
   {% if blocks.unresolved_included or blocks.missing_mandatory_included or blocks.missing_price_entry or blocks.missing_sales_currency or blocks.duplicate_match_key %}
-  <div class="error-banner supply-block-banner" role="alert">
-    <p><strong>Download blockiert</strong> — geänderte Zeilen müssen vor dem Export geklärt werden.</p>
-    <ul>
+  <div class="alert alert-danger supply-block-banner" role="alert">
+    <p class="mb-2"><strong>Download blockiert</strong> — geänderte Zeilen müssen vor dem Export geklärt werden.</p>
+    <ul class="mb-0">
       {% if blocks.unresolved_included %}
       <li>{{ blocks.unresolved_included }} ohne auflösbaren Rabatt
         (<a href="?nur_aenderungen=1&amp;nur_offen=1">anzeigen</a>).
@@ -89,7 +98,7 @@
   </div>
   {% endif %}
 
-  <p class="muted">
+  <p class="text-body-secondary">
     Gelb = von Hand angepasst (Override oder Namens-/Einheiten-Edit).
     Export schreibt alle Zeilen mit Differenz zu weclapp (Status «Änderung», Filter «Nur Änderungen»).
     {% if summary.articles_without_supplier_supply_source %}
@@ -97,79 +106,97 @@
     {% endif %}
   </p>
 
-  <form
-    class="inline-form batch-filter-bar"
-    method="get"
-    action="/bezugsquellen/{{ run.id }}"
-    hx-get="/bezugsquellen/{{ run.id }}"
-    hx-target="#supply-export-grid-panel"
-    hx-select="#supply-export-grid-panel"
-    hx-swap="outerHTML"
-    hx-push-url="true"
-  >
-    <label>
-      Suche
-      <input type="search" name="q" value="{{ filters.query }}" placeholder="Nummer, Name, Lief.-Artikelnr.">
-    </label>
-    <label>
-      Rabattkategorie
-      <select name="kategorie">
-        <option value="">(alle)</option>
-        <option value="__none__" {% if filters.discount_category == "__none__" %}selected{% endif %}>(keine)</option>
-        <option value="__zero__" {% if filters.discount_category == "__zero__" %}selected{% endif %}>kein Rabatt</option>
-        {% for value in categories %}
-        <option value="{{ value }}" {% if filters.discount_category == value %}selected{% endif %}>{{ value }}</option>
-        {% endfor %}
-      </select>
-    </label>
-    <label>
-      Hauptgruppe
-      <select name="hauptgruppe">
-        <option value="">(alle)</option>
-        {% for value in hauptgruppen %}
-        <option value="{{ value }}" {% if filters.hauptgruppe == value %}selected{% endif %}>{{ value }}</option>
-        {% endfor %}
-      </select>
-    </label>
-    <label>
-      Untergruppe
-      <select name="untergruppe">
-        <option value="">(alle)</option>
-        {% for value in untergruppen %}
-        <option value="{{ value }}" {% if filters.untergruppe == value %}selected{% endif %}>{{ value }}</option>
-        {% endfor %}
-      </select>
-    </label>
-    <label class="checkbox-label">
-      <input type="checkbox" name="nur_aenderungen" value="1" {% if filters.changed_only %}checked{% endif %}>
-      Nur Änderungen
-    </label>
-    <label class="checkbox-label">
-      <input type="checkbox" name="nur_offen" value="1" {% if filters.unresolved_only %}checked{% endif %}>
-      Nur ungeklärte Rabatte
-    </label>
-    <button type="submit" class="btn">Filtern</button>
-  </form>
+  <div class="card mb-4">
+    <div class="card-body">
+      <form
+        class="row g-3 align-items-end"
+        method="get"
+        action="/bezugsquellen/{{ run.id }}"
+        hx-get="/bezugsquellen/{{ run.id }}"
+        hx-target="#supply-export-grid-panel"
+        hx-select="#supply-export-grid-panel"
+        hx-swap="outerHTML"
+        hx-push-url="true"
+      >
+        <div class="col-auto">
+          <label class="form-label" for="supply-filter-q">Suche</label>
+          <input class="form-control" id="supply-filter-q" type="search" name="q" value="{{ filters.query }}" placeholder="Nummer, Name, Lief.-Artikelnr.">
+        </div>
+        <div class="col-auto">
+          <label class="form-label" for="supply-filter-kategorie">Rabattkategorie</label>
+          <select class="form-select" id="supply-filter-kategorie" name="kategorie">
+            <option value="">(alle)</option>
+            <option value="__none__" {% if filters.discount_category == "__none__" %}selected{% endif %}>(keine)</option>
+            <option value="__zero__" {% if filters.discount_category == "__zero__" %}selected{% endif %}>kein Rabatt</option>
+            {% for value in categories %}
+            <option value="{{ value }}" {% if filters.discount_category == value %}selected{% endif %}>{{ value }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-auto">
+          <label class="form-label" for="supply-filter-hauptgruppe">Hauptgruppe</label>
+          <select class="form-select" id="supply-filter-hauptgruppe" name="hauptgruppe">
+            <option value="">(alle)</option>
+            {% for value in hauptgruppen %}
+            <option value="{{ value }}" {% if filters.hauptgruppe == value %}selected{% endif %}>{{ value }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-auto">
+          <label class="form-label" for="supply-filter-untergruppe">Untergruppe</label>
+          <select class="form-select" id="supply-filter-untergruppe" name="untergruppe">
+            <option value="">(alle)</option>
+            {% for value in untergruppen %}
+            <option value="{{ value }}" {% if filters.untergruppe == value %}selected{% endif %}>{{ value }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-auto">
+          <div class="form-check mt-4">
+            <input class="form-check-input" type="checkbox" name="nur_aenderungen" value="1" id="supply-filter-aenderungen" {% if filters.changed_only %}checked{% endif %}>
+            <label class="form-check-label" for="supply-filter-aenderungen">Nur Änderungen</label>
+          </div>
+        </div>
+        <div class="col-auto">
+          <div class="form-check mt-4">
+            <input class="form-check-input" type="checkbox" name="nur_offen" value="1" id="supply-filter-offen" {% if filters.unresolved_only %}checked{% endif %}>
+            <label class="form-check-label" for="supply-filter-offen">Nur ungeklärte Rabatte</label>
+          </div>
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-primary">Filtern</button>
+        </div>
+      </form>
+    </div>
+  </div>
 
   {% if editable %}
-  <form class="inline-form bulk-bar" method="post" action="/bezugsquellen/{{ run.id }}/bulk{% if filter_qs %}?{{ filter_qs }}{% endif %}">
-    <label>
-      Kategorie
-      <select name="category_code">
-        <option value="">—</option>
-        {% for code, cat in registry.items() %}
-        <option value="{{ code }}">{{ code }}{% if cat.label %} — {{ cat.label }}{% endif %}</option>
-        {% endfor %}
-        <option value="— kein Rabatt —">— kein Rabatt —</option>
-      </select>
-    </label>
-    <button type="submit" name="action" value="assign_category" class="btn">Kategorie zuweisen (sichtbar)</button>
-    <button type="submit" name="action" value="mark_zero" class="btn btn-secondary">Sichtbare: kein Rabatt</button>
-  </form>
+  <div class="card mb-4">
+    <div class="card-body">
+      <form class="row g-3 align-items-end" method="post" action="/bezugsquellen/{{ run.id }}/bulk{% if filter_qs %}?{{ filter_qs }}{% endif %}">
+        <div class="col-auto">
+          <label class="form-label" for="bulk-category">Kategorie</label>
+          <select class="form-select" id="bulk-category" name="category_code">
+            <option value="">—</option>
+            {% for code, cat in registry.items() %}
+            <option value="{{ code }}">{{ code }}{% if cat.label %} — {{ cat.label }}{% endif %}</option>
+            {% endfor %}
+            <option value="— kein Rabatt —">— kein Rabatt —</option>
+          </select>
+        </div>
+        <div class="col-auto">
+          <button type="submit" name="action" value="assign_category" class="btn btn-primary">Kategorie zuweisen (sichtbar)</button>
+        </div>
+        <div class="col-auto">
+          <button type="submit" name="action" value="mark_zero" class="btn btn-outline-secondary">Sichtbare: kein Rabatt</button>
+        </div>
+      </form>
+    </div>
+  </div>
   {% endif %}
 
-  <p>
-    <a class="btn" href="/bezugsquellen/{{ run.id }}/vorschau">Vorschau &amp; Validierung</a>
+  <p class="mb-4">
+    <a class="btn btn-outline-primary" href="/bezugsquellen/{{ run.id }}/vorschau">Vorschau &amp; Validierung</a>
   </p>
 
   {% include "supply_exports/partials/grid.html" %}

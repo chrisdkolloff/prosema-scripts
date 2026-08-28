@@ -1,8 +1,13 @@
 {% extends "base.html" %}
 {% block title %}Auftrag — PROSEMA{% endblock %}
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/">Home</a></li>
+<li class="breadcrumb-item"><a href="/me">Mein Konto</a></li>
+<li class="breadcrumb-item active"><span>Auftrag</span></li>
+{% endblock %}
 {% block content %}
-  <p class="back-link"><a href="/me">Zurück</a></p>
-  <h1>{{ job_label }}</h1>
-  <p class="muted">Ausgelöst von {{ job.created_by_name }}</p>
+  <p class="mb-2"><a href="/me">Zurück</a></p>
+  <h1 class="mb-2">{{ job_label }}</h1>
+  <p class="text-body-secondary">Ausgelöst von {{ job.created_by_name }}</p>
   {% include "partials/job_status.html" %}
 {% endblock %}

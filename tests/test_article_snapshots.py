@@ -1,4 +1,4 @@
-"""Artikel-Übersicht: snapshot pull, filtering, Excel, retention."""
+"""Artikelübersicht: snapshot pull, filtering, Excel, retention."""
 
 from __future__ import annotations
 

@@ -1,28 +1,40 @@
 {% extends "base.html" %}
 {% block title %}Mein Konto — PROSEMA{% endblock %}
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/">Home</a></li>
+<li class="breadcrumb-item active"><span>Mein Konto</span></li>
+{% endblock %}
 {% block content %}
-  <h1>Mein Konto</h1>
-  <dl class="facts">
-    <dt>Name</dt>
-    <dd>{{ user.name }}</dd>
-    <dt>E-Mail</dt>
-    <dd>{{ user.email }}</dd>
-    <dt>Objekt-ID (oid)</dt>
-    <dd><code>{{ user.oid }}</code></dd>
-    <dt>Rollen</dt>
-    <dd><code>{{ roles_json }}</code></dd>
-  </dl>
-  <section class="job-panel">
-    <h2>Hintergrundauftrag</h2>
-    <button
-      type="button"
-      class="btn"
-      hx-post="/jobs/noop"
-      hx-target="#job-status"
-      hx-swap="outerHTML"
-    >
-      Testlauf starten
-    </button>
-    <div id="job-status"></div>
-  </section>
+  <h1 class="mb-3">Mein Konto</h1>
+  <div class="card mb-4">
+    <div class="card-body">
+      <dl class="row mb-0">
+        <dt class="col-sm-3">Name</dt>
+        <dd class="col-sm-9">{{ user.name }}</dd>
+        <dt class="col-sm-3">E-Mail</dt>
+        <dd class="col-sm-9">{{ user.email }}</dd>
+        <dt class="col-sm-3">Objekt-ID (oid)</dt>
+        <dd class="col-sm-9"><code>{{ user.oid }}</code></dd>
+        <dt class="col-sm-3">Rollen</dt>
+        <dd class="col-sm-9"><code>{{ roles_json }}</code></dd>
+      </dl>
+    </div>
+  </div>
+  <div class="card mb-4">
+    <div class="card-header">Hintergrundauftrag</div>
+    <div class="card-body">
+      <button
+        type="button"
+        class="btn btn-primary"
+        hx-post="/jobs/noop"
+        hx-target="#job-status"
+        hx-swap="outerHTML"
+      >
+        Testlauf starten
+      </button>
+      <div class="mt-3">
+        <div id="job-status"></div>
+      </div>
+    </div>
+  </div>
 {% endblock %}

@@ -60,14 +60,58 @@
 
   function onEvent(event) {
     if (event !== "onchange") return;
-    var x = arguments[3];
-    var y = arguments[4];
+    var x = Number(arguments[3]);
+    var y = Number(arguments[4]);
     var value = arguments[5];
-    queueChange(Number(x), Number(y), value);
+    var field = fieldAt(x);
+    if (field === "Hauptgruppe") {
+      syncUntergruppeForHaupt(y, value);
+    }
+    queueChange(x, y, value);
   }
 
   function colIndex(field) {
     return config.fields.indexOf(field);
+  }
+
+  function untergruppeOptionsForHaupt(hauptLabel) {
+    var map = (config && config.untergruppeByHauptgruppe) || {};
+    var kids = map[hauptLabel] || [];
+    return [""].concat(kids);
+  }
+
+  function syncUntergruppeForHaupt(y, hauptValue) {
+    if (applying || !worksheet || !config || !config.editable) return;
+    var unterIdx = colIndex("Untergruppe");
+    if (unterIdx < 0) return;
+    var allowed = untergruppeOptionsForHaupt(String(hauptValue == null ? "" : hauptValue));
+    var current = worksheet.getValueFromCoords(unterIdx, y);
+    var cur = current == null ? "" : String(current);
+    if (!cur || allowed.indexOf(cur) >= 0) return;
+    applying = true;
+    try {
+      worksheet.setValueFromCoords(unterIdx, y, "", true);
+    } finally {
+      applying = false;
+    }
+    queueChange(unterIdx, y, "");
+  }
+
+  function attachUntergruppeFilter(columns) {
+    if (!config || !columns) return;
+    var unterIdx = colIndex("Untergruppe");
+    var hauptIdx = colIndex("Hauptgruppe");
+    if (unterIdx < 0 || !columns[unterIdx]) return;
+    columns[unterIdx].filter = function (_el, _cell, _x, y) {
+      var haupt = "";
+      if (worksheet && typeof worksheet.getValueFromCoords === "function" && hauptIdx >= 0) {
+        var live = worksheet.getValueFromCoords(hauptIdx, y);
+        haupt = live == null ? "" : String(live);
+      } else if (config.data && config.data[y]) {
+        haupt = String(config.data[y][hauptIdx] || "");
+      }
+      return untergruppeOptionsForHaupt(haupt);
+    };
   }
 
   function applyRowState(y, include, error) {
@@ -145,9 +189,12 @@
       }, 1500);
     }
 
-    function succeed(data) {
+    function succeed(data, options) {
       flushing = false;
       applyServerRows(data && data.rows);
+      if (!(options && options.skipActionBar)) {
+        refreshActionBar();
+      }
       if (queue.length) {
         setStatus(STATUS_SAVING, "is-saving");
         scheduleFlush();
@@ -156,10 +203,41 @@
       }
     }
 
+    function refreshActionBar() {
+      if (!config || !config.actionsUrl) return;
+      fetch(config.actionsUrl, {
+        method: "GET",
+        headers: { Accept: "text/html" },
+        credentials: "same-origin",
+      })
+        .then(function (response) {
+          if (!response.ok) return null;
+          return response.text();
+        })
+        .then(function (html) {
+          if (!html) return;
+          var bar = document.getElementById("batch-action-bar");
+          if (!bar || !bar.parentNode) return;
+          var tmp = document.createElement("div");
+          tmp.innerHTML = html.trim();
+          var next = tmp.firstElementChild;
+          if (next) bar.parentNode.replaceChild(next, bar);
+          var scope = document.getElementById("batch-action-bar");
+          if (scope && window.coreui && coreui.Modal) {
+            scope.querySelectorAll('[data-coreui-toggle="modal"]').forEach(function (el) {
+              coreui.Modal.getOrCreateInstance(el);
+            });
+          }
+        })
+        .catch(function () {
+          /* leave the bar as-is; next save retries */
+        });
+    }
+
     if (keepalive && navigator.sendBeacon) {
       var blob = new Blob([body], { type: "application/json" });
       if (!navigator.sendBeacon(url, blob)) fail();
-      else succeed({ rows: [] });
+      else succeed({ rows: [] }, { skipActionBar: true });
       return;
     }
 
@@ -265,6 +343,7 @@
     queue = [];
     flushing = false;
     destroyExisting(el);
+    attachUntergruppeFilter(config.columns);
 
     var worksheets = jspreadsheet(el, {
       parseFormulas: false,
@@ -317,9 +396,21 @@
   document.addEventListener("DOMContentLoaded", function () {
     init(document);
   });
+  // outerHTML replaces the target, so event.detail.target is detached — always
+  // re-init from the live panel in the document (same as snapshot_grid.js).
   document.body.addEventListener("htmx:afterSwap", function (event) {
     var target = event.detail && event.detail.target;
-    if (target && target.id === "batch-grid-panel") init(target);
+    var elt = event.detail && event.detail.elt;
+    if (
+      !(
+        (target && target.id === "batch-grid-panel") ||
+        (elt && elt.id === "batch-grid-panel")
+      )
+    ) {
+      return;
+    }
+    var panel = document.getElementById("batch-grid-panel");
+    if (panel) init(panel);
   });
   window.addEventListener("blur", onBlur);
   window.addEventListener("beforeunload", onUnload);

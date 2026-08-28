@@ -1,40 +1,202 @@
 <!DOCTYPE html>
-<html lang="de-CH">
+<html lang="de-CH" data-coreui-theme="light">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}PROSEMA{% endblock %}</title>
+  <link rel="icon" href="/static/brand/favicon.svg?v={{ app_version }}-mark" type="image/svg+xml">
+  <link rel="icon" href="/static/brand/favicon-32.png?v={{ app_version }}-mark" type="image/png" sizes="32x32">
+  <link rel="shortcut icon" href="/favicon.ico">
+  <link rel="apple-touch-icon" href="/static/brand/apple-touch-icon.png?v={{ app_version }}-mark">
+  <meta name="theme-color" content="#1183c5">
+  <link rel="stylesheet" href="/static/vendor/coreui/vendors/simplebar/css/simplebar.css">
+  <link rel="stylesheet" href="/static/vendor/coreui/css/vendors/simplebar.css">
+  <link rel="stylesheet" href="/static/vendor/coreui/css/style.min.css">
   <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="/static/css/prosema.css?v={{ app_version }}">
   {% block extra_head %}{% endblock %}
   <script src="/static/htmx.min.js" defer></script>
 </head>
 <body>
-  <header class="site-header">
-    <div class="brand-row">
-      <a class="brand" href="/">PROSEMA</a>
-      <a class="app-version" href="/changelog" title="Änderungsprotokoll">v{{ app_version }}</a>
+  <div class="sidebar sidebar-dark sidebar-fixed border-end" id="sidebar">
+    <div class="sidebar-header border-bottom">
+      <a class="sidebar-brand text-decoration-none" href="/" aria-label="PROSEMA Tools">
+        <img
+          class="sidebar-brand-full"
+          src="/static/brand/logo-on-dark.png?v={{ app_version }}"
+          alt=""
+          width="204"
+          height="37"
+        >
+        <img
+          class="sidebar-brand-narrow"
+          src="/static/brand/mark-on-dark.svg?v={{ app_version }}"
+          alt=""
+          width="22"
+          height="28"
+        >
+      </a>
     </div>
     {% if user %}
-    <nav class="site-nav">
-      <a href="/gruppen">Gruppen</a>
-      <a href="/gruppen/diagramm">Diagramm</a>
-      <a href="/einstellungen">Einstellungen</a>
-      <span class="user-name">{{ user.name }}</span>
-      <a href="/auth/logout">Abmelden</a>
-    </nav>
+    <ul class="sidebar-nav" data-coreui="navigation" data-simplebar>
+      <li class="nav-group">
+        <a class="nav-link nav-group-toggle" href="#">
+          Gruppenverwaltung
+        </a>
+        <ul class="nav-group-items compact">
+          <li class="nav-item">
+            <a class="nav-link" href="/gruppen">
+              <span class="nav-icon"><span class="nav-icon-bullet"></span></span>
+              Gruppenverwaltung
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="/gruppen/diagramm">
+              <span class="nav-icon"><span class="nav-icon-bullet"></span></span>
+              Gruppendiagramm
+            </a>
+          </li>
+        </ul>
+      </li>
+      <li class="nav-group">
+        <a class="nav-link nav-group-toggle" href="#">
+          Artikelverwaltung
+        </a>
+        <ul class="nav-group-items compact">
+          <li class="nav-item">
+            <a class="nav-link" href="/artikel-registrierung">
+              <span class="nav-icon"><span class="nav-icon-bullet"></span></span>
+              Artikelregistrierung
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="/artikel-uebersicht">
+              <span class="nav-icon"><span class="nav-icon-bullet"></span></span>
+              Artikelübersicht
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="/bezugsquellen">
+              <span class="nav-icon"><span class="nav-icon-bullet"></span></span>
+              Bezugsquellenexport
+            </a>
+          </li>
+        </ul>
+      </li>
+      <li class="nav-group">
+        <a class="nav-link nav-group-toggle" href="#">
+          Finanzen
+        </a>
+        <ul class="nav-group-items compact">
+          <li class="nav-item">
+            <a class="nav-link" href="/buchhaltung-export">
+              <span class="nav-icon"><span class="nav-icon-bullet"></span></span>
+              Buchhaltungsexport
+            </a>
+          </li>
+        </ul>
+      </li>
+      <li class="nav-group">
+        <a class="nav-link nav-group-toggle" href="#">
+          Assistent
+        </a>
+        <ul class="nav-group-items compact">
+          <li class="nav-item">
+            <a class="nav-link disabled" href="#" aria-disabled="true" tabindex="-1">
+              <span class="nav-icon"><span class="nav-icon-bullet"></span></span>
+              Chat
+            </a>
+          </li>
+        </ul>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" href="/einstellungen">
+          <span class="nav-icon"><span class="nav-icon-bullet"></span></span>
+          Einstellungen
+        </a>
+      </li>
+    </ul>
     {% endif %}
-  </header>
-  {% if user %}
-  <div
-    id="jobs-aktiv-banner"
-    hx-get="/jobs/aktiv"
-    hx-trigger="load, every 5s"
-    hx-swap="innerHTML"
-  ></div>
-  {% endif %}
-  <main class="site-main{% block main_class %}{% endblock %}">
-    {% block content %}{% endblock %}
-  </main>
+    <div class="sidebar-footer border-top d-none d-md-flex">
+      <button class="sidebar-toggler" type="button" data-coreui-toggle="unfoldable" aria-label="Sidebar umschalten"></button>
+    </div>
+  </div>
+
+  <div class="wrapper d-flex flex-column min-vh-100">
+    <header class="header header-sticky p-0 mb-4">
+      <div class="container-fluid border-bottom px-4">
+        <button
+          class="header-toggler"
+          type="button"
+          onclick="coreui.Sidebar.getInstance(document.querySelector('#sidebar')).toggle()"
+          style="margin-inline-start: -14px"
+          aria-label="Navigation"
+        >
+          <svg class="icon icon-lg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" aria-hidden="true">
+            <path fill="currentColor" d="M80 96h352v32H80zm0 144h352v32H80zm0 144h352v32H80z"/>
+          </svg>
+        </button>
+        <a class="header-brand d-lg-none text-decoration-none" href="/" aria-label="PROSEMA Tools">
+          <img
+            src="/static/brand/logo-on-light.png?v={{ app_version }}"
+            alt=""
+            width="168"
+            height="30"
+          >
+        </a>
+        <ul class="header-nav ms-auto">
+          {% if user %}
+          <li class="nav-item">
+            <a class="nav-link header-account-link" href="/me">{{ user.name }}</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="/auth/logout">Abmelden</a>
+          </li>
+          {% endif %}
+        </ul>
+      </div>
+      <div class="container-fluid px-4">
+        <nav aria-label="breadcrumb">
+          <ol class="breadcrumb my-0">
+            {% block breadcrumb %}
+            <li class="breadcrumb-item"><a href="/">Home</a></li>
+            {% endblock %}
+          </ol>
+        </nav>
+      </div>
+    </header>
+
+    {% if user %}
+    <div
+      id="jobs-aktiv-banner"
+      hx-get="/jobs/aktiv"
+      hx-trigger="load, every 5s"
+      hx-swap="innerHTML"
+    ></div>
+    {% endif %}
+
+    <div class="body flex-grow-1">
+      <div class="{% block container_class %}container-lg px-4{% endblock %}">
+        {% block content %}{% endblock %}
+      </div>
+    </div>
+
+    <footer class="footer px-4">
+      <img
+        class="footer-logo"
+        src="/static/brand/logo-on-light.png?v={{ app_version }}"
+        alt="PROSEMA Tools"
+        width="168"
+        height="30"
+      >
+      <div>
+        <a href="/changelog">v{{ app_version }}</a>
+      </div>
+    </footer>
+  </div>
+
+  <script src="/static/vendor/coreui/vendors/@coreui/coreui/js/coreui.bundle.min.js"></script>
+  <script src="/static/vendor/coreui/vendors/simplebar/js/simplebar.min.js"></script>
   {% block extra_scripts %}{% endblock %}
 </body>
 </html>
