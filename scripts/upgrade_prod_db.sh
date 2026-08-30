@@ -3,6 +3,8 @@
 #
 # Uses PRODUCTION_DATABASE_URL from .env (same variable as ./pull-prod-db.sh).
 # Other app settings still come from .env; only DATABASE_URL is overridden.
+# Before connecting, runs ./scripts/allow_my_ip.sh so this machine's public IP
+# is on the Azure Postgres firewall (home/office IPs change).
 #
 # Usage:
 #   ./scripts/upgrade_prod_db.sh           # interactive confirm
@@ -19,17 +21,20 @@ cd "${ROOT}"
 ENV_FILE="${ENV_FILE:-${ROOT}/.env}"
 CONFIRM=yes
 DRY_RUN=false
+SKIP_FIREWALL=false
 
 usage() {
   cat <<'EOF'
-Usage: ./scripts/upgrade_prod_db.sh [--yes] [--dry-run]
+Usage: ./scripts/upgrade_prod_db.sh [--yes] [--dry-run] [--skip-firewall]
 
-  --yes       Skip the confirmation prompt (still runs safety checks).
-  --dry-run   Print current and head revisions, then exit.
-  -h, --help  Show this help.
+  --yes             Skip the confirmation prompt (still runs safety checks).
+  --dry-run         Print current and head revisions, then exit.
+  --skip-firewall   Do not update the Azure Postgres firewall rule.
+  -h, --help        Show this help.
 
 Environment (from .env unless overridden):
   PRODUCTION_DATABASE_URL   Production Postgres. Required.
+  SKIP_FIREWALL_ALLOW=1     Same as --skip-firewall.
 
 EOF
 }
@@ -38,6 +43,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --yes) CONFIRM=no ;;
     --dry-run) DRY_RUN=true ;;
+    --skip-firewall) SKIP_FIREWALL=true ;;
     -h|--help)
       usage
       exit 0
@@ -141,6 +147,11 @@ fi
 
 SA_URL="$(to_sqlalchemy_url "$PRODUCTION_DATABASE_URL")"
 PY="$(python_bin)"
+
+if [[ "$SKIP_FIREWALL" != true && "${SKIP_FIREWALL_ALLOW:-}" != "1" ]]; then
+  echo "Allowing this machine's public IP on Azure Postgres firewall…"
+  "${ROOT}/scripts/allow_my_ip.sh"
+fi
 
 echo "Target: $(redact_url "$SA_URL")"
 

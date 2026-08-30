@@ -65,6 +65,7 @@ Prerequisites:
   - Python 3.12 venv with the app installed (pip install -e ".[dev]")
   - Postgres available for pytest
   - PRODUCTION_DATABASE_URL in .env (for --push)
+  - Azure CLI (`az login`) so the Postgres firewall rule can be updated
 
 Squash-merge only (no tests):
   ./scripts/squash-merge-dev-to-main.sh --push --auto-message
@@ -72,6 +73,8 @@ Squash-merge only (no tests):
 
 Pushing main deploys to Azure App Service (tools.prosema.ch).
 --push runs alembic upgrade head against PRODUCTION_DATABASE_URL first.
+The migrate step updates Azure Postgres firewall rule 'operator-laptop'
+with this machine's current public IP (./scripts/allow_my_ip.sh).
 EOF
 }
 

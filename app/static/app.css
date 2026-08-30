@@ -74,6 +74,11 @@
   vertical-align: middle;
 }
 
+#snapshot-spreadsheet .jss_worksheet tbody td,
+#snapshot-spreadsheet .jss_worksheet tbody td * {
+  color: var(--ink);
+}
+
 .batch-spreadsheet .jss_worksheet tbody tr:nth-child(even) > td {
   background-color: #fafafa;
 }

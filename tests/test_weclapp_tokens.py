@@ -242,3 +242,20 @@ def test_active_jobs_banner_names_triggering_user(user_client, db_session):
     assert response.status_code == 200
     assert "Läuft: Testlauf (Christopher Kara)" in response.text
     assert "weclapp-Lizenz bitte noch nicht übergeben" in response.text
+
+
+def test_active_jobs_banner_snapshot_is_in_bearbeitung(user_client, db_session):
+    job = Job(
+        id=uuid.uuid4(),
+        job_type="weclapp_article_snapshot",
+        payload={},
+        status="running",
+        created_by_oid="other-oid",
+        created_by_name="Christopher Kara",
+    )
+    db_session.add(job)
+    db_session.flush()
+    response = user_client.get("/jobs/aktiv")
+    assert response.status_code == 200
+    assert "Artikelabfrage in Bearbeitung..." in response.text
+    assert "weclapp-Lizenz bitte noch nicht übergeben" not in response.text

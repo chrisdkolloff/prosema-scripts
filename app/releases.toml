@@ -1,7 +1,17 @@
 # PROSEMA release history — edit this file to bump the version and document changes.
 # The top-level `version` is shown in the site header; `[[releases]]` entries appear on /changelog.
 
-version = "1.0.2"
+version = "1.0.3"
+
+[[releases]]
+version = "1.0.3"
+date = "2026-08-30"
+summary = "Update .env.example, README, and release.sh to enhance Azure Postgres firewall management. Add instructions for using the Azure CLI to allow IP access and introduce a --skip-firewall option in upgrade_prod_db.sh to bypass firewall updates. Clarify migration steps in documentation. (+1 more)"
+changes = [
+  "Enhance job status display in jobs_aktiv.html to show specific message for weclapp_article_snapshot jobs. Update CSS for snapshot spreadsheet to ensure text color consistency. Add test for new job status message functionality.",
+  "Update .env.example, README, and release.sh to enhance Azure Postgres firewall management. Add instructions for using the Azure CLI to allow IP access and introduce a --skip-firewall option in upgrade_prod_db.sh to bypass firewall updates. Clarify migration steps in documentation.",
+]
+
 
 [[releases]]
 version = "1.0.2"

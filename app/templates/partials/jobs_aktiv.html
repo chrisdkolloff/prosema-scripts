@@ -1,6 +1,10 @@
 {% if jobs|length == 1 %}
 <div class="alert alert-warning licence-banner mb-0 rounded-0" role="status">
+  {% if jobs[0].job_type == "weclapp_article_snapshot" %}
+  Artikelabfrage in Bearbeitung...
+  {% else %}
   Läuft: {{ job_label }} ({{ jobs[0].created_by_name }}) — weclapp-Lizenz bitte noch nicht übergeben.
+  {% endif %}
   <a href="/jobs/{{ jobs[0].id }}">Auftrag</a>
 </div>
 {% elif jobs|length > 1 %}

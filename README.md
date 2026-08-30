@@ -84,6 +84,8 @@ Work on `dev`. Deploying squash-merges that work onto `main` as one commit and p
 
 Set `PRODUCTION_DATABASE_URL` in `.env` (same database as App Service `DATABASE_URL`; never commit it). Preview with `./scripts/upgrade_prod_db.sh --dry-run`.
 
+Before connecting, `upgrade_prod_db.sh` runs `./scripts/allow_my_ip.sh`, which writes this machine's current public IP into a named Azure Postgres firewall rule (`operator-laptop` by default). That needs Azure CLI (`brew install azure-cli` and `az login`). Skip with `--skip-firewall` or `SKIP_FIREWALL_ALLOW=1` if the IP is already allowed. Optional overrides: `AZURE_POSTGRES_SERVER_NAME`, `AZURE_POSTGRES_RESOURCE_GROUP`, `AZURE_POSTGRES_FIREWALL_RULE_NAME`.
+
 ## weclapp tokens (per user)
 
 The web app does not use `WECLAPP_API_TOKEN`. Each signed-in user stores their
