@@ -225,6 +225,12 @@ def test_landing_lists_every_tool(user_client):
         assert tool["description"] in fragment.text
     fragment_systems = fragment.text.split("Werkzeuge", 1)[0]
     assert ">Beschreibung<" not in fragment_systems
+    assert "Nicht verfügbar" not in fragment.text
+    assert fragment.text.count("Aktualisieren nicht möglich") == sum(
+        1
+        for tool in LANDING_TOOLS
+        if tool["needs_weclapp"] or tool["refresh_needs_weclapp"]
+    )
 
 
 def test_active_jobs_banner_names_triggering_user(user_client, db_session):

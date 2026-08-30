@@ -318,16 +318,9 @@ def landing_tool_states(access: WeclappAccess) -> list[dict[str, object]]:
     weclapp_ok = access.kind == "ok"
     rows: list[dict[str, object]] = []
     for tool in LANDING_TOOLS:
-        needs = bool(tool["needs_weclapp"])
-        refresh = bool(tool["refresh_needs_weclapp"])
-        if needs:
-            mark = "Verfügbar" if weclapp_ok else "Nicht verfügbar"
-        elif refresh:
-            mark = (
-                "Verfügbar"
-                if weclapp_ok
-                else "Aktualisieren nicht möglich"
-            )
+        depends = bool(tool["needs_weclapp"]) or bool(tool["refresh_needs_weclapp"])
+        if depends:
+            mark = "Verfügbar" if weclapp_ok else "Aktualisieren nicht möglich"
         else:
             mark = "Verfügbar"
         rows.append({**tool, "mark": mark, "weclapp_ok": weclapp_ok})

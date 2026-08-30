@@ -47,7 +47,8 @@ Eine **weitere Untergruppe** zu einer bestehenden Hauptgruppe legt man auf der D
 
 - Neue Hauptgruppe **zusammen mit** der ersten Untergruppe anlegen → Tools-Website **und** weclapp.
 - Weitere Untergruppe zu einer bestehenden Hauptgruppe hinzufügen → Tools-Website **und** weclapp (nur auf tools.prosema.ch).
-- Codes, Bezeichnungen, Aliase, Löschen und Wiederherstellen **in der Tools-Website** pflegen.
+- **Umbenennen** (Bezeichnung) → Tools-Website **und** weclapp (nur auf tools.prosema.ch). Wenn weclapp ablehnt, bleibt auch in den Tools der alte Name.
+- Codes, Aliase, Löschen und Wiederherstellen **in der Tools-Website** pflegen.
 - Diagramm der aktiven Gruppen ansehen.
 
 
@@ -55,11 +56,11 @@ Eine **weitere Untergruppe** zu einer bestehenden Hauptgruppe legt man auf der D
 
 - **Keine weclapp-Änderung vom Laptop.** Lokal wird nur die lokale Datenbank geschrieben. weclapp wird nur von tools.prosema.ch angesprochen.
 - **Keine Hauptgruppe allein.** Das Formular verlangt immer die erste Untergruppe mit.
-- **Umbenennen, Code ändern, Löschen** gelten nur für die Tools-Website. weclapp wird dabei **nicht** mitgeändert.
+- **Code ändern, Löschen und Wiederherstellen** gelten nur für die Tools-Website. weclapp wird dabei **nicht** mitgeändert.
 - Die Shopify-Auswahllisten **Hauptwarengruppe** und **Warengruppe** in weclapp werden **nicht** ergänzt. Es entstehen nur die Artikelkategorien (der Gruppenbaum).
-- Eine fehlgeschlagene weclapp-Anlage speichert auch auf der Tools-Website nichts. Zuerst Token und Rechte prüfen, dann erneut speichern.
+- Eine fehlgeschlagene weclapp-Anlage oder -Umbenennung speichert auch auf der Tools-Website nichts bzw. den alten Namen. Zuerst Token und Rechte prüfen, dann erneut speichern.
 
 
 ## Kurz für die Schulung
 
-> Auf tools.prosema.ch eine neue Gruppe immer als Paar anlegen (Hauptgruppe + Untergruppe). Dann gibt es sie in den Tools **und** in weclapp. Alles andere (umbenennen, löschen, Shopify-Listen) bleibt Handarbeit bzw. nur in den Tools.
+> Auf tools.prosema.ch eine neue Gruppe immer als Paar anlegen (Hauptgruppe + Untergruppe). Umbenennen der Bezeichnung geht dort ebenfalls nach weclapp. Code ändern, löschen und Shopify-Listen bleiben Handarbeit bzw. nur in den Tools.

@@ -34,6 +34,8 @@ from app.weclapp import NoWeclappToken, WeclappError, map_weclapp_error, weclapp
 from app.weclapp_categories import (
     create_haupt_and_unter_in_weclapp,
     create_unter_in_weclapp,
+    rename_haupt_in_weclapp,
+    rename_unter_in_weclapp,
     weclapp_category_writes_allowed,
 )
 
@@ -86,18 +88,35 @@ def _commit(db: Session) -> None:
     db.commit()
 
 
-def _weclapp_write_message(exc: BaseException) -> str:
+def _weclapp_duplicate_name(exc: WeclappError) -> bool:
+    detail = exc.detail
+    if not isinstance(detail, dict):
+        return False
+    text = f"{detail.get('error') or ''} {detail.get('detail') or ''}".casefold()
+    if "name is duplicate" in text:
+        return True
+    for item in detail.get("validationErrors") or []:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("title") or "").casefold() == "entity is a duplicate":
+            return True
+    return False
+
+
+def _weclapp_write_message(exc: BaseException, *, verb: str = "angelegt") -> str:
     if isinstance(exc, NoWeclappToken):
         return (
-            "Zum Anlegen von Gruppen auf tools.prosema.ch bitte zuerst ein "
+            "Zum Anlegen von Gruppen bitte zuerst den "
             "weclapp-Token hinterlegen."
         )
     if isinstance(exc, WeclappError):
         mapped = map_weclapp_error(exc)
         if mapped is not exc:
             return str(mapped)
-        return "Gruppe in weclapp konnte nicht angelegt werden."
-    return "Gruppe in weclapp konnte nicht angelegt werden."
+        if _weclapp_duplicate_name(exc):
+            return "Gruppenbezeichnung ist in weclapp bereits vergeben."
+        return f"Gruppe in weclapp konnte nicht {verb} werden."
+    return f"Gruppe in weclapp konnte nicht {verb} werden."
 
 
 def _hauptgruppe_aliases(db: Session, group_id: uuid.UUID) -> list[GruppenAlias]:
@@ -172,10 +191,11 @@ def _write_failure(
     hauptgruppe: Hauptgruppe | None = None,
     fragment: str | None = None,
 ) -> HTMLResponse:
+    haupt_id = hauptgruppe.id if hauptgruppe is not None else None
     db.rollback()
-    if fragment == "untergruppen" and hauptgruppe is not None and _is_htmx(request):
-        db.refresh(hauptgruppe)
-        return _render_untergruppen(request, db, hauptgruppe, user, error=exc.message)
+    if fragment == "untergruppen" and haupt_id is not None and _is_htmx(request):
+        parent = _get_hauptgruppe(db, haupt_id)
+        return _render_untergruppen(request, db, parent, user, error=exc.message)
     return _error_page(request, user, exc.message)
 
 
@@ -315,11 +335,23 @@ def rename_hauptgruppe_route(
     name: str = Form(...),
 ) -> Response:
     group = _get_hauptgruppe(db, group_id)
+    nested = db.begin_nested()
     try:
+        old_name = group.name
         rename_hauptgruppe(db, group, name=name, actor=user)
+        if weclapp_category_writes_allowed(request) and group.name != old_name:
+            client = weclapp_client_for(db, user["oid"])
+            rename_haupt_in_weclapp(
+                client,
+                old_name=old_name,
+                new_name=group.name,
+                code=group.code,
+            )
+        nested.commit()
         _commit(db)
     except GroupRegistryError as exc:
-        db.rollback()
+        nested.rollback()
+        db.refresh(group)
         if _is_htmx(request):
             return request.app.state.templates.TemplateResponse(
                 request,
@@ -327,6 +359,17 @@ def rename_hauptgruppe_route(
                 _ctx(user, group=group, editing=True, name_error=exc.message),
             )
         return _error_page(request, user, exc.message)
+    except (NoWeclappToken, WeclappError) as exc:
+        nested.rollback()
+        db.refresh(group)
+        message = _weclapp_write_message(exc, verb="umbenannt")
+        if _is_htmx(request):
+            return request.app.state.templates.TemplateResponse(
+                request,
+                "gruppen/partials/bezeichnung.html",
+                _ctx(user, group=group, editing=True, name_error=message),
+            )
+        return _error_page(request, user, message)
     if _is_htmx(request):
         return request.app.state.templates.TemplateResponse(
             request,
@@ -449,11 +492,35 @@ def rename_untergruppe_route(
 ) -> Response:
     group = _get_untergruppe(db, group_id)
     parent = _get_hauptgruppe(db, group.hauptgruppe_id)
+    nested = db.begin_nested()
     try:
+        old_name = group.name
         rename_untergruppe(db, group, name=name, actor=user)
+        if weclapp_category_writes_allowed(request) and group.name != old_name:
+            client = weclapp_client_for(db, user["oid"])
+            rename_unter_in_weclapp(
+                client,
+                parent_name=parent.name,
+                parent_code=parent.code,
+                old_name=old_name,
+                new_name=group.name,
+                unter_code=group.code,
+            )
+        nested.commit()
         _commit(db)
     except GroupRegistryError as exc:
-        return _write_failure(request, db, user, exc, hauptgruppe=parent, fragment="untergruppen")
+        nested.rollback()
+        db.refresh(parent)
+        if _is_htmx(request):
+            return _render_untergruppen(request, db, parent, user, error=exc.message)
+        return _error_page(request, user, exc.message)
+    except (NoWeclappToken, WeclappError) as exc:
+        nested.rollback()
+        db.refresh(parent)
+        message = _weclapp_write_message(exc, verb="umbenannt")
+        if _is_htmx(request):
+            return _render_untergruppen(request, db, parent, user, error=message)
+        return _error_page(request, user, message)
     db.refresh(parent)
     if _is_htmx(request):
         return _render_untergruppen(request, db, parent, user)

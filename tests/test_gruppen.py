@@ -475,3 +475,118 @@ def test_create_hauptgruppe_with_untergruppe_helper(db_session):
     assert child.hauptgruppe_id == parent.id
     assert child.code == "010"
 
+
+def test_rename_hauptgruppe_on_tools_host_puts_weclapp(admin_client, db_session):
+    group = _make_hauptgruppe(db_session, name="Altname")
+    db_session.flush()
+    mock_wc = MagicMock()
+    mock_wc.iter_pages.return_value = [
+        {
+            "id": "p1",
+            "name": "Altname",
+            "description": group.code,
+            "version": "1",
+            "parentCategoryId": None,
+        },
+    ]
+    mock_wc.put.return_value = {"id": "p1", "name": "Neuname"}
+    with (
+        patch("app.routes.gruppen.weclapp_category_writes_allowed", return_value=True),
+        patch("app.routes.gruppen.weclapp_client_for", return_value=mock_wc),
+    ):
+        response = admin_client.post(
+            f"/gruppen/{group.id}/umbenennen",
+            data={"name": "Neuname"},
+            follow_redirects=False,
+        )
+    assert response.status_code == 303
+    mock_wc.put.assert_called_once()
+    assert mock_wc.put.call_args.kwargs["json"]["name"] == "Neuname"
+    db_session.refresh(group)
+    assert group.name == "Neuname"
+
+
+def test_rename_untergruppe_on_tools_host_puts_weclapp(admin_client, db_session):
+    parent = _make_hauptgruppe(db_session, name="Bestehend")
+    child = _make_untergruppe(db_session, parent, code="008", name="Altunter")
+    db_session.flush()
+    mock_wc = MagicMock()
+    mock_wc.iter_pages.return_value = [
+        {"id": "p1", "name": "Bestehend", "description": parent.code, "parentCategoryId": None},
+        {
+            "id": "c1",
+            "name": "Altunter",
+            "description": "008",
+            "version": "4",
+            "parentCategoryId": "p1",
+        },
+    ]
+    mock_wc.put.return_value = {"id": "c1", "name": "Neuunter"}
+    with (
+        patch("app.routes.gruppen.weclapp_category_writes_allowed", return_value=True),
+        patch("app.routes.gruppen.weclapp_client_for", return_value=mock_wc),
+    ):
+        response = admin_client.post(
+            f"/untergruppen/{child.id}/umbenennen",
+            data={"name": "Neuunter"},
+            follow_redirects=False,
+        )
+    assert response.status_code == 303
+    mock_wc.put.assert_called_once_with(
+        "/articleCategory/id/c1",
+        params={"ignoreMissingProperties": "true"},
+        json={"name": "Neuunter", "version": "4"},
+    )
+    db_session.refresh(child)
+    assert child.name == "Neuunter"
+
+
+def test_rename_hauptgruppe_weclapp_failure_rolls_back(admin_client, db_session):
+    from scripts.weclapp.client import WeclappError
+
+    group = _make_hauptgruppe(db_session, name="Bleibt")
+    db_session.flush()
+    mock_wc = MagicMock()
+    mock_wc.iter_pages.return_value = [
+        {
+            "id": "p1",
+            "name": "Bleibt",
+            "description": group.code,
+            "version": "1",
+            "parentCategoryId": None,
+        },
+    ]
+    mock_wc.put.side_effect = WeclappError(
+        "dup",
+        status_code=400,
+        detail={"error": "name is duplicate"},
+    )
+    with (
+        patch("app.routes.gruppen.weclapp_category_writes_allowed", return_value=True),
+        patch("app.routes.gruppen.weclapp_client_for", return_value=mock_wc),
+    ):
+        response = admin_client.post(
+            f"/gruppen/{group.id}/umbenennen",
+            data={"name": "SchonVergeben"},
+            follow_redirects=False,
+        )
+    assert response.status_code == 400
+    assert "bereits vergeben" in response.text
+    db_session.refresh(group)
+    assert group.name == "Bleibt"
+
+
+def test_rename_hauptgruppe_locally_skips_weclapp(admin_client, db_session):
+    group = _make_hauptgruppe(db_session, name="Lokalalt")
+    db_session.flush()
+    with patch("app.routes.gruppen.weclapp_client_for") as mock_client:
+        response = admin_client.post(
+            f"/gruppen/{group.id}/umbenennen",
+            data={"name": "Lokalneu"},
+            follow_redirects=False,
+        )
+    assert response.status_code == 303
+    mock_client.assert_not_called()
+    db_session.refresh(group)
+    assert group.name == "Lokalneu"
+

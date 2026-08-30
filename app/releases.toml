@@ -1,7 +1,18 @@
 # PROSEMA release history — edit this file to bump the version and document changes.
 # The top-level `version` is shown in the site header; `[[releases]]` entries appear on /changelog.
 
-version = "1.0.4"
+version = "1.0.5"
+
+[[releases]]
+version = "1.0.5"
+date = "2026-08-30"
+summary = "Implement renaming functionality for Hauptgruppen and Untergruppen in weclapp, including error handling for duplicate names. Update related documentation to reflect changes in group management processes. Enhance tests to cover new renaming features and ensure proper rollback on failure. (+2 more)"
+changes = [
+  "Refactor landing tool state logic in weclapp.py to simplify dependency checks and update status messages. Enhance test coverage in test_weclapp_tokens.py to verify new status conditions for tools. This improves clarity and maintainability of the code.",
+  "Refactor landing tool state logic in weclapp.py to simplify dependency checks and update status messages. Enhance test coverage in test_weclapp_tokens.py to verify new status conditions for tools. This improves clarity and maintainability of the code.",
+  "Implement renaming functionality for Hauptgruppen and Untergruppen in weclapp, including error handling for duplicate names. Update related documentation to reflect changes in group management processes. Enhance tests to cover new renaming features and ensure proper rollback on failure.",
+]
+
 
 [[releases]]
 version = "1.0.4"

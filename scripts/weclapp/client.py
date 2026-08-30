@@ -105,6 +105,15 @@ class WeclappClient:
     ) -> Any:
         return self.request("POST", path, params=params, json=json)
 
+    def put(
+        self,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+        json: dict[str, Any] | None = None,
+    ) -> Any:
+        return self.request("PUT", path, params=params, json=json)
+
     def get_count(self, entity: str, *, params: dict[str, Any] | None = None) -> int:
         entity = entity.strip("/")
         data = self.get(f"/{entity}/count", params=params)

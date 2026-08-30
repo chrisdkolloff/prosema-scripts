@@ -12,6 +12,8 @@ from app.weclapp_categories import (
     TOOLS_HOST,
     create_haupt_and_unter_in_weclapp,
     create_unter_in_weclapp,
+    rename_haupt_in_weclapp,
+    rename_unter_in_weclapp,
     weclapp_category_writes_allowed,
 )
 from scripts.weclapp.client import WeclappError
@@ -121,4 +123,88 @@ def test_create_unter_requires_existing_parent():
             parent_name="Unbekannt",
             unter_name="X",
             unter_code="001",
+        )
+
+
+def test_rename_haupt_puts_name_with_ignore_missing():
+    client = MagicMock()
+    client.iter_pages.return_value = [
+        {"id": "p1", "name": "Zubehör", "description": "010", "version": "3", "parentCategoryId": None},
+    ]
+    client.put.return_value = {"id": "p1", "name": "Zubehör neu"}
+
+    updated = rename_haupt_in_weclapp(
+        client,
+        old_name="Zubehör",
+        new_name="Zubehör neu",
+        code="010",
+    )
+    assert updated["name"] == "Zubehör neu"
+    client.put.assert_called_once_with(
+        "/articleCategory/id/p1",
+        params={"ignoreMissingProperties": "true"},
+        json={"name": "Zubehör neu", "version": "3"},
+    )
+
+
+def test_rename_haupt_finds_parent_by_code_if_name_drifted():
+    client = MagicMock()
+    client.iter_pages.return_value = [
+        {"id": "p1", "name": "Alt in weclapp", "description": "010", "version": "1"},
+    ]
+    client.put.return_value = {"id": "p1", "name": "Neu"}
+
+    rename_haupt_in_weclapp(client, old_name="Zubehör", new_name="Neu", code="010")
+    assert client.put.call_args.args[0] == "/articleCategory/id/p1"
+
+
+def test_rename_haupt_missing_raises():
+    client = MagicMock()
+    client.iter_pages.return_value = []
+    with pytest.raises(GroupRegistryError, match="fehlt in weclapp"):
+        rename_haupt_in_weclapp(client, old_name="X", new_name="Y", code="999")
+
+
+def test_rename_unter_puts_child():
+    client = MagicMock()
+    client.iter_pages.return_value = [
+        {"id": "p1", "name": "Zubehör", "description": "010", "parentCategoryId": None},
+        {
+            "id": "c1",
+            "name": "Werkzeug",
+            "description": "030",
+            "version": "2",
+            "parentCategoryId": "p1",
+        },
+    ]
+    client.put.return_value = {"id": "c1", "name": "Werkzeug neu"}
+
+    rename_unter_in_weclapp(
+        client,
+        parent_name="Zubehör",
+        parent_code="010",
+        old_name="Werkzeug",
+        new_name="Werkzeug neu",
+        unter_code="030",
+    )
+    client.put.assert_called_once_with(
+        "/articleCategory/id/c1",
+        params={"ignoreMissingProperties": "true"},
+        json={"name": "Werkzeug neu", "version": "2"},
+    )
+
+
+def test_rename_unter_missing_child_raises():
+    client = MagicMock()
+    client.iter_pages.return_value = [
+        {"id": "p1", "name": "Zubehör", "description": "010", "parentCategoryId": None},
+    ]
+    with pytest.raises(GroupRegistryError, match="Untergruppe fehlt"):
+        rename_unter_in_weclapp(
+            client,
+            parent_name="Zubehör",
+            parent_code="010",
+            old_name="Werkzeug",
+            new_name="Neu",
+            unter_code="030",
         )

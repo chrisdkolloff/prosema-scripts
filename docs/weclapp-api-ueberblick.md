@@ -37,7 +37,7 @@ weclapp bietet über die API auch Wege, **neue oder geänderte Daten einzutragen
 
 **Wichtig für PROSEMA:** Die meisten Daten schreiben wir **nicht direkt** über die API zurück nach weclapp. Stattdessen erzeugen wir **Import-Dateien** (CSV), die man in weclapp wie gewohnt per Import einspielt. Das ist bewusst der sicherere und für euch nachvollziehbarere Weg.
 
-**Ausnahme:** Neue Haupt- und Untergruppen, die auf [tools.prosema.ch](https://tools.prosema.ch/gruppen) angelegt werden, legt die Tools-Website auch in weclapp als Artikelkategorien an. Details und Grenzen stehen in [gruppen-verwaltung.md](gruppen-verwaltung.md).
+**Ausnahme:** Neue Haupt- und Untergruppen, die auf [tools.prosema.ch](https://tools.prosema.ch/gruppen) angelegt oder umbenannt werden, schreibt die Tools-Website auch in weclapp als Artikelkategorien. Details und Grenzen stehen in [gruppen-verwaltung.md](gruppen-verwaltung.md).
 
 ### Was weclapp insgesamt über die API abdeckt
 
