@@ -10,9 +10,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from core.article_payload import (
+    ARTICLE_NAME_FIELD,
+    ARTICLE_NUMBER_FIELD,
     BOOLEAN_CUSTOM_ATTRS,
     DEFAULTS,
+    LABEL_ALIASES,
     LIST_CUSTOM_ATTRS,
+    LONG_TEXT_FIELD,
     NUMBER_PLACEHOLDER,
     STRING_CUSTOM_ATTRS,
 )
@@ -45,9 +49,9 @@ class ArticleField:
 
 _CORE_PAYLOAD_LABELS = frozenset(
     {
-        "Prosema Artikelnummer",
-        "PROSEMA Kurztext",
-        "PROSEMA Langtext",
+        ARTICLE_NUMBER_FIELD,
+        ARTICLE_NAME_FIELD,
+        LONG_TEXT_FIELD,
         "Kurzbeschreibung",
         "Referenz (Matchcode)",
         "GTIN (EAN-Nummer)",
@@ -62,11 +66,11 @@ _CORE_PAYLOAD_LABELS = frozenset(
     }
 )
 
-_UPLOAD_REQUIRED = frozenset({"PROSEMA Kurztext", "Hauptgruppe", "Untergruppe"})
+_UPLOAD_REQUIRED = frozenset({ARTICLE_NAME_FIELD, "Hauptgruppe", "Untergruppe"})
 
 _NEVER_EDITABLE = frozenset(
     {
-        "Prosema Artikelnummer",
+        ARTICLE_NUMBER_FIELD,
         "Produkt-ID (Prosema)",
         "Varianten-ID (Prosema)",
     }
@@ -96,13 +100,13 @@ _SELECT_LABELS = frozenset(
 _BOOL_LABELS = frozenset(BOOLEAN_CUSTOM_ATTRS) | {"Aktiv", "Im Verkauf"}
 
 _DESCRIPTIONS: dict[str, str] = {
-    "Prosema Artikelnummer": "Wird aus Haupt- und Untergruppe abgeleitet, nie aus der Datei übernommen.",
+    ARTICLE_NUMBER_FIELD: "Wird aus Haupt- und Untergruppe abgeleitet, nie aus der Datei übernommen.",
     "Lieferantenartikelnummer": "Lieferanten-eigene Artikelnummer; Teil des Bezugsquellen-Matchschlüssels.",
     "Hauptgruppe": "Registry-Hauptgruppe (Name - Code). Voraussetzung für die Artikelnummer.",
     "Untergruppe": "Registry-Untergruppe (Name - Code). Voraussetzung für die Artikelnummer.",
-    "PROSEMA Kurztext": "Artikelname in weclapp (name). Pflicht für die Anlage.",
-    "PROSEMA Langtext": "Langer Beschreibungstext (longText).",
-    "Kurzbeschreibung": "Kurze Beschreibung (shortDescription1); fällt auf den Kurztext zurück.",
+    ARTICLE_NAME_FIELD: "Artikelname in weclapp (name). Pflicht für die Anlage.",
+    LONG_TEXT_FIELD: "Langer Beschreibungstext (longText).",
+    "Kurzbeschreibung": "Kurze Beschreibung (shortDescription1); fällt auf den Artikelnamen zurück.",
     "Referenz (Matchcode)": "Matchcode / Referenz in weclapp.",
     "GTIN (EAN-Nummer)": "EAN/GTIN.",
     "Artikeltyp": "weclapp-Artikeltyp, typischerweise BASIC.",
@@ -139,12 +143,12 @@ _DESCRIPTIONS: dict[str, str] = {
 }
 
 _EXAMPLES: dict[str, str] = {
-    "Prosema Artikelnummer": NUMBER_PLACEHOLDER,
+    ARTICLE_NUMBER_FIELD: NUMBER_PLACEHOLDER,
     "Lieferantenartikelnummer": "TEST-SUP-001",
     "Hauptgruppe": "Zubehör - 020",
     "Untergruppe": "Nivelliersystem - 010",
-    "PROSEMA Kurztext": "TEST Dummy Artikel",
-    "PROSEMA Langtext": "Testdatensatz für den Artikelimport.",
+    ARTICLE_NAME_FIELD: "TEST Dummy Artikel",
+    LONG_TEXT_FIELD: "Testdatensatz für den Artikelimport.",
     "Kurzbeschreibung": "TEST Dummy Artikel",
     "Referenz (Matchcode)": "TEST-DUMMY",
     "GTIN (EAN-Nummer)": "",
@@ -183,12 +187,12 @@ _EXAMPLES: dict[str, str] = {
 
 # Order matches the historic import template / IMPORT_COLUMNS.
 _LABEL_ORDER: tuple[str, ...] = (
-    "Prosema Artikelnummer",
+    ARTICLE_NUMBER_FIELD,
     "Lieferantenartikelnummer",
     "Hauptgruppe",
     "Untergruppe",
-    "PROSEMA Kurztext",
-    "PROSEMA Langtext",
+    ARTICLE_NAME_FIELD,
+    LONG_TEXT_FIELD,
     "Kurzbeschreibung",
     "Referenz (Matchcode)",
     "GTIN (EAN-Nummer)",
@@ -297,13 +301,19 @@ _BY_LABEL_FOLD: dict[str, ArticleField] = {
     field.label.casefold(): field for field in FIELDS
 }
 
+for _canonical, _aliases in LABEL_ALIASES.items():
+    _field = BY_LABEL[_canonical]
+    for _alias in _aliases:
+        BY_LABEL.setdefault(_alias, _field)
+        _BY_LABEL_FOLD.setdefault(_alias.casefold(), _field)
+
 
 def normalize_label(value: object) -> str:
     return str(value or "").strip()
 
 
 def find_field(label: object) -> ArticleField | None:
-    """Match a header to the catalogue; case and surrounding whitespace only."""
+    """Match a header to the catalogue; case, whitespace, and historic aliases."""
     cleaned = normalize_label(label)
     if not cleaned:
         return None

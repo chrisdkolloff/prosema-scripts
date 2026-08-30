@@ -324,7 +324,7 @@ def test_excel_matches_zeilen_filter(db_session, user_client):
     wb = load_workbook(io.BytesIO(excel.content))
     ws = wb["Artikel"]
     headers = [ws.cell(1, col).value for col in range(1, ws.max_column + 1)]
-    artikel_col = headers.index("Prosema Artikelnummer") + 1
+    artikel_col = headers.index("Prosema-Artikelnummer") + 1
     numbers = {ws.cell(row, artikel_col).value for row in range(2, ws.max_row + 1)}
     assert numbers == {"020.010.0005"}
 
@@ -338,7 +338,7 @@ def test_article_number_excel_text_format(db_session, user_client):
     wb = load_workbook(io.BytesIO(response.content))
     ws = wb["Artikel"]
     headers = [ws.cell(1, col).value for col in range(1, ws.max_column + 1)]
-    artikel_col = headers.index("Prosema Artikelnummer") + 1
+    artikel_col = headers.index("Prosema-Artikelnummer") + 1
     cell = ws.cell(2, artikel_col)
     assert cell.number_format == "@"
     assert cell.value == "010.020.0010"

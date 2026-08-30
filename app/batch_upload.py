@@ -26,8 +26,8 @@ from app.batches import (
 )
 from app.models import ArticleBatch, ArticleBatchRow, ArticleTemplate
 from app.numbering_high_water import assign_proposed_numbers, seed_high_water
-from core.article_fields import IMPORT_COLUMNS, normalize_label
-from core.article_payload import DEFAULTS
+from core.article_fields import IMPORT_COLUMNS, find_field, normalize_label
+from core.article_payload import DEFAULTS, get_row_value, label_variants, label_variants
 
 MAX_UPLOAD_ROWS = 2000
 MAX_MANUAL_ROWS = 200
@@ -101,6 +101,10 @@ def _template_optional_from_columns(columns: list) -> list[str]:
     ]
 
 
+def _folds_for_label(label: str) -> set[str]:
+    return {normalize_label(name).casefold() for name in label_variants(label) if name}
+
+
 def _parse_upload_table(
     headers: list[str],
     body_rows: Iterable[Sequence[object]],
@@ -113,8 +117,14 @@ def _parse_upload_table(
     for col in columns:
         label = normalize_label(col.get("label"))
         key = str(col.get("key") or label)
-        if label:
-            label_to_key[label.casefold()] = key
+        if not label:
+            continue
+        for fold in _folds_for_label(label):
+            label_to_key.setdefault(fold, key)
+        field = find_field(label)
+        if field is not None:
+            for fold in _folds_for_label(field.label):
+                label_to_key.setdefault(fold, key)
 
     required_labels = _template_required_from_columns(columns)
     optional_labels = _template_optional_from_columns(columns)
@@ -133,7 +143,7 @@ def _parse_upload_table(
             duplicates.append(name)
             continue
         seen_fold[fold] = index
-        present_fold.add(fold)
+        present_fold.update(_folds_for_label(name))
         canonical = label_to_key.get(fold)
         if canonical is not None:
             by_index[index] = canonical
@@ -149,6 +159,7 @@ def _parse_upload_table(
         label
         for label in required_labels
         if normalize_label(label).casefold() not in present_fold
+        and not (_folds_for_label(label) & present_fold)
     ]
     if missing_required:
         raise BatchUploadError(
@@ -159,9 +170,11 @@ def _parse_upload_table(
         label
         for label in optional_labels
         if normalize_label(label).casefold() not in present_fold
+        and not (_folds_for_label(label) & present_fold)
     ]
 
     parsed: list[dict[str, str]] = []
+    number_keys = set(label_variants(ARTICLE_NUMBER_FIELD))
     for values in body_rows:
         raw: dict[str, str] = {}
         for index, key in by_index.items():
@@ -171,7 +184,8 @@ def _parse_upload_table(
             parsed.append({})
             continue
         # Never keep a typed article number from the file — numbers are derived.
-        raw.pop(ARTICLE_NUMBER_FIELD, None)
+        for number_key in number_keys:
+            raw.pop(number_key, None)
         parsed.append(raw)
     return parsed, unknown, missing_optional
 
@@ -280,7 +294,7 @@ def _prepare_row(
         include=True,
         validation_error="",
     )
-    values = {col: str(raw.get(col, "") or "") for col in IMPORT_COLUMNS}
+    values = {col: get_row_value(raw, col) for col in IMPORT_COLUMNS}
     for col, default in DEFAULTS.items():
         if not values.get(col):
             values[col] = default

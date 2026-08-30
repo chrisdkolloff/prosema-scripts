@@ -5,9 +5,27 @@ One definition used by the CLI importer and the web batch submit path.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any, Protocol
 
 NUMBER_PLACEHOLDER = "wird autogeneriert"
+
+ARTICLE_NUMBER_FIELD = "Prosema-Artikelnummer"
+ARTICLE_NAME_FIELD = "Prosema-Artikelname"
+LONG_TEXT_FIELD = "Prosema-Langtext"
+
+# Historic registration-template labels still present in v1 rows / files.
+LABEL_ALIASES: dict[str, tuple[str, ...]] = {
+    ARTICLE_NUMBER_FIELD: ("Prosema Artikelnummer",),
+    ARTICLE_NAME_FIELD: ("PROSEMA Kurztext", "Prosema Kurztext"),
+    LONG_TEXT_FIELD: ("PROSEMA Langtext", "Prosema Langtext"),
+}
+
+_ALIAS_TO_CANONICAL: dict[str, str] = {
+    alias: canonical
+    for canonical, aliases in LABEL_ALIASES.items()
+    for alias in aliases
+}
 
 STRING_CUSTOM_ATTRS: dict[str, str] = {
     "Grundmaterial": "Grundmaterial",
@@ -44,7 +62,7 @@ LIST_CUSTOM_ATTRS: dict[str, str] = {
 }
 
 DEFAULTS: dict[str, str] = {
-    "Prosema Artikelnummer": NUMBER_PLACEHOLDER,
+    ARTICLE_NUMBER_FIELD: NUMBER_PLACEHOLDER,
     "Artikeltyp": "BASIC",
     "Einheit": "Stk.",
     "Aktiv": "Ja",
@@ -70,6 +88,30 @@ class LookupTablesProtocol(Protocol):
     def attr_id(self, label: str) -> str: ...
 
 
+def canonical_label(label: str) -> str:
+    return _ALIAS_TO_CANONICAL.get(str(label or "").strip(), str(label or "").strip())
+
+
+def label_variants(label: str) -> tuple[str, ...]:
+    """Canonical catalogue name plus historic aliases."""
+    canonical = canonical_label(label)
+    seen: dict[str, None] = {canonical: None}
+    for alias in LABEL_ALIASES.get(canonical, ()):
+        seen.setdefault(alias, None)
+    if label and label not in seen:
+        seen[label] = None
+    return tuple(seen)
+
+
+def get_row_value(row: Mapping[str, Any], column: str) -> str:
+    """Read a cell, accepting historic aliases of renamed catalogue labels."""
+    for key in label_variants(column):
+        raw = _norm(row.get(key, ""))
+        if raw:
+            return raw
+    return ""
+
+
 def _norm(value: object) -> str:
     return str(value or "").strip()
 
@@ -86,22 +128,22 @@ def _parse_bool(value: object, *, default: bool | None = None) -> bool | None:
 
 
 def _row_value(row: dict[str, str], column: str) -> str:
-    raw = _norm(row.get(column, ""))
+    raw = get_row_value(row, column)
     if raw:
         return raw
-    return DEFAULTS.get(column, "")
+    return DEFAULTS.get(canonical_label(column), DEFAULTS.get(column, ""))
 
 
 def row_to_payload(row: dict[str, str], lookups: LookupTablesProtocol) -> dict[str, Any]:
-    article_number = _row_value(row, "Prosema Artikelnummer")
-    name = _row_value(row, "PROSEMA Kurztext")
+    article_number = _row_value(row, ARTICLE_NUMBER_FIELD)
+    name = _row_value(row, ARTICLE_NAME_FIELD)
     if not article_number or article_number == NUMBER_PLACEHOLDER:
         raise ValueError(
-            "Prosema Artikelnummer fehlt. Bitte Hauptgruppe und Untergruppe setzen "
+            "Prosema-Artikelnummer fehlt. Bitte Hauptgruppe und Untergruppe setzen "
             "und Artikelnummern erzeugen."
         )
     if not name:
-        raise ValueError("PROSEMA Kurztext fehlt")
+        raise ValueError("Prosema-Artikelname fehlt")
 
     unit_value = _row_value(row, "Einheit")
     payload: dict[str, Any] = {
@@ -122,7 +164,7 @@ def row_to_payload(row: dict[str, str], lookups: LookupTablesProtocol) -> dict[s
         payload["ean"] = ean
     short_description = _row_value(row, "Kurzbeschreibung") or name
     payload["shortDescription1"] = short_description
-    long_text = _row_value(row, "PROSEMA Langtext")
+    long_text = _row_value(row, LONG_TEXT_FIELD)
     if long_text:
         payload["longText"] = long_text
     category = _row_value(row, "Kategorie")

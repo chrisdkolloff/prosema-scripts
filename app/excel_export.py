@@ -18,6 +18,7 @@ from openpyxl.worksheet.worksheet import Worksheet
 TEXT_EXCEL_COLUMNS = frozenset(
     {
         "Prosema Artikelnummer",
+        "Prosema-Artikelnummer",
         "Artikelnummer",
         "Hauptgruppe",
         "Untergruppe",

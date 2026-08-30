@@ -21,7 +21,16 @@ from app.groups_service import (
 from app.models import ArticleBatch, ArticleBatchPresence, ArticleBatchRow
 from app.numbering_high_water import register_kept_numbers, seed_high_water
 from core.article_fields import IMPORT_COLUMNS
-from core.article_payload import DEFAULTS, NUMBER_PLACEHOLDER, row_to_payload
+from core.article_payload import (
+    ARTICLE_NAME_FIELD,
+    ARTICLE_NUMBER_FIELD,
+    DEFAULTS,
+    LONG_TEXT_FIELD,
+    NUMBER_PLACEHOLDER,
+    get_row_value,
+    label_variants,
+    row_to_payload,
+)
 from core.numbering import Scheme
 from scripts.weclapp.article_import import (
     RESTRICTED_SELECT_COLUMNS,
@@ -45,21 +54,33 @@ MSG_MISSING_HAUPT = "Hauptgruppe fehlt"
 MSG_MISSING_UNTER = "Untergruppe fehlt"
 
 INCLUDE_FIELD = "include"
-ARTICLE_NUMBER_FIELD = "Prosema Artikelnummer"
-KURZTEXT_FIELD = "PROSEMA Kurztext"
+KURZTEXT_FIELD = ARTICLE_NAME_FIELD
 HAUPTGRUPPE_FIELD = "Hauptgruppe"
 UNTERGRUPPE_FIELD = "Untergruppe"
 GROUP_FIELDS = {HAUPTGRUPPE_FIELD, UNTERGRUPPE_FIELD}
 
+_NUMBER_KEYS = frozenset(label_variants(ARTICLE_NUMBER_FIELD))
+_NAME_KEYS = frozenset(label_variants(ARTICLE_NAME_FIELD))
+_PINNED_KEYS = _NUMBER_KEYS | _NAME_KEYS
+
 NEVER_EDITABLE = {
-    ARTICLE_NUMBER_FIELD,
+    *label_variants(ARTICLE_NUMBER_FIELD),
     "Produkt-ID (Prosema)",
     "Varianten-ID (Prosema)",
 }
 
 EDITABLE_WHITELIST: frozenset[str] = frozenset(
-    column for column in IMPORT_COLUMNS if column not in NEVER_EDITABLE
-) | {INCLUDE_FIELD}
+    {
+        *(column for column in IMPORT_COLUMNS if column not in NEVER_EDITABLE),
+        *(
+            alias
+            for column in IMPORT_COLUMNS
+            if column not in NEVER_EDITABLE
+            for alias in label_variants(column)
+        ),
+        INCLUDE_FIELD,
+    }
+)
 
 SYNTHETIC_FIELDS = ("_zeile", "_status")
 
@@ -68,12 +89,15 @@ _LABEL_RE = re.compile(r"^(.*?)\s*-\s*(\d{3})\s*$")
 COLUMN_WIDTHS: dict[str, int] = {
     "_zeile": 70,
     ARTICLE_NUMBER_FIELD: 160,
+    "Prosema Artikelnummer": 160,
     KURZTEXT_FIELD: 220,
+    "PROSEMA Kurztext": 220,
     "_status": 280,
     INCLUDE_FIELD: 100,
     "Lieferantenartikelnummer": 180,
     HAUPTGRUPPE_FIELD: 190,
     UNTERGRUPPE_FIELD: 210,
+    LONG_TEXT_FIELD: 280,
     "PROSEMA Langtext": 280,
     "Kurzbeschreibung": 200,
     "Referenz (Matchcode)": 160,
@@ -137,21 +161,12 @@ def grid_field_order_for_batch(batch: ArticleBatch) -> tuple[str, ...]:
         if col.get("key") or col.get("label")
     ]
     # Always show number + Kurztext near the front even if template order differs.
-    body = [
-        label
-        for label in labels
-        if label and label not in {ARTICLE_NUMBER_FIELD, KURZTEXT_FIELD}
-    ]
-    # Keep Artikelnummer / Kurztext if present in template; otherwise still show number.
-    has_number = ARTICLE_NUMBER_FIELD in labels
-    has_kurz = KURZTEXT_FIELD in labels
-    ordered: list[str] = ["_zeile"]
-    if has_number:
-        ordered.append(ARTICLE_NUMBER_FIELD)
-    else:
-        ordered.append(ARTICLE_NUMBER_FIELD)
-    if has_kurz:
-        ordered.append(KURZTEXT_FIELD)
+    body = [label for label in labels if label and label not in _PINNED_KEYS]
+    number_label = next((label for label in labels if label in _NUMBER_KEYS), ARTICLE_NUMBER_FIELD)
+    name_label = next((label for label in labels if label in _NAME_KEYS), None)
+    ordered: list[str] = ["_zeile", number_label]
+    if name_label:
+        ordered.append(name_label)
     ordered.append("_status")
     ordered.append(INCLUDE_FIELD)
     ordered.extend(body)
@@ -217,15 +232,25 @@ def coerce_include(value: Any) -> bool:
     return text not in {"", "0", "false", "nein", "off", "no"}
 
 
+def _lookup_aliased(data: dict[str, Any], column: str) -> str | None:
+    for key in label_variants(column):
+        if key in data:
+            return _as_text(data[key])
+    return None
+
+
 def effective_values(row: ArticleBatchRow) -> dict[str, str]:
     merged: dict[str, str] = {}
     raw = row.raw_data if isinstance(row.raw_data, dict) else {}
     edits = row.edits if isinstance(row.edits, dict) else {}
     for column in IMPORT_COLUMNS:
-        if column in edits:
-            merged[column] = _as_text(edits[column])
-        elif column in raw:
-            merged[column] = _as_text(raw[column])
+        edited = _lookup_aliased(edits, column)
+        if edited is not None:
+            merged[column] = edited
+            continue
+        original = _lookup_aliased(raw, column)
+        if original is not None:
+            merged[column] = original
         else:
             merged[column] = DEFAULTS.get(column, "")
     merged[ARTICLE_NUMBER_FIELD] = row.proposed_article_number or merged.get(
@@ -351,10 +376,10 @@ def grid_row_values(
             out.append(row.validation_error or "")
         elif field_name == INCLUDE_FIELD:
             out.append(bool(row.include))
-        elif field_name == ARTICLE_NUMBER_FIELD:
+        elif field_name in _NUMBER_KEYS:
             out.append(display_proposed_article_number(row))
         else:
-            out.append(values.get(field_name, ""))
+            out.append(get_row_value(values, field_name) or values.get(field_name, ""))
     return out
 
 
@@ -592,9 +617,9 @@ def row_matches(
     if needle:
         haystack = " ".join(
             [
-                values.get(ARTICLE_NUMBER_FIELD, ""),
+                get_row_value(values, ARTICLE_NUMBER_FIELD),
                 values.get("Lieferantenartikelnummer", ""),
-                values.get(KURZTEXT_FIELD, ""),
+                get_row_value(values, KURZTEXT_FIELD),
                 values.get("Referenz (Matchcode)", ""),
             ]
         ).lower()

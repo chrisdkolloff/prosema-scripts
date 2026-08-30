@@ -5,6 +5,12 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from core.article_payload import (
+    ARTICLE_NAME_FIELD,
+    ARTICLE_NUMBER_FIELD,
+    LONG_TEXT_FIELD,
+    get_row_value,
+)
 from scripts.weclapp.article_import import IMPORT_COLUMNS
 from scripts.weclapp.master_columns import (
     EXPORT_COLUMNS,
@@ -16,12 +22,12 @@ _LABEL_RE = re.compile(r"^(.*?)\s*-\s*(\d{3})\s*$")
 
 # Master/export column -> import-template column
 _MASTER_TO_IMPORT: dict[str, str] = {
-    "Prosema Artikelnummer": "Prosema Artikelnummer",
+    "Prosema Artikelnummer": ARTICLE_NUMBER_FIELD,
     "Artikelnr.": "Lieferantenartikelnummer",
     "Hauptgruppe": "Hauptgruppe",
     "Untergruppe": "Untergruppe",
-    "PROSEMA Kurztext": "PROSEMA Kurztext",
-    "PROSEMA Langtext": "PROSEMA Langtext",
+    "PROSEMA Kurztext": ARTICLE_NAME_FIELD,
+    "PROSEMA Langtext": LONG_TEXT_FIELD,
     "Referenz (Matchcode)": "Referenz (Matchcode)",
     "GTIN (EAN-Nummer)": "GTIN (EAN-Nummer)",
     "Basiseinheitencode": "Einheit",
@@ -57,11 +63,14 @@ _MASTER_TO_IMPORT: dict[str, str] = {
 _DEFAULT_WIDTH = 140
 
 _COLUMN_WIDTHS: dict[str, int] = {
+    ARTICLE_NUMBER_FIELD: 160,
     "Prosema Artikelnummer": 160,
     "Lieferantenartikelnummer": 180,
     "Hauptgruppe": 190,
     "Untergruppe": 210,
+    ARTICLE_NAME_FIELD: 220,
     "PROSEMA Kurztext": 220,
+    LONG_TEXT_FIELD: 280,
     "PROSEMA Langtext": 280,
     "Kurzbeschreibung": 200,
     "Referenz (Matchcode)": 160,
@@ -152,8 +161,8 @@ def extract_indexed_fields(
     _, unter_code = _split_group_label(unter_label)
     active = _parse_active(data.get("Aktiv", ""))
     return {
-        "article_number": data.get("Prosema Artikelnummer", "") or "",
-        "article_name": data.get("PROSEMA Kurztext", "") or "",
+        "article_number": get_row_value(data, ARTICLE_NUMBER_FIELD),
+        "article_name": get_row_value(data, ARTICLE_NAME_FIELD),
         "hauptgruppe_code": haupt_code or haupt_label,
         "untergruppe_code": unter_code or unter_label,
         "active": active,

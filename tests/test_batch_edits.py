@@ -72,7 +72,7 @@ def _unused_code(db_session, prefix: str = "8") -> str:
 
 def _raw_article(**overrides: str) -> dict[str, str]:
     data = {
-        "PROSEMA Kurztext": "Testartikel",
+        "Prosema-Artikelname": "Testartikel",
         "Einheit": "Stk.",
         "Artikeltyp": "BASIC",
         "Aktiv": "Ja",
@@ -173,7 +173,7 @@ def test_edits_writes_edits_leaves_raw_data(user_client, db_session):
     db_session.refresh(row)
     assert row.edits["PROSEMA Kurztext"] == "Neuer Name"
     assert _raw_sql_data(db_session, row.id) == before
-    assert row.raw_data["PROSEMA Kurztext"] == "Testartikel"
+    assert row.raw_data["Prosema-Artikelname"] == "Testartikel"
 
 
 def test_edits_group_change_returns_new_article_number(user_client, db_session):
@@ -285,7 +285,7 @@ def test_edits_rejects_approved_batch(user_client, db_session):
 
 
 def test_edits_200_applied_atomically(user_client, db_session):
-    payloads = [_raw_article(**{"PROSEMA Kurztext": f"Alt {i}"}) for i in range(200)]
+    payloads = [_raw_article(**{"Prosema-Artikelname": f"Alt {i}"}) for i in range(200)]
     batch, rows = _make_batch(db_session, rows=payloads)
     mixed = [
         {"row_id": str(row.id), "field": "PROSEMA Kurztext", "value": f"Neu {i}"}

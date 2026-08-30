@@ -137,7 +137,7 @@ def _csv_bytes(
 
 def _row(haupt_label: str, unter_label: str, **extra: str) -> dict[str, str]:
     data = {
-        "PROSEMA Kurztext": "Testartikel",
+        "Prosema-Artikelname": "Testartikel",
         "Hauptgruppe": haupt_label,
         "Untergruppe": unter_label,
         "Einheit": "Stk.",
@@ -191,10 +191,10 @@ def _clear_row_errors(db_session, batch_id) -> None:
 
 
 def _fake_payload(values, _lookups):
-    number = values.get("Prosema Artikelnummer") or ""
+    number = values.get("Prosema-Artikelnummer") or values.get("Prosema Artikelnummer") or ""
     return {
         "articleNumber": number,
-        "name": values.get("PROSEMA Kurztext") or "Test",
+        "name": values.get("Prosema-Artikelname") or values.get("PROSEMA Kurztext") or "Test",
         "articleType": "BASIC",
         "unitId": "unit-1",
         "taxRateType": "STANDARD",
@@ -271,7 +271,7 @@ def test_upload_row_limit(db_session):
     haupt, unter = _make_groups(db_session)
     h, u = _group_labels(haupt, unter)
     too_many = [
-        _row(h, u, **{"PROSEMA Kurztext": f"A{i}"}) for i in range(MAX_UPLOAD_ROWS + 1)
+        _row(h, u, **{"Prosema-Artikelname": f"A{i}"}) for i in range(MAX_UPLOAD_ROWS + 1)
     ]
     with pytest.raises(BatchUploadError, match="Maximal 2000"):
         create_batch_from_upload(
@@ -282,7 +282,7 @@ def test_upload_row_limit(db_session):
             confirmed=True,
         )
     ok_rows = [
-        _row(h, u, **{"PROSEMA Kurztext": f"B{i}"}) for i in range(MAX_UPLOAD_ROWS)
+        _row(h, u, **{"Prosema-Artikelname": f"B{i}"}) for i in range(MAX_UPLOAD_ROWS)
     ]
     result = create_batch_from_upload(
         db_session,
@@ -356,7 +356,7 @@ def test_two_draft_batches_never_share_number(db_session):
     second = create_batch_from_upload(
         db_session,
         filename="b.xlsx",
-        data=_xlsx_bytes([_row(h, u, **{"PROSEMA Kurztext": "Andere"})]),
+            data=_xlsx_bytes([_row(h, u, **{"Prosema-Artikelname": "Andere"})]),
         user=ACTOR,
         confirmed=True,
     )
@@ -458,7 +458,7 @@ def test_submit_interrupted_retry_posts_remaining(db_session):
     haupt, unter = _make_groups(db_session)
     _make_snapshot(db_session)
     h, u = _group_labels(haupt, unter)
-    rows = [_row(h, u, **{"PROSEMA Kurztext": f"Art {i}"}) for i in range(4)]
+    rows = [_row(h, u, **{"Prosema-Artikelname": f"Art {i}"}) for i in range(4)]
     result = create_batch_from_upload(
         db_session,
         filename="part.xlsx",
@@ -510,7 +510,7 @@ def test_licence_failure_keeps_written_ids(db_session):
     haupt, unter = _make_groups(db_session)
     _make_snapshot(db_session)
     h, u = _group_labels(haupt, unter)
-    rows = [_row(h, u, **{"PROSEMA Kurztext": f"Art {i}"}) for i in range(3)]
+    rows = [_row(h, u, **{"Prosema-Artikelname": f"Art {i}"}) for i in range(3)]
     result = create_batch_from_upload(
         db_session,
         filename="lic.xlsx",

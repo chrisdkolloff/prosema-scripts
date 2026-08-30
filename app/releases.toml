@@ -1,7 +1,16 @@
 # PROSEMA release history — edit this file to bump the version and document changes.
 # The top-level `version` is shown in the site header; `[[releases]]` entries appear on /changelog.
 
-version = "1.0.6"
+version = "1.0.7"
+
+[[releases]]
+version = "1.0.7"
+date = "2026-08-30"
+summary = "Refactor article field handling by introducing new constants for article names and numbers, updating label variants for compatibility with historic aliases. Enhance batch upload and article import processes to utilize these constants, ensuring consistent field references across the application. Update tests to reflect changes in field names and improve validation logic for article number generation."
+changes = [
+  "Refactor article field handling by introducing new constants for article names and numbers, updating label variants for compatibility with historic aliases. Enhance batch upload and article import processes to utilize these constants, ensuring consistent field references across the application. Update tests to reflect changes in field names and improve validation logic for article number generation.",
+]
+
 
 [[releases]]
 version = "1.0.6"

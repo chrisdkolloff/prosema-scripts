@@ -142,7 +142,7 @@ def _full_headers() -> list[str]:
 
 def _minimal_row(haupt, unter) -> dict[str, str]:
     return {
-        "PROSEMA Kurztext": "Test Artikel",
+        "Prosema-Artikelname": "Test Artikel",
         "Hauptgruppe": f"{haupt.name} - {haupt.code}",
         "Untergruppe": f"{unter.name} - {unter.code}",
         "Lieferantenartikelnummer": "SUP-1",
@@ -197,6 +197,75 @@ def test_unknown_header_rejected(db_session):
             note="Versuch",
         )
     assert get_active_template(db_session).version == 1
+
+
+def test_hyphenated_prosema_headers_are_catalogue_fields():
+    from app.article_templates import parse_template_headers
+    from core.article_fields import find_field
+
+    for label in (
+        "Prosema-Artikelnummer",
+        "Prosema-Artikelname",
+        "Prosema-Langtext",
+    ):
+        field = find_field(label)
+        assert field is not None
+        assert field.label == label
+    assert find_field("PROSEMA Kurztext").label == "Prosema-Artikelname"
+    assert find_field("Prosema Artikelnummer").label == "Prosema-Artikelnummer"
+
+    columns = parse_template_headers(
+        [
+            "Prosema-Artikelnummer",
+            "Lieferantenartikelnummer",
+            "Hauptgruppe",
+            "Untergruppe",
+            "Prosema-Artikelname",
+            "Prosema-Langtext",
+            "Kurzbeschreibung",
+            "Referenz (Matchcode)",
+            "GTIN (EAN-Nummer)",
+            "Artikeltyp",
+            "Einheit",
+            "Kategorie",
+            "Aktiv",
+            "Im Verkauf",
+            "Steuersatz",
+            "Im Shop verfügbar",
+            "Im Shop aktiv",
+            "Bestand übertragen",
+            "Gewichtseinheit",
+            "Grundmaterial",
+            "Oberfläche",
+            "Farbe",
+            "Produktfamilie",
+            "Rabattcode",
+            "Verkaufseinheit",
+            "Verpackung",
+            "VPE 1",
+            "VPE 2",
+            "VPE 3",
+            "Breite in mm",
+            "Länge in cm",
+            "Höhe in mm",
+            "Bodenleger",
+            "Dachdecker",
+            "Landschaftsgärtner",
+            "Plattenleger",
+            "Artikelbeschreibung HTML",
+            "Nettogewicht kg",
+            "Produkt-ID (Prosema)",
+            "Varianten-ID (Prosema)",
+        ]
+    )
+    assert [col["label"] for col in columns][0:6] == [
+        "Prosema-Artikelnummer",
+        "Lieferantenartikelnummer",
+        "Hauptgruppe",
+        "Untergruppe",
+        "Prosema-Artikelname",
+        "Prosema-Langtext",
+    ]
 
 
 def test_missing_protected_rejected(db_session):

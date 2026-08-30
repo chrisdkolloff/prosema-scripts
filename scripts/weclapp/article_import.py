@@ -20,9 +20,14 @@ from core.article_payload import (
     NUMBER_PLACEHOLDER,
     STRING_CUSTOM_ATTRS,
     TRUE_VALUES,
+    ARTICLE_NAME_FIELD,
+    ARTICLE_NUMBER_FIELD,
+    LONG_TEXT_FIELD,
     _norm,
     _parse_bool,
     _row_value,
+    get_row_value,
+    label_variants,
     row_to_payload,
 )
 
@@ -286,9 +291,12 @@ def load_existing_running_numbers(master_path: Path | None = None) -> dict[tuple
             headers = [str(value).strip() if value is not None else "" for value in next(rows)]
         except StopIteration:
             return counters
+        number_names = set(label_variants(ARTICLE_NUMBER_FIELD))
         try:
-            article_idx = headers.index("Prosema Artikelnummer")
-        except ValueError:
+            article_idx = next(
+                i for i, header in enumerate(headers) if header in number_names
+            )
+        except StopIteration:
             return counters
         for values in rows:
             if article_idx >= len(values):
@@ -323,7 +331,7 @@ def generate_article_numbers(
         prepared.append(dict(row))
 
     for row in prepared:
-        existing = _norm(row.get("Prosema Artikelnummer"))
+        existing = get_row_value(row, ARTICLE_NUMBER_FIELD)
         match = pattern.match(existing) if existing else None
         if not match:
             continue
@@ -339,7 +347,7 @@ def generate_article_numbers(
         sub = parse_group_code(row.get("Untergruppe", ""), scheme.sub_width)
         supplier = _norm(row.get("Lieferantenartikelnummer")) or f"Zeile {index}"
         if not main or not sub:
-            row["Prosema Artikelnummer"] = NUMBER_PLACEHOLDER
+            row[ARTICLE_NUMBER_FIELD] = NUMBER_PLACEHOLDER
             placeholders += 1
             missing = []
             if not main:
@@ -352,7 +360,7 @@ def generate_article_numbers(
             )
             continue
 
-        existing = _norm(row.get("Prosema Artikelnummer"))
+        existing = get_row_value(row, ARTICLE_NUMBER_FIELD)
         match = pattern.match(existing) if existing else None
         if match and match.group(1) == main and match.group(2) == sub:
             kept += 1
@@ -366,7 +374,7 @@ def generate_article_numbers(
                 f"Gruppe {main}.{sub} hat das Maximum überschritten."
             )
         counters[key] = nxt
-        row["Prosema Artikelnummer"] = scheme.format(main, sub, nxt)
+        row[ARTICLE_NUMBER_FIELD] = scheme.format(main, sub, nxt)
         assigned += 1
 
     return prepared, {
@@ -391,7 +399,7 @@ def validate_import_rows(rows: list[dict[str, str]]) -> list[ImportErrorRow]:
     errors: list[ImportErrorRow] = []
     seen: set[str] = set()
     for row in rows:
-        article_number = _row_value(row, "Prosema Artikelnummer") or "(ohne Nummer)"
+        article_number = _row_value(row, ARTICLE_NUMBER_FIELD) or "(ohne Nummer)"
         try:
             payload = row_to_payload(row, lookups)
         except ValueError as exc:
@@ -408,6 +416,11 @@ COLUMN_ALIASES = {
     "Artikelnr.": "Lieferantenartikelnummer",
     "Hauptwarengruppe": "Hauptgruppe",
     "Warengruppe": "Untergruppe",
+    "Prosema Artikelnummer": ARTICLE_NUMBER_FIELD,
+    "PROSEMA Kurztext": ARTICLE_NAME_FIELD,
+    "Prosema Kurztext": ARTICLE_NAME_FIELD,
+    "PROSEMA Langtext": LONG_TEXT_FIELD,
+    "Prosema Langtext": LONG_TEXT_FIELD,
 }
 
 
@@ -416,9 +429,9 @@ def load_import_rows(path: Path) -> list[dict[str, str]]:
         reader = csv.DictReader(handle, delimiter=";")
         if not reader.fieldnames:
             raise ValueError("CSV ohne Kopfzeile")
-        missing = [column for column in ("PROSEMA Kurztext",) if column not in reader.fieldnames]
-        if missing:
-            raise ValueError(f"Pflichtspalten fehlen: {', '.join(missing)}")
+        name_headers = set(label_variants(ARTICLE_NAME_FIELD))
+        if not any(name in name_headers for name in reader.fieldnames):
+            raise ValueError(f"Pflichtspalten fehlen: {ARTICLE_NAME_FIELD}")
         rows: list[dict[str, str]] = []
         for raw in reader:
             if not any(_norm(value) for value in raw.values()):
@@ -437,12 +450,12 @@ def load_import_rows(path: Path) -> list[dict[str, str]]:
 def write_template(path: Path, *, include_dummy: bool = True) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     dummy = {
-        "Prosema Artikelnummer": NUMBER_PLACEHOLDER,
+        ARTICLE_NUMBER_FIELD: NUMBER_PLACEHOLDER,
         "Lieferantenartikelnummer": "TEST-SUP-001",
         "Hauptgruppe": "",
         "Untergruppe": "",
-        "PROSEMA Kurztext": "TEST Dummy Artikel Import Pipeline",
-        "PROSEMA Langtext": "Testdatensatz für den weclapp-Artikelimport. Kann gelöscht werden.",
+        ARTICLE_NAME_FIELD: "TEST Dummy Artikel Import Pipeline",
+        LONG_TEXT_FIELD: "Testdatensatz für den weclapp-Artikelimport. Kann gelöscht werden.",
         "Kurzbeschreibung": "TEST Dummy Artikel Import Pipeline",
         "Referenz (Matchcode)": "TEST-DUMMY",
         "GTIN (EAN-Nummer)": "",

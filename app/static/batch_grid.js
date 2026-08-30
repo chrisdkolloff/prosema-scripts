@@ -27,8 +27,12 @@
     return config.fields[x] || null;
   }
 
+  function isArticleNumberField(field) {
+    return field === "Prosema-Artikelnummer" || field === "Prosema Artikelnummer";
+  }
+
   function isQueuedField(field) {
-    return field && field !== "_zeile" && field !== "_status" && field !== "Prosema Artikelnummer";
+    return field && field !== "_zeile" && field !== "_status" && !isArticleNumberField(field);
   }
 
   function encodeValue(field, value) {
@@ -182,7 +186,8 @@
         var row = rows[i];
         var y = config.rowIds.indexOf(row.id);
         if (y < 0) continue;
-        var numCol = colIndex("Prosema Artikelnummer");
+        var numCol = colIndex("Prosema-Artikelnummer");
+        if (numCol < 0) numCol = colIndex("Prosema Artikelnummer");
         var statusCol = colIndex("_status");
         var includeCol = colIndex("include");
         if (numCol >= 0) {

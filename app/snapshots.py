@@ -19,6 +19,7 @@ from app.config import settings
 from app.excel_export import workbook_bytes, write_cell
 from app.models import ArticleSnapshot, ArticleSnapshotRow, Job
 from core.article_flatten import flatten_articles
+from core.article_payload import ARTICLE_NAME_FIELD, ARTICLE_NUMBER_FIELD, label_variants
 from core.numbering import Scheme
 
 logger = logging.getLogger(__name__)
@@ -37,8 +38,6 @@ RETENTION_KEEP_DAYS = 14
 RETENTION_KEEP_MONTHS = 12
 RETENTION_ORPHAN_DAYS = 7
 
-ARTICLE_NUMBER_FIELD = "Prosema Artikelnummer"
-KURZTEXT_FIELD = "PROSEMA Kurztext"
 
 @dataclass
 class SnapshotFilters:
@@ -163,10 +162,10 @@ def distinct_untergruppen(
 
 
 def _freeze_column_count(columns: list[dict[str, Any]]) -> int:
-    keys = [col.get("key", "") for col in columns]
+    keys = {col.get("key", "") for col in columns}
     count = 0
-    for target in (ARTICLE_NUMBER_FIELD, KURZTEXT_FIELD):
-        if target in keys:
+    for target in (ARTICLE_NUMBER_FIELD, ARTICLE_NAME_FIELD):
+        if keys & set(label_variants(target)):
             count += 1
     return max(count, 1)
 
