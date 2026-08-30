@@ -24,5 +24,10 @@
     });
     svg.addEventListener("mouseleave", hide);
   }
-  document.addEventListener("DOMContentLoaded", function () { bind(document); });
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", function () { bind(document); });
+  } else {
+    bind(document);
+  }
 })();

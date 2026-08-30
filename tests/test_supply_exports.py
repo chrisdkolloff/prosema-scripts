@@ -194,7 +194,10 @@ def test_detail_uses_jspreadsheet_grid(user_client, db_session):
     assert "Pflichtfelder" in response.text
     assert "Arbeitsspalten" in response.text
     assert "Bezugsquelle (optional)" in response.text
-    assert "Artikel (nur Anzeige)" in response.text
+    assert "<summary>Artikel</summary>" in response.text
+    assert "Artikel (nur Anzeige)" not in response.text
+    assert "nur Anzeige" not in response.text
+    assert "supply-readonly-badge" not in response.text
     assert "ek_price_before_discount" in response.text
     assert "discount_intent" not in response.text
     assert "Rabatt-Intent" not in response.text
@@ -203,6 +206,10 @@ def test_detail_uses_jspreadsheet_grid(user_client, db_session):
     assert "Import-Einstellungen" in response.text
     assert 'name="price_entry_date"' in response.text
     assert 'name="sales_article_currency"' in response.text
+    grid_js = user_client.get("/static/supply_export_grid.js")
+    assert grid_js.status_code == 200
+    assert "jss_corner" in grid_js.text
+    assert "fillDownFromSelection" in grid_js.text
 
 
 def test_edits_endpoint_updates_and_recalculates(user_client, db_session):

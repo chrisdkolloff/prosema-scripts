@@ -71,6 +71,62 @@
     queueChange(Number(x), Number(y), value);
   }
 
+  function cellIsReadonly(x, y) {
+    var col = config.columns && config.columns[x];
+    if (col && col.readOnly) return true;
+    var rec = worksheet.records && worksheet.records[y] && worksheet.records[y][x];
+    return !!(rec && rec.element && rec.element.classList.contains("readonly"));
+  }
+
+  function rowIsHidden(y) {
+    var row = worksheet.rows && worksheet.rows[y];
+    return !!(row && row.element && row.element.style.display === "none");
+  }
+
+  /**
+   * CE double-clicks the fill handle but then skips the copy when the cell
+   * below already has a value (typical on this grid). Drag works because it
+   * marks a target range first. Intercept and fill down to the last row.
+   */
+  function fillDownFromSelection() {
+    if (!worksheet || !config || !config.editable) return;
+    var sel = worksheet.selectedCell;
+    if (!sel || sel.length < 4) return;
+    var x1 = Math.min(Number(sel[0]), Number(sel[2]));
+    var x2 = Math.max(Number(sel[0]), Number(sel[2]));
+    var y1 = Math.min(Number(sel[1]), Number(sel[3]));
+    var y2 = Math.max(Number(sel[1]), Number(sel[3]));
+    var last = worksheet.rows ? worksheet.rows.length - 1 : config.data.length - 1;
+    if (y2 >= last) return;
+    var patternLen = y2 - y1 + 1;
+    for (var x = x1; x <= x2; x++) {
+      if (!isQueuedField(fieldAt(x))) continue;
+      for (var y = y2 + 1; y <= last; y++) {
+        if (rowIsHidden(y) || cellIsReadonly(x, y)) continue;
+        var srcY = y1 + ((y - (y2 + 1)) % patternLen);
+        var value = worksheet.getValueFromCoords(x, srcY);
+        var current = worksheet.getValueFromCoords(x, y);
+        if (value == null) value = "";
+        if (current == null) current = "";
+        if (String(current) === String(value)) continue;
+        worksheet.setValueFromCoords(x, y, value);
+      }
+    }
+  }
+
+  function onCornerDblClick(event) {
+    if (!event.target || !event.target.classList.contains("jss_corner")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    fillDownFromSelection();
+  }
+
+  function bindFillHandle(el) {
+    if (!el) return;
+    el.removeEventListener("dblclick", onCornerDblClick, true);
+    el.addEventListener("dblclick", onCornerDblClick, true);
+  }
+
   function colIndex(field) {
     return config.fields.indexOf(field);
   }
@@ -370,6 +426,7 @@
       });
       worksheet = worksheets && worksheets[0] ? worksheets[0] : worksheets;
       hardenFreeze(worksheet);
+      bindFillHandle(el);
       paintInitial();
       bindColumnPicker(scope);
       if (statusEl && !statusEl.textContent) setStatus(STATUS_SAVED, "is-saved");

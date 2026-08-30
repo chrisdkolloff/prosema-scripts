@@ -28,7 +28,7 @@ from scripts.weclapp.config import WeclappConfig
 ZURICH = ZoneInfo("Europe/Zurich")
 
 MSG_NO_TOKEN = "Kein weclapp-Token hinterlegt."
-MSG_INVALID = "weclapp-Token ungültig. Wurde er in weclapp neu ausgestellt?"
+MSG_INVALID = "weclapp-Token ungültig."
 MSG_NO_LICENCE = (
     "Keine weclapp-Lizenz zugewiesen. Aktuell hat vermutlich jemand anderes die Lizenz."
 )
@@ -326,7 +326,7 @@ def landing_tool_states(access: WeclappAccess) -> list[dict[str, object]]:
             mark = (
                 "Verfügbar"
                 if weclapp_ok
-                else "Verfügbar — Aktualisieren braucht weclapp"
+                else "Aktualisieren nicht möglich"
             )
         else:
             mark = "Verfügbar"

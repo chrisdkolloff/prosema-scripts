@@ -283,10 +283,6 @@ tr.batch-row-excluded > td {
   font-variant-numeric: tabular-nums;
 }
 
-.supply-readonly-badge {
-  font-size: 0.7rem;
-}
-
 .status-badge {
   display: inline-block;
   padding: 0.1rem 0.45rem;

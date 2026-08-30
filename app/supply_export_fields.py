@@ -25,7 +25,7 @@ PICKER_GROUPS: tuple[tuple[PickerGroup, str, str], ...] = (
     ("optional", "Bezugsquelle (optional)", "Leere Zelle belässt den weclapp-Wert."),
     (
         "article",
-        "Artikel (nur Anzeige)",
+        "Artikel",
         "Schreiben würde den Verkaufsartikel ändern — nicht im Umfang.",
     ),
 )
@@ -580,7 +580,7 @@ FIELDS: tuple[FieldSpec, ...] = (
         width=120,
         **_OPTIONAL,
     ),
-    # --- Artikel nur Anzeige ---
+    # --- Artikel ---
     _f(
         field_key="local_article_name",
         label_internal="Lokaler Artikelname",

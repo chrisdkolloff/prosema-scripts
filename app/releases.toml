@@ -1,7 +1,18 @@
 # PROSEMA release history — edit this file to bump the version and document changes.
 # The top-level `version` is shown in the site header; `[[releases]]` entries appear on /changelog.
 
-version = "1.0.3"
+version = "1.0.4"
+
+[[releases]]
+version = "1.0.4"
+date = "2026-08-30"
+summary = "Refactor supply export fields and templates by removing read-only badge, updating article label for clarity, and enhancing CSS for sunburst diagram responsiveness. Introduce JavaScript functions for handling cell interactions and fill down functionality in grids. Update tests to reflect changes in HTML structure and JavaScript functionality. (+2 more)"
+changes = [
+  "Refactor weclapp messages for clarity, update CSS for caution state, and enhance group creation header in templates. Adjusted weclapp status display to reflect new caution state styling.",
+  "Enhance sunburst diagram functionality by updating CSS for responsive design, adding JavaScript for dynamic sizing, and modifying HTML structure. Introduced a new class for the sunburst card and implemented a fitting function to adjust dimensions based on viewport size. Updated tests to verify new class and functionality.",
+  "Refactor supply export fields and templates by removing read-only badge, updating article label for clarity, and enhancing CSS for sunburst diagram responsiveness. Introduce JavaScript functions for handling cell interactions and fill down functionality in grids. Update tests to reflect changes in HTML structure and JavaScript functionality.",
+]
+
 
 [[releases]]
 version = "1.0.3"

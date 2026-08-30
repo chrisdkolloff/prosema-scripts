@@ -59,6 +59,8 @@
           <td>
             {% if tool.mark == "Verfügbar" %}
             <span class="tool-mark-ok">{{ tool.mark }}</span>
+            {% elif tool.mark == "Aktualisieren nicht möglich" %}
+            <span class="tool-mark-caution">{{ tool.mark }}</span>
             {% else %}
             <span class="tool-mark-warn">{{ tool.mark }}</span>
             {% endif %}

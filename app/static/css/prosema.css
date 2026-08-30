@@ -91,13 +91,11 @@
 
 .gruppen-code { font-family: var(--cui-font-monospace); }
 
+/* The SVG is a square viewBox, so it scales to the shorter side of its box.
+   Sizing from the width makes the circle as large as the card allows. */
 .sunburst-wrap {
   width: 100%;
-  /* header + breadcrumb + back-link + h1 + card pad ≈ 243px; keep ~20px to the viewport bottom */
-  max-width: calc(100vh - 263px);
   aspect-ratio: 1;
-  margin-inline: auto;
-  padding: 0;
 }
 
 .sunburst-wrap svg {
@@ -192,6 +190,7 @@
 }
 
 .tool-mark-ok { color: var(--succeeded); font-weight: 650; }
+.tool-mark-caution { color: #ca8a04; font-weight: 650; }
 .tool-mark-warn { color: #92400e; font-weight: 650; }
 
 .batch-save-status.is-saving { color: var(--running); }
