@@ -28,7 +28,18 @@
   </div>
 
   {% if snapshot_warning %}
-  <div class="alert alert-danger" role="alert">{{ snapshot_warning }}</div>
+  <div class="alert alert-danger d-flex flex-wrap align-items-center gap-3" role="alert">
+    <span>{{ snapshot_warning }}</span>
+    {% if snapshot_refresh_running %}
+    <span class="small">Aktualisierung läuft…</span>
+    {% else %}
+    <form method="post" action="/batches/{{ batch.id }}/artikeluebersicht-aktualisieren" class="mb-0">
+      <button type="submit" class="btn btn-outline-danger">Aktualisieren</button>
+    </form>
+    {% endif %}
+  </div>
+  {% elif snapshot_refresh_running %}
+  <div class="alert alert-info" role="status">Artikelübersicht wird aktualisiert…</div>
   {% endif %}
   {% if action_error %}
   <div class="alert alert-danger" role="alert">{{ action_error }}</div>

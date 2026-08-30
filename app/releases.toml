@@ -1,7 +1,17 @@
 # PROSEMA release history — edit this file to bump the version and document changes.
 # The top-level `version` is shown in the site header; `[[releases]]` entries appear on /changelog.
 
-version = "1.0.5"
+version = "1.0.6"
+
+[[releases]]
+version = "1.0.6"
+date = "2026-08-30"
+summary = "Implement snapshot refresh functionality for article batches, including a new endpoint to trigger snapshot updates. Update templates to display refresh status and provide a button for manual refresh when snapshots are stale. Enhance tests to validate snapshot age warnings and ensure correct job enqueuing for snapshot updates. (+1 more)"
+changes = [
+  "Enhance weclapp category synchronization by implementing comparison logic for group registries. Introduce GroupSyncIssue data class to report discrepancies between Tools and weclapp categories. Update routes and templates to display synchronization issues with appropriate messaging. Add tests to ensure correct reporting of sync issues and validate functionality. Update documentation to reflect new synchronization warnings.",
+  "Implement snapshot refresh functionality for article batches, including a new endpoint to trigger snapshot updates. Update templates to display refresh status and provide a button for manual refresh when snapshots are stale. Enhance tests to validate snapshot age warnings and ensure correct job enqueuing for snapshot updates.",
+]
+
 
 [[releases]]
 version = "1.0.5"

@@ -45,7 +45,12 @@ from app.db import get_db
 from app.jobs import enqueue
 from app.models import ArticleBatch, ArticleTemplate, Job
 from app.numbering_high_water import latest_completed_snapshot
-from app.snapshots import excel_filename_timestamp, format_snapshot_timestamp
+from app.snapshots import (
+    create_snapshot_pull,
+    excel_filename_timestamp,
+    format_snapshot_timestamp,
+    running_snapshot,
+)
 
 router = APIRouter()
 
@@ -165,6 +170,7 @@ def _page_context(
         "snapshot": snapshot,
         "snapshot_ts": format_snapshot_timestamp(snapshot.created_at) if snapshot else "",
         "snapshot_warning": snapshot_age_warning(snapshot),
+        "snapshot_refresh_running": running_snapshot(db) is not None,
         "action_error": request.query_params.get("error") or "",
         "approve_count": dialog["approve_count"],
         "first_number": dialog["first_number"],
@@ -201,6 +207,7 @@ def batch_actions_fragment(
             "snapshot": snapshot,
             "snapshot_ts": format_snapshot_timestamp(snapshot.created_at) if snapshot else "",
             "snapshot_warning": snapshot_age_warning(snapshot),
+            "snapshot_refresh_running": running_snapshot(db) is not None,
             "action_error": "",
             "approve_count": dialog["approve_count"],
             "first_number": dialog["first_number"],
@@ -265,6 +272,19 @@ def batch_exclude_empty(
         url=f"/batches/{batch_id}?empty_excluded={excluded}",
         status_code=303,
     )
+
+
+@router.post("/batches/{batch_id}/artikeluebersicht-aktualisieren")
+def batch_refresh_article_snapshot(
+    batch_id: uuid.UUID,
+    user: SessionUser = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    batch = _load_batch(db, batch_id)
+    if batch is None:
+        raise HTTPException(status_code=404, detail="Stapel nicht gefunden")
+    create_snapshot_pull(db, user)
+    return RedirectResponse(url=f"/batches/{batch_id}", status_code=303)
 
 
 @router.post("/batches/{batch_id}/edits")

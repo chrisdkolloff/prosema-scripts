@@ -10,6 +10,7 @@ from starlette.requests import Request
 from app.groups_service import GroupRegistryError
 from app.weclapp_categories import (
     TOOLS_HOST,
+    compare_group_registry,
     create_haupt_and_unter_in_weclapp,
     create_unter_in_weclapp,
     rename_haupt_in_weclapp,
@@ -208,3 +209,49 @@ def test_rename_unter_missing_child_raises():
             new_name="Neu",
             unter_code="030",
         )
+
+
+def test_compare_group_registry_reports_manual_sync():
+    tools_haupt = {"010": "Zubehör", "020": "Profile"}
+    tools_unter = {("010", "030"): "Werkzeug", ("020", "010"): "Abschlussprofile rund"}
+    categories = [
+        {"id": "p1", "name": "Zubehör", "description": "010", "parentCategoryId": None},
+        {
+            "id": "c1",
+            "name": "Werkzeug alt",
+            "description": "030",
+            "parentCategoryId": "p1",
+        },
+        {"id": "p2", "name": "Hilfsartikel", "description": "990", "parentCategoryId": None},
+        {
+            "id": "c2",
+            "name": "Abschlussprofile (Messing)",
+            "description": None,
+            "parentCategoryId": "p1",
+        },
+    ]
+
+    issues = compare_group_registry(tools_haupt, tools_unter, categories)
+    kinds = {issue.kind for issue in issues}
+    messages = " ".join(issue.message for issue in issues)
+
+    assert "missing_in_weclapp" in kinds
+    assert "missing_in_tools" in kinds
+    assert "name_mismatch" in kinds
+    assert "uncoded_in_weclapp" in kinds
+    assert "Hauptgruppe 020 Profile fehlt in weclapp." in messages
+    assert "Untergruppe 020.010 Abschlussprofile rund fehlt in weclapp." in messages
+    assert "Hauptgruppe 990 Hilfsartikel fehlt in den Tools." in messages
+    assert "Untergruppe 010.030: Tools «Werkzeug», weclapp «Werkzeug alt»." in messages
+    assert "Abschlussprofile (Messing)" in messages
+    assert "keinen dreistelligen Code" in messages
+
+
+def test_compare_group_registry_in_sync_is_empty():
+    tools_haupt = {"010": "Zubehör"}
+    tools_unter = {("010", "030"): "Werkzeug"}
+    categories = [
+        {"id": "p1", "name": "Zubehör", "description": "010"},
+        {"id": "c1", "name": "Werkzeug", "description": "030", "parentCategoryId": "p1"},
+    ]
+    assert compare_group_registry(tools_haupt, tools_unter, categories) == []

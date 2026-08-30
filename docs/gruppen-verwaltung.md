@@ -56,7 +56,7 @@ Eine **weitere Untergruppe** zu einer bestehenden Hauptgruppe legt man auf der D
 
 - **Keine weclapp-Änderung vom Laptop.** Lokal wird nur die lokale Datenbank geschrieben. weclapp wird nur von tools.prosema.ch angesprochen.
 - **Keine Hauptgruppe allein.** Das Formular verlangt immer die erste Untergruppe mit.
-- **Code ändern, Löschen und Wiederherstellen** gelten nur für die Tools-Website. weclapp wird dabei **nicht** mitgeändert.
+- **Code ändern, Löschen und Wiederherstellen** gelten nur für die Tools-Website. weclapp wird dabei **nicht** mitgeändert. Auf der Gruppenliste erscheint dann eine Warnung, wenn Tools und weclapp auseinanderlaufen; die Einträge müssen manuell angeglichen werden.
 - Die Shopify-Auswahllisten **Hauptwarengruppe** und **Warengruppe** in weclapp werden **nicht** ergänzt. Es entstehen nur die Artikelkategorien (der Gruppenbaum).
 - Eine fehlgeschlagene weclapp-Anlage oder -Umbenennung speichert auch auf der Tools-Website nichts bzw. den alten Namen. Zuerst Token und Rechte prüfen, dann erneut speichern.
 

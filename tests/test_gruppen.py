@@ -590,3 +590,46 @@ def test_rename_hauptgruppe_locally_skips_weclapp(admin_client, db_session):
     db_session.refresh(group)
     assert group.name == "Lokalneu"
 
+
+def test_gruppen_list_warns_when_weclapp_is_out_of_sync(admin_client, db_session):
+    from app.weclapp_categories import MSG_SYNC_BANNER
+
+    parent = _make_hauptgruppe(db_session, name="Zubehör")
+    _make_untergruppe(db_session, parent, code="030", name="Werkzeug")
+    db_session.flush()
+    mock_wc = MagicMock()
+    mock_wc.iter_pages.return_value = [
+        {"id": "p1", "name": "Zubehör", "description": parent.code, "parentCategoryId": None},
+        {
+            "id": "c1",
+            "name": "Werkzeug alt",
+            "description": "030",
+            "parentCategoryId": "p1",
+        },
+        {"id": "p2", "name": "Hilfsartikel", "description": "990", "parentCategoryId": None},
+    ]
+    with (
+        patch("app.routes.gruppen.weclapp_category_writes_allowed", return_value=True),
+        patch("app.routes.gruppen.weclapp_client_for", return_value=mock_wc),
+    ):
+        response = admin_client.get("/gruppen")
+    assert response.status_code == 200
+    assert MSG_SYNC_BANNER in response.text
+    assert "alert-warning" in response.text
+    assert "Werkzeug alt" in response.text
+    assert "Hilfsartikel fehlt in den Tools" in response.text
+    assert "manuell aktualisiert" in response.text
+
+
+def test_gruppen_list_skips_sync_check_locally(admin_client, db_session):
+    from app.weclapp_categories import MSG_SYNC_BANNER
+
+    _make_hauptgruppe(db_session, name="Lokal")
+    db_session.flush()
+    with patch("app.routes.gruppen.weclapp_client_for") as mock_client:
+        response = admin_client.get("/gruppen")
+    assert response.status_code == 200
+    mock_client.assert_not_called()
+    assert MSG_SYNC_BANNER not in response.text
+    assert "alert-warning" not in response.text
+

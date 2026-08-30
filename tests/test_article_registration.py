@@ -5,7 +5,7 @@ from __future__ import annotations
 import io
 import csv
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -15,9 +15,9 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
-from app.batch_actions import MSG_NO_SNAPSHOT, approve_batch
+from app.batch_actions import MSG_NO_SNAPSHOT, MSG_SNAPSHOT_STALE, approve_batch, snapshot_age_warning
 from app.batch_submit import MSG_DRY_RUN_FAILED, run_batch_submit
-from app.batch_upload import BatchUploadError, MAX_UPLOAD_ROWS, create_batch_from_upload
+from app.batch_upload import BatchUploadError, MAX_UPLOAD_ROWS, create_batch_from_upload, create_manual_batch
 from app.batches import CellEdit, apply_edits
 from app.db import engine, get_db
 from app.groups_service import create_hauptgruppe, create_untergruppe
@@ -29,6 +29,7 @@ from app.models import (
     ArticleSnapshotRow,
     GruppenAudit,
     Hauptgruppe,
+    Job,
 )
 from scripts.weclapp.article_import import IMPORT_COLUMNS
 from scripts.weclapp.client import WeclappError
@@ -642,3 +643,58 @@ def test_stub_text_gone(user_client):
     assert response.status_code == 200
     assert "folgt in Woche 3" not in response.text
     assert "Excel- oder CSV-Datei hochladen" in response.text
+
+
+def test_snapshot_age_warning_after_24_hours():
+    snap = ArticleSnapshot(
+        status="complete",
+        created_by_oid=ACTOR["oid"],
+        created_by_name=ACTOR["name"],
+        weclapp_tenant="test",
+        created_at=datetime.now(UTC) - timedelta(hours=30),
+    )
+    warning = snapshot_age_warning(snap)
+    assert warning == MSG_SNAPSHOT_STALE.format(n=30)
+    snap.created_at = datetime.now(UTC) - timedelta(hours=2)
+    assert snapshot_age_warning(snap) is None
+    assert snapshot_age_warning(None) is None
+
+
+def test_stale_snapshot_warning_has_refresh_button(db_session, user_client):
+    snapshot = _make_snapshot(db_session)
+    snapshot.created_at = datetime.now(UTC) - timedelta(hours=30)
+    batch = create_manual_batch(db_session, user=ACTOR, row_count=1)
+    db_session.flush()
+
+    response = user_client.get(f"/batches/{batch.id}")
+    assert response.status_code == 200
+    assert "30 Stunden alt" in response.text
+    assert "Aktualisieren" in response.text
+    assert f"/batches/{batch.id}/artikeluebersicht-aktualisieren" in response.text
+
+
+@patch("app.config.settings.weclapp_tenant", "test")
+def test_refresh_snapshot_from_batch_enqueues_pull(db_session, user_client):
+    snapshot = _make_snapshot(db_session)
+    snapshot.created_at = datetime.now(UTC) - timedelta(hours=30)
+    batch = create_manual_batch(db_session, user=ACTOR, row_count=1)
+    db_session.flush()
+
+    before = db_session.scalar(
+        select(func.count()).select_from(Job).where(Job.job_type == "weclapp_article_snapshot")
+    )
+    response = user_client.post(
+        f"/batches/{batch.id}/artikeluebersicht-aktualisieren",
+        follow_redirects=False,
+    )
+    after = db_session.scalar(
+        select(func.count()).select_from(Job).where(Job.job_type == "weclapp_article_snapshot")
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == f"/batches/{batch.id}"
+    assert after == before + 1
+
+    running = db_session.scalars(
+        select(ArticleSnapshot).where(ArticleSnapshot.status == "running")
+    ).all()
+    assert len(running) == 1

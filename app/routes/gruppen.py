@@ -30,8 +30,17 @@ from app.groups_service import (
 )
 from app.gruppen_diagram import build_sunburst_arcs, load_active_group_tree
 from app.models import GruppenAlias, Hauptgruppe, Untergruppe
-from app.weclapp import NoWeclappToken, WeclappError, map_weclapp_error, weclapp_client_for
+from app.weclapp import (
+    NoWeclappToken,
+    WeclappError,
+    WeclappTokenUnreadable,
+    map_weclapp_error,
+    weclapp_client_for,
+)
 from app.weclapp_categories import (
+    MSG_SYNC_BANNER,
+    GroupSyncIssue,
+    collect_weclapp_sync_issues,
     create_haupt_and_unter_in_weclapp,
     create_unter_in_weclapp,
     rename_haupt_in_weclapp,
@@ -86,6 +95,52 @@ def _error_page(request: Request, user: SessionUser, message: str) -> HTMLRespon
 
 def _commit(db: Session) -> None:
     db.commit()
+
+
+def _active_group_maps(db: Session) -> tuple[dict[str, str], dict[tuple[str, str], str]]:
+    haupts = list_hauptgruppen(db, include_deleted=False)
+    by_id = {group.id: group.code for group in haupts}
+    haupt = {group.code: group.name for group in haupts}
+    unter: dict[tuple[str, str], str] = {}
+    for row in db.scalars(select(Untergruppe).where(Untergruppe.deleted_at.is_(None))):
+        parent_code = by_id.get(row.hauptgruppe_id)
+        if parent_code is not None:
+            unter[(parent_code, row.code)] = row.name
+    return haupt, unter
+
+
+def _sync_issues_for_page(request: Request, db: Session, user: SessionUser) -> list[GroupSyncIssue]:
+    if not weclapp_category_writes_allowed(request):
+        return []
+    try:
+        client = weclapp_client_for(db, user["oid"])
+        haupt, unter = _active_group_maps(db)
+        return collect_weclapp_sync_issues(client, haupt, unter)
+    except (NoWeclappToken, WeclappTokenUnreadable, WeclappError):
+        return []
+
+
+def _list_context(
+    request: Request,
+    db: Session,
+    user: SessionUser,
+    groups: list[Hauptgruppe],
+    *,
+    show_deleted: bool,
+    error: str | None = None,
+    **extra: object,
+) -> dict[str, object]:
+    counts = count_active_untergruppen(db, [group.id for group in groups])
+    return _ctx(
+        user,
+        groups=groups,
+        counts=counts,
+        show_deleted=show_deleted,
+        error=error,
+        sync_banner=MSG_SYNC_BANNER,
+        sync_issues=_sync_issues_for_page(request, db, user),
+        **extra,
+    )
 
 
 def _weclapp_duplicate_name(exc: WeclappError) -> bool:
@@ -208,17 +263,10 @@ def gruppen_list(
 ) -> HTMLResponse:
     show_deleted = geloeschte == 1
     groups = list_hauptgruppen(db, include_deleted=show_deleted)
-    counts = count_active_untergruppen(db, [group.id for group in groups])
     return request.app.state.templates.TemplateResponse(
         request,
         "gruppen/list.html",
-        _ctx(
-            user,
-            groups=groups,
-            counts=counts,
-            show_deleted=show_deleted,
-            error=None,
-        ),
+        _list_context(request, db, user, groups, show_deleted=show_deleted),
     )
 
 
@@ -286,14 +334,14 @@ def create_hauptgruppe_route(
     except GroupRegistryError as exc:
         db.rollback()
         groups = list_hauptgruppen(db, include_deleted=False)
-        counts = count_active_untergruppen(db, [item.id for item in groups])
         return request.app.state.templates.TemplateResponse(
             request,
             "gruppen/list.html",
-            _ctx(
+            _list_context(
+                request,
+                db,
                 user,
-                groups=groups,
-                counts=counts,
+                groups,
                 show_deleted=False,
                 error=exc.message,
                 form_code=code,
@@ -306,14 +354,14 @@ def create_hauptgruppe_route(
     except (NoWeclappToken, WeclappError) as exc:
         db.rollback()
         groups = list_hauptgruppen(db, include_deleted=False)
-        counts = count_active_untergruppen(db, [item.id for item in groups])
         return request.app.state.templates.TemplateResponse(
             request,
             "gruppen/list.html",
-            _ctx(
+            _list_context(
+                request,
+                db,
                 user,
-                groups=groups,
-                counts=counts,
+                groups,
                 show_deleted=False,
                 error=_weclapp_write_message(exc),
                 form_code=code,

@@ -12,6 +12,17 @@
   <div class="alert alert-danger" role="alert">{{ error }}</div>
   {% endif %}
 
+  {% if sync_issues %}
+  <div class="alert alert-warning" role="status">
+    <p class="mb-2">{{ sync_banner }}</p>
+    <ul class="mb-0">
+      {% for issue in sync_issues %}
+      <li>{{ issue.message }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
   <div class="d-flex flex-wrap gap-3 mb-3">
     <a href="/gruppen/diagramm">Diagramm</a>
     {% if show_deleted %}
