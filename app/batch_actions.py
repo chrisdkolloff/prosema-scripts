@@ -19,7 +19,7 @@ from app.batches import (
 from app.excel_export import TEXT_EXCEL_COLUMNS, workbook_bytes, write_cell
 from app.models import ArticleBatch, ArticleBatchRow, ArticleSnapshot
 from app.numbering_high_water import latest_completed_snapshot
-from app.snapshots import format_snapshot_timestamp
+from app.snapshots import format_snapshot_timestamp, running_snapshot
 from core.article_fields import IMPORT_COLUMNS
 from core.article_payload import row_to_payload
 from scripts.weclapp.article_import import LookupTables, _load_schema
@@ -77,6 +77,34 @@ def snapshot_age_warning(snapshot: ArticleSnapshot | None) -> str | None:
     if age >= timedelta(hours=24):
         return MSG_SNAPSHOT_STALE.format(n=max(hours, 24))
     return None
+
+
+def snapshot_banner_state(db: Session, *, after_refresh: bool = False) -> dict[str, Any]:
+    """Action-bar flags for stale warning, in-flight pull, and just-finished success."""
+    snapshot = latest_completed_snapshot(db)
+    running = running_snapshot(db) is not None
+    warning = snapshot_age_warning(snapshot)
+    succeeded = bool(after_refresh and not running and warning is None and snapshot is not None)
+    error = ""
+    if after_refresh and not running and not succeeded:
+        failed = db.scalars(
+            select(ArticleSnapshot)
+            .where(ArticleSnapshot.status == "failed")
+            .order_by(ArticleSnapshot.created_at.desc())
+            .limit(1)
+        ).first()
+        if failed is not None and (
+            snapshot is None or failed.created_at >= snapshot.created_at
+        ):
+            error = failed.error or "Aktualisierung fehlgeschlagen."
+    return {
+        "snapshot": snapshot,
+        "snapshot_ts": format_snapshot_timestamp(snapshot.created_at) if snapshot else "",
+        "snapshot_warning": warning,
+        "snapshot_refresh_running": running,
+        "snapshot_refresh_succeeded": succeeded,
+        "snapshot_refresh_error": error,
+    }
 
 
 def approve_batch(

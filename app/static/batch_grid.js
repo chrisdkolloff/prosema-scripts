@@ -280,6 +280,9 @@
           var next = tmp.firstElementChild;
           if (next) bar.parentNode.replaceChild(next, bar);
           var scope = document.getElementById("batch-action-bar");
+          if (scope && window.htmx) {
+            htmx.process(scope);
+          }
           if (scope && window.coreui && coreui.Modal) {
             scope.querySelectorAll('[data-coreui-toggle="modal"]').forEach(function (el) {
               coreui.Modal.getOrCreateInstance(el);

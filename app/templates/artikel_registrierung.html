@@ -8,11 +8,12 @@
 {% set upload_accept = ".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" %}
   <h1 class="mb-3">Artikelregistrierung</h1>
   {% if blocked %}
-  <div class="alert alert-danger" role="alert">
+  <div class="alert alert-warning" role="alert">
     {{ access.message }}
+    Entwürfe können weiter bearbeitet werden — Senden nach weclapp ist erst möglich, wenn der Zugriff steht.
     <a href="{{ settings_path }}">weclapp-Einstellungen</a>
   </div>
-  {% else %}
+  {% endif %}
   <p class="text-body-secondary">
     Lieferanten-Excel oder CSV hochladen, prüfen, freigeben und nach weclapp senden —
     oder Zeilen direkt im Browser erfassen.
@@ -141,5 +142,4 @@
       </table>
     </div>
   </section>
-  {% endif %}
 {% endblock %}

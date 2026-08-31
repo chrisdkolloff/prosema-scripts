@@ -6,7 +6,14 @@
   "discarded": "Verworfen",
 } %}
 {% set batch_short_id = short_id if short_id is defined else (batch.id|string).split("-")[0] %}
-<div id="batch-action-bar">
+<div
+  id="batch-action-bar"
+  {% if snapshot_refresh_running %}
+  hx-get="/batches/{{ batch.id }}/aktionen?nach_aktualisierung=1"
+  hx-trigger="every 3s"
+  hx-swap="outerHTML"
+  {% endif %}
+>
   <div class="card mb-4">
     <div class="card-header">Batch #{{ batch_short_id }}</div>
     <div class="card-body">
@@ -27,19 +34,26 @@
     </div>
   </div>
 
-  {% if snapshot_warning %}
+  {% if snapshot_refresh_running %}
+  <div class="alert alert-info" role="status">Artikelübersicht wird aktualisiert…</div>
+  {% elif snapshot_refresh_succeeded %}
+  <div class="alert alert-success" role="status">Artikelübersicht ist aktuell.</div>
+  {% elif snapshot_warning %}
   <div class="alert alert-danger d-flex flex-wrap align-items-center gap-3" role="alert">
     <span>{{ snapshot_warning }}</span>
-    {% if snapshot_refresh_running %}
-    <span class="small">Aktualisierung läuft…</span>
-    {% else %}
+    {% if weclapp_ok %}
     <form method="post" action="/batches/{{ batch.id }}/artikeluebersicht-aktualisieren" class="mb-0">
       <button type="submit" class="btn btn-outline-danger">Aktualisieren</button>
     </form>
+    {% else %}
+    <span class="small">Aktualisieren braucht weclapp-Zugriff.
+      <a href="{{ settings_path }}">weclapp-Einstellungen</a>
+    </span>
     {% endif %}
   </div>
-  {% elif snapshot_refresh_running %}
-  <div class="alert alert-info" role="status">Artikelübersicht wird aktualisiert…</div>
+  {% endif %}
+  {% if snapshot_refresh_error %}
+  <div class="alert alert-danger" role="alert">{{ snapshot_refresh_error }}</div>
   {% endif %}
   {% if action_error %}
   <div class="alert alert-danger" role="alert">{{ action_error }}</div>
@@ -129,9 +143,17 @@ Dieser Schritt kann nicht rückgängig gemacht werden."
 
       {% elif batch.status == "approved" %}
       <div class="d-flex flex-wrap gap-2 align-items-center">
+        {% if weclapp_ok %}
         <form method="post" action="/batches/{{ batch.id }}/senden" class="d-inline">
           <button type="submit" class="btn btn-primary">An weclapp senden</button>
         </form>
+        {% else %}
+        <button type="button" class="btn btn-primary" disabled>An weclapp senden</button>
+        <span class="text-body-secondary small">
+          Senden braucht weclapp-Zugriff.
+          <a href="{{ settings_path }}">weclapp-Einstellungen</a>
+        </span>
+        {% endif %}
         <a class="btn btn-outline-primary" href="/batches/{{ batch.id }}/excel">Als Excel herunterladen</a>
         <span class="text-body-secondary small">Diese Nummern existieren noch nicht in weclapp.</span>
       </div>

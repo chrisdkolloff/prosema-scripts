@@ -94,7 +94,7 @@ def artikel_registrierung(
     ctx.update(
         {
             "status_filter": status_filter,
-            "batches": [] if ctx["blocked"] else _list_batches(db, status_filter=status_filter),
+            "batches": _list_batches(db, status_filter=status_filter),
             "error": request.query_params.get("error") or "",
             "notices": [
                 n
@@ -105,8 +105,7 @@ def artikel_registrierung(
             "manual_default_rows": DEFAULT_MANUAL_ROWS,
         }
     )
-    if not ctx["blocked"]:
-        ctx.update(_template_banner(db))
+    ctx.update(_template_banner(db))
     return request.app.state.templates.TemplateResponse(
         request,
         "artikel_registrierung.html",
@@ -136,10 +135,6 @@ async def artikel_registrierung_upload(
     datei: UploadFile = File(...),
     bestaetigt: str = Form(""),
 ):
-    access = check_weclapp_access(db, user["oid"])
-    if access.kind != "ok":
-        return RedirectResponse(url="/artikel-registrierung?error=1", status_code=303)
-
     filename = datei.filename or "upload.xlsx"
     data = await datei.read()
     confirmed = bestaetigt.strip() in {"1", "true", "ja"}
@@ -207,9 +202,6 @@ def artikel_registrierung_manuell(
     db: Session = Depends(get_db),
     zeilen: int = Form(DEFAULT_MANUAL_ROWS),
 ):
-    access = check_weclapp_access(db, user["oid"])
-    if access.kind != "ok":
-        return RedirectResponse(url="/artikel-registrierung?error=1", status_code=303)
     try:
         batch = create_manual_batch(db, user=user, row_count=int(zeilen))
     except (BatchUploadError, ValueError, TypeError) as exc:

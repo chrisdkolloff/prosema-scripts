@@ -1,7 +1,16 @@
 # PROSEMA release history — edit this file to bump the version and document changes.
 # The top-level `version` is shown in the site header; `[[releases]]` entries appear on /changelog.
 
-version = "1.0.7"
+version = "1.0.8"
+
+[[releases]]
+version = "1.0.8"
+date = "2026-08-31"
+summary = "Implement snapshot banner state functionality in batch actions, enhancing the user interface with real-time snapshot status updates. Update related routes and templates to reflect the new snapshot state logic, including refresh indicators and error handling for weclapp access. Adjust tests to validate the new functionality and ensure proper behavior under various conditions."
+changes = [
+  "Implement snapshot banner state functionality in batch actions, enhancing the user interface with real-time snapshot status updates. Update related routes and templates to reflect the new snapshot state logic, including refresh indicators and error handling for weclapp access. Adjust tests to validate the new functionality and ensure proper behavior under various conditions.",
+]
+
 
 [[releases]]
 version = "1.0.7"

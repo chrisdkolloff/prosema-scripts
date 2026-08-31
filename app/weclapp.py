@@ -59,8 +59,8 @@ LANDING_TOOLS: tuple[dict[str, object], ...] = (
         "name": "Artikelregistrierung",
         "href": "/artikel-registrierung",
         "description": "Neue Artikel per Excel oder manuell erfassen, prüfen und an weclapp senden.",
-        "needs_weclapp": True,
-        "refresh_needs_weclapp": False,
+        "needs_weclapp": False,
+        "refresh_needs_weclapp": True,
     },
     {
         "name": "Artikelübersicht",

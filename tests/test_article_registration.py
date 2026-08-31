@@ -15,7 +15,13 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
-from app.batch_actions import MSG_NO_SNAPSHOT, MSG_SNAPSHOT_STALE, approve_batch, snapshot_age_warning
+from app.batch_actions import (
+    MSG_NO_SNAPSHOT,
+    MSG_SNAPSHOT_STALE,
+    approve_batch,
+    snapshot_age_warning,
+    snapshot_banner_state,
+)
 from app.batch_submit import MSG_DRY_RUN_FAILED, run_batch_submit
 from app.batch_upload import BatchUploadError, MAX_UPLOAD_ROWS, create_batch_from_upload, create_manual_batch
 from app.batches import CellEdit, apply_edits
@@ -30,7 +36,9 @@ from app.models import (
     GruppenAudit,
     Hauptgruppe,
     Job,
+    UserWeclappToken,
 )
+from app.weclapp import encrypt_token
 from scripts.weclapp.article_import import IMPORT_COLUMNS
 from scripts.weclapp.client import WeclappError
 
@@ -645,6 +653,36 @@ def test_stub_text_gone(user_client):
     assert "Excel- oder CSV-Datei hochladen" in response.text
 
 
+def test_registration_usable_without_weclapp_token(db_session, user_client):
+    batch = create_manual_batch(db_session, user=ACTOR, row_count=1)
+    db_session.flush()
+
+    response = user_client.get("/artikel-registrierung")
+    assert response.status_code == 200
+    assert "Kein Token hinterlegt" in response.text
+    assert "Entwürfe können weiter bearbeitet werden" in response.text
+    assert "Excel- oder CSV-Datei hochladen" in response.text
+    assert "Manuell erfassen" in response.text
+    assert f"/batches/{batch.id}" in response.text
+    grid = user_client.get(f"/batches/{batch.id}")
+    assert grid.status_code == 200
+    assert "batch-action-bar" in grid.text
+
+
+def _grant_weclapp(db_session) -> None:
+    db_session.add(
+        UserWeclappToken(
+            oid=PLAIN_USER["oid"],
+            token_encrypted=encrypt_token("test-token"),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            last_verified_ok=True,
+            last_verified_at=datetime.now(UTC),
+        )
+    )
+    db_session.flush()
+
+
 def test_snapshot_age_warning_after_24_hours():
     snap = ArticleSnapshot(
         status="complete",
@@ -661,6 +699,7 @@ def test_snapshot_age_warning_after_24_hours():
 
 
 def test_stale_snapshot_warning_has_refresh_button(db_session, user_client):
+    _grant_weclapp(db_session)
     snapshot = _make_snapshot(db_session)
     snapshot.created_at = datetime.now(UTC) - timedelta(hours=30)
     batch = create_manual_batch(db_session, user=ACTOR, row_count=1)
@@ -674,7 +713,10 @@ def test_stale_snapshot_warning_has_refresh_button(db_session, user_client):
 
 
 @patch("app.config.settings.weclapp_tenant", "test")
-def test_refresh_snapshot_from_batch_enqueues_pull(db_session, user_client):
+@patch("app.routes.batches.check_weclapp_access")
+def test_refresh_snapshot_from_batch_enqueues_pull(mock_access, db_session, user_client):
+    mock_access.return_value = MagicMock(kind="ok", message="")
+    _grant_weclapp(db_session)
     snapshot = _make_snapshot(db_session)
     snapshot.created_at = datetime.now(UTC) - timedelta(hours=30)
     batch = create_manual_batch(db_session, user=ACTOR, row_count=1)
@@ -698,3 +740,38 @@ def test_refresh_snapshot_from_batch_enqueues_pull(db_session, user_client):
         select(ArticleSnapshot).where(ArticleSnapshot.status == "running")
     ).all()
     assert len(running) == 1
+
+    page = user_client.get(f"/batches/{batch.id}")
+    assert page.status_code == 200
+    assert "Artikelübersicht wird aktualisiert" in page.text
+    assert "every 3s" in page.text
+    assert "30 Stunden alt" not in page.text
+    assert "btn-outline-danger" not in page.text
+
+    fresh = running[0]
+    fresh.status = "complete"
+    fresh.created_at = datetime.now(UTC)
+    db_session.flush()
+
+    done = user_client.get(f"/batches/{batch.id}/aktionen?nach_aktualisierung=1")
+    assert done.status_code == 200
+    assert "Artikelübersicht ist aktuell" in done.text
+    assert "alert-success" in done.text
+    assert "wird aktualisiert" not in done.text
+    assert "every 3s" not in done.text
+    assert "30 Stunden alt" not in done.text
+
+    later = user_client.get(f"/batches/{batch.id}/aktionen")
+    assert "Artikelübersicht ist aktuell" not in later.text
+    assert "30 Stunden alt" not in later.text
+
+
+def test_snapshot_banner_success_only_after_refresh(db_session):
+    snap = _make_snapshot(db_session)
+    snap.created_at = datetime.now(UTC)
+    db_session.flush()
+    idle = snapshot_banner_state(db_session, after_refresh=False)
+    assert idle["snapshot_refresh_succeeded"] is False
+    assert idle["snapshot_warning"] is None
+    done = snapshot_banner_state(db_session, after_refresh=True)
+    assert done["snapshot_refresh_succeeded"] is True

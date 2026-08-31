@@ -21,7 +21,7 @@ from app.batch_actions import (
     batch_counts,
     build_batch_excel,
     discard_batch,
-    snapshot_age_warning,
+    snapshot_banner_state,
 )
 from app.batch_upload import (
     DEFAULT_MANUAL_ROWS,
@@ -44,18 +44,19 @@ from app.batches import (
 from app.db import get_db
 from app.jobs import enqueue
 from app.models import ArticleBatch, ArticleTemplate, Job
-from app.numbering_high_water import latest_completed_snapshot
-from app.snapshots import (
-    create_snapshot_pull,
-    excel_filename_timestamp,
-    format_snapshot_timestamp,
-    running_snapshot,
-)
+from app.snapshots import create_snapshot_pull, excel_filename_timestamp
+from app.weclapp import SETTINGS_PATH, check_weclapp_access, get_token_meta
 
 router = APIRouter()
 
 _FRAGMENT_HEADERS = {"Cache-Control": "no-store"}
 MSG_SUBMIT_RUNNING = "Es läuft bereits ein Sendevorgang für diesen Batch."
+
+
+def _weclapp_writes_ok(db: Session, oid: str) -> bool:
+    """Stored token that has not already failed a probe — no extra weclapp call."""
+    meta = get_token_meta(db, oid)
+    return bool(meta.stored and meta.last_verified_ok is not False)
 
 
 def _error_redirect(batch_id: uuid.UUID, message: str) -> RedirectResponse:
@@ -140,9 +141,11 @@ def _page_context(
     if filters["nur_fehler"]:
         query_params.append(("nur_fehler", "1"))
     filter_qs = urlencode(query_params)
-    snapshot = latest_completed_snapshot(db)
     counts = batch_counts(all_rows)
     dialog = approval_dialog_context(batch, all_rows)
+    banner = snapshot_banner_state(
+        db, after_refresh=request.query_params.get("nach_aktualisierung") == "1"
+    )
     active_template = db.scalars(
         select(ArticleTemplate).where(ArticleTemplate.is_active.is_(True))
     ).first()
@@ -167,10 +170,7 @@ def _page_context(
         "grid_config": build_grid_config(db, batch, page_rows),
         "editable": batch.status == "draft",
         "counts": counts,
-        "snapshot": snapshot,
-        "snapshot_ts": format_snapshot_timestamp(snapshot.created_at) if snapshot else "",
-        "snapshot_warning": snapshot_age_warning(snapshot),
-        "snapshot_refresh_running": running_snapshot(db) is not None,
+        **banner,
         "action_error": request.query_params.get("error") or "",
         "approve_count": dialog["approve_count"],
         "first_number": dialog["first_number"],
@@ -180,6 +180,8 @@ def _page_context(
         "filename_label": batch.filename or "Manuell erfasst",
         "manual_default_rows": DEFAULT_MANUAL_ROWS,
         "empty_excluded": request.query_params.get("empty_excluded") or "",
+        "weclapp_ok": _weclapp_writes_ok(db, user["oid"]),
+        "settings_path": SETTINGS_PATH,
     }
 
 
@@ -196,7 +198,9 @@ def batch_actions_fragment(
     all_rows = load_batch_rows(db, batch.id)
     counts = batch_counts(all_rows)
     dialog = approval_dialog_context(batch, all_rows)
-    snapshot = latest_completed_snapshot(db)
+    banner = snapshot_banner_state(
+        db, after_refresh=request.query_params.get("nach_aktualisierung") == "1"
+    )
     return request.app.state.templates.TemplateResponse(
         request,
         "batches/partials/action_bar.html",
@@ -204,15 +208,14 @@ def batch_actions_fragment(
             "user": user,
             "batch": batch,
             "counts": counts,
-            "snapshot": snapshot,
-            "snapshot_ts": format_snapshot_timestamp(snapshot.created_at) if snapshot else "",
-            "snapshot_warning": snapshot_age_warning(snapshot),
-            "snapshot_refresh_running": running_snapshot(db) is not None,
+            **banner,
             "action_error": "",
             "approve_count": dialog["approve_count"],
             "first_number": dialog["first_number"],
             "last_number": dialog["last_number"],
             "manual_default_rows": DEFAULT_MANUAL_ROWS,
+            "weclapp_ok": _weclapp_writes_ok(db, user["oid"]),
+            "settings_path": SETTINGS_PATH,
         },
         headers=_FRAGMENT_HEADERS,
     )
@@ -283,6 +286,9 @@ def batch_refresh_article_snapshot(
     batch = _load_batch(db, batch_id)
     if batch is None:
         raise HTTPException(status_code=404, detail="Stapel nicht gefunden")
+    access = check_weclapp_access(db, user["oid"])
+    if access.kind != "ok":
+        return _error_redirect(batch_id, access.message)
     create_snapshot_pull(db, user)
     return RedirectResponse(url=f"/batches/{batch_id}", status_code=303)
 
@@ -370,6 +376,9 @@ def batch_senden(
     batch = db.get(ArticleBatch, batch_id)
     if batch is None:
         raise HTTPException(status_code=404, detail="Stapel nicht gefunden")
+    access = check_weclapp_access(db, user["oid"])
+    if access.kind != "ok":
+        return _error_redirect(batch_id, access.message)
     if batch.status != "approved":
         return _error_redirect(
             batch_id, "Nur freigegebene Batches können gesendet werden."
