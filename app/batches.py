@@ -20,7 +20,7 @@ from app.groups_service import (
 )
 from app.models import ArticleBatch, ArticleBatchPresence, ArticleBatchRow
 from app.numbering_high_water import register_kept_numbers, seed_high_water
-from core.article_fields import IMPORT_COLUMNS
+from core.article_fields import IMPORT_COLUMNS, grid_display_title
 from core.article_payload import (
     ARTICLE_NAME_FIELD,
     ARTICLE_NUMBER_FIELD,
@@ -346,7 +346,7 @@ def build_columns(
         )
         column: dict[str, Any] = {
             "type": "text",
-            "title": COLUMN_TITLES.get(field_name, field_name),
+            "title": COLUMN_TITLES.get(field_name) or grid_display_title(field_name),
             "width": COLUMN_WIDTHS.get(field_name, 140),
             "readOnly": read_only,
             "name": field_name,

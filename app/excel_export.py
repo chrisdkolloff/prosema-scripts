@@ -19,11 +19,13 @@ TEXT_EXCEL_COLUMNS = frozenset(
     {
         "Prosema Artikelnummer",
         "Prosema-Artikelnummer",
+        "Prosema-Art.-Nr.",
         "Artikelnummer",
         "Hauptgruppe",
         "Untergruppe",
         "GTIN (EAN-Nummer)",
         "Lieferantenartikelnummer",
+        "Lieferanten-Art.-Nr.",
         "weclapp-ID",
     }
 )

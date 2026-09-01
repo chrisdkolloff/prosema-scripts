@@ -120,7 +120,7 @@ FIELDS: tuple[FieldSpec, ...] = (
     # --- Pflichtfelder (never hideable, read-only) ---
     _f(
         field_key="supplier_article_number",
-        label_internal="Lieferantenartikelnummer",
+        label_internal="Lieferanten-Art.-Nr.",
         label_weclapp="Lieferantenartikelnummer",
         weclapp_column="D",
         scope="supply_source",
@@ -130,7 +130,7 @@ FIELDS: tuple[FieldSpec, ...] = (
         edit_policy="read_only",
         default_visible=True,
         picker_group="identity",
-        grid_title="Lief.-Artikelnr.",
+        grid_title="Lieferanten-Art.-Nr.",
         width=130,
         store="row",
         description="Halber Match-Schlüssel",
@@ -310,13 +310,13 @@ FIELDS: tuple[FieldSpec, ...] = (
     # --- Kontext (never exported) ---
     _f(
         field_key="article_number",
-        label_internal="Prosema-Artikelnummer",
+        label_internal="Prosema-Art.-Nr.",
         scope="context",
         write_policy="locked",
         edit_policy="read_only",
         default_visible=True,
         picker_group="context",
-        grid_title="Artikelnr.",
+        grid_title="Prosema-Art.-Nr.",
         width=130,
         store="row",
         note="Nur Anzeige im Raster. Dieselbe Nummer wird immer nach Spalte W geschrieben.",
@@ -437,7 +437,7 @@ FIELDS: tuple[FieldSpec, ...] = (
     ),
     _f(
         field_key="supplier_company",
-        label_internal="Lieferanten Firmenname",
+        label_internal="Name Lieferant",
         label_weclapp="Lieferanten Firmenname",
         weclapp_column="E",
         max_length=255,

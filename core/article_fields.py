@@ -323,12 +323,34 @@ def find_field(label: object) -> ArticleField | None:
     return _BY_LABEL_FOLD.get(cleaned.casefold())
 
 
+# Spreadsheet / Excel header titles. Catalogue ``label`` stays the data key.
+GRID_DISPLAY_TITLES: dict[str, str] = {
+    ARTICLE_NUMBER_FIELD: "Prosema-Art.-Nr.",
+    "Prosema Artikelnummer": "Prosema-Art.-Nr.",
+    "Lieferantenartikelnummer": "Lieferanten-Art.-Nr.",
+    "Lieferanten-Artikelnummer": "Lieferanten-Art.-Nr.",
+    "Artikelnr.": "Lieferanten-Art.-Nr.",
+    "Lieferanten Firmenname": "Name Lieferant",
+}
+
+
 def display_label(label: object) -> str:
     """Current Artikelregistrierung label, or the original string if unknown."""
     field = find_field(label)
     if field is not None:
         return field.label
     return normalize_label(label)
+
+
+def grid_display_title(label: object) -> str:
+    """Short header shown in grids and snapshot Excel downloads."""
+    cleaned = normalize_label(label)
+    if cleaned in GRID_DISPLAY_TITLES:
+        return GRID_DISPLAY_TITLES[cleaned]
+    field = find_field(label)
+    if field is not None:
+        return GRID_DISPLAY_TITLES.get(field.label, field.label)
+    return cleaned
 
 
 def seed_template_columns() -> list[dict[str, object]]:

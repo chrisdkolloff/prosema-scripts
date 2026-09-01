@@ -19,7 +19,6 @@ from app.config import settings
 from app.excel_export import workbook_bytes, write_cell
 from app.models import ArticleSnapshot, ArticleSnapshotRow, Job
 from core.article_flatten import flatten_articles, snapshot_column_title
-from core.article_payload import ARTICLE_NAME_FIELD, ARTICLE_NUMBER_FIELD, label_variants
 from core.numbering import Scheme
 
 logger = logging.getLogger(__name__)
@@ -169,15 +168,6 @@ def distinct_untergruppen(
     return [row[0] for row in db.execute(stmt).all()]
 
 
-def _freeze_column_count(columns: list[dict[str, Any]]) -> int:
-    keys = {col.get("key", "") for col in columns}
-    count = 0
-    for target in (ARTICLE_NUMBER_FIELD, ARTICLE_NAME_FIELD):
-        if keys & set(label_variants(target)):
-            count += 1
-    return max(count, 1)
-
-
 def build_grid_config(
     snapshot: ArticleSnapshot,
     rows: list[ArticleSnapshotRow],
@@ -202,7 +192,7 @@ def build_grid_config(
     return {
         "editable": False,
         "parseFormulas": False,
-        "freezeColumns": _freeze_column_count(columns),
+        "freezeColumns": 1,
         "columns": jss_columns,
         "data": data,
         "fields": keys,

@@ -246,7 +246,7 @@ body.is-frage-busy #snapshot-frage-banner {
 .prosema-grid table,
 .prosema-grid td,
 .prosema-grid th {
-  --cui-table-bg: initial;
+  --cui-table-bg: #fff;
   --cui-table-color: initial;
   --cui-table-accent-bg: initial;
   --cui-table-striped-color: initial;
@@ -306,7 +306,7 @@ body.is-frage-busy #snapshot-frage-banner {
 
 .jss_worksheet > thead > tr > td.selected,
 .jss_worksheet > tbody > tr.selected > td:first-child {
-  background-color: rgba(var(--prosema-tools-blue-rgb), 0.28) !important;
+  background-color: #b7dbeb !important;
   color: #0c5f8f;
 }
 

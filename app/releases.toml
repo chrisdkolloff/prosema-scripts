@@ -1,7 +1,18 @@
 # PROSEMA release history — edit this file to bump the version and document changes.
 # The top-level `version` is shown in the site header; `[[releases]]` entries appear on /changelog.
 
-version = "1.1.9"
+version = "1.1.10"
+
+[[releases]]
+version = "1.1.10"
+date = "2026-09-01"
+summary = "Enhance batch spreadsheet and grid functionality by implementing sticky headers and improved column freezing. Update CSS for better visual presentation and adjust JavaScript to ensure consistent behavior across various grid types. Refactor z-index handling for better layering of elements during scrolling. (+2 more)"
+changes = [
+  "Refactor article field labels and enhance grid display titles for improved consistency. Update various templates and JavaScript files to reflect new naming conventions, including \"Prosema-Art.-Nr.\" and \"Name Lieferant.\" Adjust CSS for better UI presentation in batch spreadsheets. Modify tests to validate changes in header titles and ensure accurate representation in Excel exports.",
+  "Refactor snapshot grid configuration to set a fixed column freeze count and improve CSS styling for batch spreadsheets. Adjust JavaScript to ensure consistent column width handling and enhance UI presentation by modifying border styles in the spreadsheet layout.",
+  "Enhance batch spreadsheet and grid functionality by implementing sticky headers and improved column freezing. Update CSS for better visual presentation and adjust JavaScript to ensure consistent behavior across various grid types. Refactor z-index handling for better layering of elements during scrolling.",
+]
+
 
 [[releases]]
 version = "1.1.9"

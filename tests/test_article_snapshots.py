@@ -373,7 +373,7 @@ def test_excel_matches_zeilen_filter(db_session, user_client):
     wb = load_workbook(io.BytesIO(excel.content))
     ws = wb["Artikel"]
     headers = [ws.cell(1, col).value for col in range(1, ws.max_column + 1)]
-    artikel_col = headers.index("Prosema-Artikelnummer") + 1
+    artikel_col = headers.index("Prosema-Art.-Nr.") + 1
     numbers = {ws.cell(row, artikel_col).value for row in range(2, ws.max_row + 1)}
     assert numbers == {"020.010.0005"}
 
@@ -387,7 +387,7 @@ def test_article_number_excel_text_format(db_session, user_client):
     wb = load_workbook(io.BytesIO(response.content))
     ws = wb["Artikel"]
     headers = [ws.cell(1, col).value for col in range(1, ws.max_column + 1)]
-    artikel_col = headers.index("Prosema-Artikelnummer") + 1
+    artikel_col = headers.index("Prosema-Art.-Nr.") + 1
     cell = ws.cell(2, artikel_col)
     assert cell.number_format == "@"
     assert cell.value == "010.020.0010"
@@ -429,23 +429,24 @@ def test_snapshot_uses_stored_columns_not_current_schema(db_session):
     assert config["fields"] == ["Legacy-Spalte", "Prosema Artikelnummer"]
     assert [col["title"] for col in config["columns"]] == [
         "Legacy-Spalte",
-        "Prosema-Artikelnummer",
+        "Prosema-Art.-Nr.",
     ]
     assert config["data"] == [["alt", "010.020.0010"]]
 
 
 def test_snapshot_column_title_matches_registration_where_applicable():
-    assert snapshot_column_title("Prosema Artikelnummer") == "Prosema-Artikelnummer"
+    assert snapshot_column_title("Prosema Artikelnummer") == "Prosema-Art.-Nr."
     assert snapshot_column_title("PROSEMA Kurztext") == "Prosema-Artikelname"
     assert snapshot_column_title("PROSEMA Langtext") == "Prosema-Langtext"
     assert snapshot_column_title("Prosema-Artikelname") == "Prosema-Artikelname"
     assert snapshot_column_title("Breite mm") == "Breite in mm"
     assert snapshot_column_title("weclapp Aktiv") == "Aktiv"
-    assert snapshot_column_title("Artikelnr.") == "Lieferantenartikelnummer"
+    assert snapshot_column_title("Artikelnr.") == "Lieferanten-Art.-Nr."
     assert snapshot_column_title("Einkaufspreis EUR netto") == "Einkaufspreis EUR netto"
     assert snapshot_column_title("Nettoverkaufspreis CHF") == "Nettoverkaufspreis CHF"
     assert snapshot_column_title("Verkaufspreis €, BE") == "Nettoverkaufspreis CHF"
-    assert snapshot_column_title("Legacy-Spalte") == "Legacy-Spalte"
+    assert snapshot_column_title("Lieferanten Firmenname") == "Name Lieferant"
+    assert snapshot_column_title("Lieferantenartikelnummer") == "Lieferanten-Art.-Nr."
 
 
 def test_apply_master_column_renames_rewrites_legacy_price_header():
@@ -465,7 +466,7 @@ def test_flatten_uses_registration_column_keys_and_titles():
     assert data["Prosema-Artikelname"] == "Artikel 010.020.0010"
     columns = build_snapshot_columns([data])
     by_key = {col["key"]: col["title"] for col in columns}
-    assert by_key["Prosema-Artikelnummer"] == "Prosema-Artikelnummer"
+    assert by_key["Prosema-Artikelnummer"] == "Prosema-Art.-Nr."
     assert by_key["Prosema-Artikelname"] == "Prosema-Artikelname"
     assert by_key["Prosema-Langtext"] == "Prosema-Langtext"
 
@@ -513,7 +514,7 @@ def test_grid_and_excel_show_registration_titles_for_historic_keys(db_session):
     db_session.flush()
 
     expected_titles = [
-        "Prosema-Artikelnummer",
+        "Prosema-Art.-Nr.",
         "Prosema-Artikelname",
         "Prosema-Langtext",
         "Einheit",
@@ -1107,7 +1108,7 @@ def test_excel_with_frage_exports_selection_and_records_question(db_session, use
     wb = load_workbook(io.BytesIO(excel.content))
     ws = wb["Artikel"]
     headers = [ws.cell(1, col).value for col in range(1, ws.max_column + 1)]
-    artikel_col = headers.index("Prosema-Artikelnummer") + 1
+    artikel_col = headers.index("Prosema-Art.-Nr.") + 1
     numbers = {ws.cell(row, artikel_col).value for row in range(2, ws.max_row + 1)}
     assert numbers == {"020.010.0005"}
     abfrage = wb["Abfrage"]

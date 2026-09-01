@@ -289,10 +289,13 @@
       }
 
       var header = ws.headers[s];
+      var last = s === n - 1;
       if (header) {
         header.classList.add("jss_freezed");
+        if (last) header.classList.add("jss_freezed-edge");
         header.style.setProperty("position", "sticky", "important");
         header.style.setProperty("left", left + "px", "important");
+        header.style.setProperty("top", "0px", "important");
         header.style.setProperty("min-width", configured + "px", "important");
         header.style.setProperty("max-width", configured + "px", "important");
       }
@@ -301,6 +304,7 @@
           var cell = ws.records[r] && ws.records[r][s];
           if (cell && cell.element) {
             cell.element.classList.add("jss_freezed");
+            if (last) cell.element.classList.add("jss_freezed-edge");
             cell.element.style.setProperty("position", "sticky", "important");
             cell.element.style.setProperty("left", left + "px", "important");
             cell.element.style.setProperty("min-width", configured + "px", "important");

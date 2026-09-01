@@ -26,7 +26,7 @@ FILTER_COLUMNS = (
     "Untergruppe",
     "Shopify Produkte",
     "Zielgruppe",
-    "Lieferanten Firmenname",
+    "Name Lieferant",
     "Rabattkategorie_Lieferant",
     "Produktfamilie",
     "weclapp Aktiv",
@@ -35,13 +35,13 @@ FILTER_COLUMNS = (
 
 TABLE_COLUMNS = (
     "Prosema Artikelnummer",
-    "Lieferanten-Artikelnummer",
+    "Lieferanten-Art.-Nr.",
     "PROSEMA Kurztext",
     "Hauptgruppe",
     "Untergruppe",
     "Shopify Produkte",
     "Zielgruppe",
-    "Lieferanten Firmenname",
+    "Name Lieferant",
     "Verkaufspreis Prosema CHF",
     "Grundmaterial",
     "Farbe",
@@ -49,7 +49,7 @@ TABLE_COLUMNS = (
 
 SEARCH_COLUMNS = (
     "Prosema Artikelnummer",
-    "Lieferanten-Artikelnummer",
+    "Lieferanten-Art.-Nr.",
     "PROSEMA Kurztext",
     "PROSEMA Langtext",
     "Matchcode",

@@ -161,8 +161,8 @@ COLUMNS: tuple[QueryableColumn, ...] = (
         type="text",
         storage="column",
         column_attr="article_number",
-        aliases=(ARTICLE_NUMBER_FIELD, "Prosema Artikelnummer"),
-        label_de="Prosema-Artikelnummer",
+        aliases=(ARTICLE_NUMBER_FIELD, "Prosema Artikelnummer", "Prosema-Art.-Nr."),
+        label_de="Prosema-Art.-Nr.",
         description_de=(
             "Artikelnummer. Konforme Nummern haben die Form MMM.SSS.NNNN; "
             "daraus werden Haupt- und Untergruppe gelesen."
@@ -213,6 +213,8 @@ COLUMNS: tuple[QueryableColumn, ...] = (
     _q(
         "Lieferantenartikelnummer",
         type="text",
+        aliases=("Lieferanten-Art.-Nr.",),
+        label_de="Lieferanten-Art.-Nr.",
         description_de=(
             "Artikelnummer beim Lieferanten. Identifikator, keine Menge — "
             "nicht numerisch vergleichen."
@@ -402,6 +404,8 @@ COLUMNS: tuple[QueryableColumn, ...] = (
     _q(
         "Lieferanten Firmenname",
         type="select",
+        aliases=("Name Lieferant",),
+        label_de="Name Lieferant",
         description_de="Name des Lieferanten.",
     ),
     _q(

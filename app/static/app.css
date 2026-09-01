@@ -54,11 +54,17 @@
 
 .batch-spreadsheet .jss_worksheet {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
+  border-left: 0 !important;
+  border-top: 0 !important;
   font-size: 14px;
 }
 
 .batch-spreadsheet .jss_worksheet thead td {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 40 !important;
   background: #f3f4f6 !important;
   color: #374151;
   font-weight: 600;
@@ -66,6 +72,20 @@
   padding: 10px 12px !important;
   border-bottom: 2px solid #d1d5db;
   white-space: nowrap;
+  box-shadow: 0 -4px 0 #f3f4f6;
+}
+
+.batch-spreadsheet .jss_worksheet thead td:first-child,
+.batch-spreadsheet .jss_worksheet tbody td:first-child {
+  border-left: 0 !important;
+}
+
+.batch-spreadsheet .jss_worksheet thead td:first-child {
+  box-shadow: -4px 0 0 #f3f4f6, 0 -4px 0 #f3f4f6;
+}
+
+.batch-spreadsheet .jss_worksheet tbody td:first-child {
+  box-shadow: -4px 0 0 #f3f4f6;
 }
 
 .batch-spreadsheet .jss_worksheet tbody td {
@@ -92,23 +112,24 @@
   max-width: 200px;
 }
 
-/* Sticky freeze (replaces CE's scroll-driven left updates — those lag). */
+/* Body freeze stays below the header so rows tuck under it when scrolling down. */
 .batch-spreadsheet .jss_worksheet thead .jss_freezed,
 .batch-spreadsheet .jss_worksheet tbody .jss_freezed {
   position: sticky !important;
-  z-index: 3 !important;
   background-color: #fff !important;
-  box-shadow: 2px 0 0 #d6d3d1;
 }
 
 .batch-spreadsheet .jss_worksheet thead .jss_freezed {
-  z-index: 4 !important;
+  z-index: 42 !important;
   background-color: #f3f4f6 !important;
+}
+
+.batch-spreadsheet .jss_worksheet tbody .jss_freezed {
+  z-index: 8 !important;
 }
 
 .batch-spreadsheet .jss_worksheet tbody tr > td:first-child.jss_freezed {
   background-color: #f3f4f6 !important;
-  z-index: 3 !important;
 }
 
 .batch-spreadsheet .jss_worksheet tbody tr:nth-child(even) > td.jss_freezed {
@@ -117,6 +138,14 @@
 
 .batch-spreadsheet .jss_worksheet tbody tr:hover > td.jss_freezed {
   background-color: #e8f4fb !important;
+}
+
+.batch-spreadsheet .jss_worksheet thead .jss_freezed-edge {
+  box-shadow: 2px 0 0 #d6d3d1, 0 -4px 0 #f3f4f6;
+}
+
+.batch-spreadsheet .jss_worksheet tbody .jss_freezed-edge {
+  box-shadow: 2px 0 0 #d6d3d1;
 }
 
 tr.batch-row-error > td {

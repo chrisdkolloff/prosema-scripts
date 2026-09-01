@@ -35,7 +35,13 @@
     var nest = table.querySelector("thead tr > td:first-child");
     var left = nest ? nest.offsetWidth : 50;
 
-    table.querySelectorAll("thead tr > td:first-child, tbody tr > td:first-child").forEach(function (td) {
+    table.querySelectorAll("thead tr > td:first-child").forEach(function (td) {
+      td.classList.add("jss_freezed");
+      td.style.setProperty("position", "sticky", "important");
+      td.style.setProperty("left", "0px", "important");
+      td.style.setProperty("top", "0px", "important");
+    });
+    table.querySelectorAll("tbody tr > td:first-child").forEach(function (td) {
       td.classList.add("jss_freezed");
       td.style.setProperty("position", "sticky", "important");
       td.style.setProperty("left", "0px", "important");
@@ -43,16 +49,20 @@
 
     for (var s = 0; s < n; s++) {
       var header = worksheet.headers[s];
+      var last = s === n - 1;
       if (header) {
         header.classList.add("jss_freezed");
+        if (last) header.classList.add("jss_freezed-edge");
         header.style.setProperty("position", "sticky", "important");
         header.style.setProperty("left", left + "px", "important");
+        header.style.setProperty("top", "0px", "important");
       }
       if (worksheet.records) {
         for (var r = 0; r < worksheet.records.length; r++) {
           var cell = worksheet.records[r] && worksheet.records[r][s];
           if (cell && cell.element) {
             cell.element.classList.add("jss_freezed");
+            if (last) cell.element.classList.add("jss_freezed-edge");
             cell.element.style.setProperty("position", "sticky", "important");
             cell.element.style.setProperty("left", left + "px", "important");
           }
@@ -89,7 +99,7 @@
         {
           data: config.data,
           columns: config.columns,
-          freezeColumns: config.freezeColumns || 2,
+          freezeColumns: config.freezeColumns || 1,
           filters: false,
           search: false,
           tableOverflow: true,

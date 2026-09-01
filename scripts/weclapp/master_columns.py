@@ -114,15 +114,15 @@ def apply_master_column_renames(
 
 # (display column name, source column in raw export, or None for empty column)
 _EXPORT_DISPLAY_MAPPING: tuple[tuple[str, str | None], ...] = (
-    ("Prosema-Artikelnummer", "Prosema Artikelnummer"),
-    ("Lieferanten-Artikelnummer", "Artikelnr."),
+    ("Prosema-Art.-Nr.", "Prosema Artikelnummer"),
+    ("Lieferanten-Art.-Nr.", "Artikelnr."),
     ("Matchcode", "Referenz (Matchcode)"),
     ("Hauptgruppe", "Hauptgruppe"),
     ("Untergruppe", "Untergruppe"),
     ("Produktfamilie", "Produktfamilie"),
     ("Zielgruppe", "Datenstatus"),
     ("Lieferantennummer", "Lieferantennummer"),
-    ("Lieferanten Firmenname", "Lieferanten Firmenname"),
+    ("Name Lieferant", "Lieferanten Firmenname"),
     ("UVP Lieferant", "Einkaufspreis EUR netto"),
     ("UVP Lieferant Währung", None),
     ("Rabattkategorie Lieferant", "Rabattkategorie_Lieferant"),

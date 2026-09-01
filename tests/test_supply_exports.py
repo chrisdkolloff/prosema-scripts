@@ -580,7 +580,7 @@ def test_grid_article_number_is_first_frozen_column():
     assert article_number_column_width(numbers) >= 110
     columns = build_columns({}, editable=True, article_numbers=numbers)
     assert columns[0]["name"] == ARTICLE_NUMBER_FIELD
-    assert columns[0]["title"] == "Artikelnr."
+    assert columns[0]["title"] == "Prosema-Art.-Nr."
     assert columns[0]["width"] >= 110
     assert columns[0]["readOnly"] is True
     assert columns[1]["name"] == "article_name"

@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from core.article_fields import IMPORT_COLUMNS, display_label, find_field
+from core.article_fields import IMPORT_COLUMNS, display_label, find_field, grid_display_title
 from core.article_payload import (
     ARTICLE_NAME_FIELD,
     ARTICLE_NUMBER_FIELD,
@@ -176,15 +176,16 @@ def snapshot_column_title(key: str, stored_title: str | None = None) -> str:
     """Artikelregistrierung label when the snapshot column is the same field."""
     field = find_field(key)
     if field is not None:
-        return field.label
+        return grid_display_title(field.label)
     mapped = _MASTER_TO_IMPORT.get(key)
     if mapped:
         mapped_field = find_field(mapped)
-        return mapped_field.label if mapped_field is not None else mapped
+        canonical = mapped_field.label if mapped_field is not None else mapped
+        return grid_display_title(canonical)
     renamed = MASTER_COLUMN_RENAMES.get(key)
     if renamed:
-        return renamed
-    return display_label(stored_title or key) or key
+        return grid_display_title(renamed)
+    return grid_display_title(display_label(stored_title or key) or key)
 
 
 def build_snapshot_columns(rows: list[dict[str, str]]) -> list[dict[str, Any]]:
