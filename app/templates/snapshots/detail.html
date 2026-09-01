@@ -66,9 +66,10 @@
               type="text"
               name="frage"
               value="{{ assistant_question or '' }}"
-              placeholder="Welche Artikel von Dural wiegen mehr als 2 kg?"
+              placeholder="{{ assistant_example_questions[0] }}"
               autocomplete="off"
             >
+            <script type="application/json" id="snapshot-frage-examples">{{ assistant_example_questions | tojson }}</script>
           </div>
           <div class="col-auto">
             <button type="submit" class="btn btn-primary" id="snapshot-frage-submit">Fragen</button>

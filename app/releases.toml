@@ -1,7 +1,16 @@
 # PROSEMA release history — edit this file to bump the version and document changes.
 # The top-level `version` is shown in the site header; `[[releases]]` entries appear on /changelog.
 
-version = "1.1.4"
+version = "1.1.5"
+
+[[releases]]
+version = "1.1.5"
+date = "2026-09-01"
+summary = "Add example questions to snapshot detail view and JavaScript. Update the snapshot context to include assistant example questions, enhancing user experience by providing random placeholders in the input field. Modify tests to validate the presence and functionality of example questions in the rendered output."
+changes = [
+  "Add example questions to snapshot detail view and JavaScript. Update the snapshot context to include assistant example questions, enhancing user experience by providing random placeholders in the input field. Modify tests to validate the presence and functionality of example questions in the rendered output.",
+]
+
 
 [[releases]]
 version = "1.1.4"

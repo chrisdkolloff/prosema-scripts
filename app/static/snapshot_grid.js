@@ -144,10 +144,26 @@
 (function () {
   var FAIL_MSG = "Die Anfrage ist fehlgeschlagen. Bitte erneut versuchen.";
 
+  function pickExamplePlaceholder() {
+    var input = document.getElementById("snapshot-frage");
+    var src = document.getElementById("snapshot-frage-examples");
+    if (!input || !src) return;
+    var examples;
+    try {
+      examples = JSON.parse(src.textContent);
+    } catch (err) {
+      return;
+    }
+    if (!Array.isArray(examples) || !examples.length) return;
+    var idx = Math.floor(Math.random() * examples.length);
+    input.setAttribute("placeholder", examples[idx]);
+  }
+
   function bindFrageForm() {
     var form = document.getElementById("snapshot-frage-form");
     if (!form || form.dataset.bound === "1") return;
     form.dataset.bound = "1";
+    pickExamplePlaceholder();
     var btn = document.getElementById("snapshot-frage-submit");
     var input = document.getElementById("snapshot-frage");
     var status = document.getElementById("snapshot-frage-status");

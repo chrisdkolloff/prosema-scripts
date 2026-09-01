@@ -15,6 +15,7 @@ from openpyxl import load_workbook
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.assistant.examples import EXAMPLE_QUESTIONS
 from app.assistant.service import MSG_UNVERIFIED
 from app.auth import get_current_user
 from app.db import engine, get_db
@@ -1188,7 +1189,16 @@ def test_frage_card_renders_on_current_snapshot_when_enabled(db_session, user_cl
     assert 'id="snapshot-frage-card"' in response.text
     assert 'name="frage"' in response.text
     assert "Stellen Sie eine Frage zur Artikelliste." in response.text
-    assert "Welche Artikel von Dural wiegen mehr als 2 kg?" in response.text
+    assert 'id="snapshot-frage-examples"' in response.text
+    examples = json.loads(
+        re.search(
+            r'<script type="application/json" id="snapshot-frage-examples">(.*?)</script>',
+            response.text,
+            re.DOTALL,
+        ).group(1)
+    )
+    assert examples == list(EXAMPLE_QUESTIONS)
+    assert EXAMPLE_QUESTIONS[0] in response.text
     assert 'hx-boost="false"' in response.text
     assert 'id="snapshot-frage-status"' in response.text
     assert 'id="snapshot-frage-running-banner"' in response.text

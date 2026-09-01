@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
+from app.assistant.examples import EXAMPLE_QUESTIONS
 from app.assistant.service import MSG_DISABLED, MSG_NO_ANSWER, MSG_UNVERIFIED, ask
 from app.assistant.tools import resolve_current_snapshot
 from app.auth import SessionUser, require_user
@@ -223,6 +224,7 @@ def _viewer_context(
         "jspreadsheet_version": JSPREADSHEET_CE_VERSION,
         "jsuites_version": JSUITES_VERSION,
         "running_snapshot": running_snapshot(db),
+        "assistant_example_questions": list(EXAMPLE_QUESTIONS),
         **_assistant_viewer_fields(query, hinweis),
     }
     current = resolve_current_snapshot(db)
