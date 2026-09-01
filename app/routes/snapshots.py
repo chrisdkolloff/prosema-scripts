@@ -11,8 +11,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
 from app.assistant.examples import EXAMPLE_QUESTIONS
-from app.assistant.service import MSG_DISABLED, MSG_NO_ANSWER, MSG_UNVERIFIED, ask
-from app.assistant.tools import resolve_current_snapshot
+from app.assistant.service import MSG_DISABLED, MSG_NO_ANSWER, MSG_NO_SNAPSHOT, MSG_UNVERIFIED, ask
 from app.auth import SessionUser, require_user
 from app.batches import JSPREADSHEET_CE_VERSION, JSUITES_VERSION
 from app.config import settings
@@ -44,10 +43,6 @@ _FRESH_PULL_PARAM = "neu"
 MSG_FRAGE_NOT_FOUND = "Diese Frage wurde nicht gefunden."
 MSG_FRAGE_OTHER_USER = "Diese Frage gehört zu einem anderen Benutzer."
 MSG_FRAGE_OTHER_SNAPSHOT = "Diese Frage bezieht sich auf einen anderen Datenstand."
-MSG_FRAGE_NOT_CURRENT = (
-    "Fragen sind nur auf dem neuesten Datenstand möglich. "
-    "Öffne bitte die aktuelle Artikelübersicht."
-)
 MSG_SELECTION_TRUNCATED = (
     "Die Treffermenge ist zu groß für eine Auswahl (mehr als 5000 Artikel). "
     "Die Übersicht wird ungefiltert gezeigt."
@@ -227,11 +222,8 @@ def _viewer_context(
         "assistant_example_questions": list(EXAMPLE_QUESTIONS),
         **_assistant_viewer_fields(query, hinweis),
     }
-    current = resolve_current_snapshot(db)
     ctx["assistant_available"] = bool(
-        settings.assistant_enabled
-        and current is not None
-        and current.id == snapshot.id
+        settings.assistant_enabled and snapshot.status == "complete"
     )
 
     if snapshot.status == "complete":
@@ -444,17 +436,16 @@ def snapshot_frage(
             ctx,
         )
 
-    current = resolve_current_snapshot(db)
-    if current is None or current.id != snapshot.id:
+    if snapshot.status != "complete":
         ctx = _viewer_context(db, snapshot, user, request)
-        ctx["assistant_hinweis"] = MSG_FRAGE_NOT_CURRENT
+        ctx["assistant_hinweis"] = MSG_NO_SNAPSHOT
         return request.app.state.templates.TemplateResponse(
             request,
             "snapshots/detail.html",
             ctx,
         )
 
-    result = ask(db, user, frage)
+    result = ask(db, user, frage, snapshot=snapshot)
     params: list[tuple[str, str]] = [("frage", str(result.audit_id))]
     for key in ("q", "hauptgruppe", "untergruppe"):
         value = str(request.query_params.get(key) or "").strip()

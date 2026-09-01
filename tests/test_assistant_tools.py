@@ -21,6 +21,7 @@ from app.assistant.schemas import (
     QueryFilter,
     SortSpec,
 )
+from app.assistant.catalog import reset_pinned_snapshot, set_pinned_snapshot
 from app.assistant.tools import (
     artikel_details,
     artikel_suchen,
@@ -196,6 +197,45 @@ def test_resolve_current_snapshot_filters_tenant(db_session, snapshot):
     current = resolve_current_snapshot(db_session)
     assert current is not None
     assert current.id == snapshot.id
+
+
+@patch("app.assistant.tools.settings.weclapp_tenant", TENANT)
+@patch("app.assistant.catalog.settings.weclapp_tenant", TENANT)
+def test_pinned_snapshot_is_queried_instead_of_latest(db_session, snapshot):
+    older = ArticleSnapshot(
+        status="complete",
+        created_by_oid="oid",
+        created_by_name="Tester",
+        weclapp_tenant=TENANT,
+        row_count=1,
+        columns=HEADER,
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    db_session.add(older)
+    db_session.flush()
+    _add_row(
+        db_session,
+        older,
+        0,
+        {
+            "Prosema Artikelnummer": "880.010.0010",
+            "PROSEMA Kurztext": "Alt",
+            "Einheit": "Stk.",
+            "Aktiv": "Ja",
+        },
+        article_number="880.010.0010",
+        article_name="Alt",
+        active=True,
+    )
+    db_session.flush()
+    token = set_pinned_snapshot(older)
+    try:
+        result = artikel_suchen(db_session, ArtikelSuchenArgs())
+    finally:
+        reset_pinned_snapshot(token)
+    numbers = {row["article_number"] for row in result.rows}
+    assert numbers == {"880.010.0010"}
+    assert snapshot.created_at > older.created_at
 
 
 @patch("app.assistant.tools.settings.weclapp_tenant", TENANT)

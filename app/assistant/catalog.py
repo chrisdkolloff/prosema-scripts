@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import time
 import uuid
+from contextvars import ContextVar, Token
 from dataclasses import dataclass
 from typing import Literal
 
@@ -45,6 +46,20 @@ SELECT_CACHE_TTL_SECONDS = 300
 CONFORMING_NUMBER_PATTERN = r"^[0-9]{3}\.[0-9]{3}\.[0-9]{4}$"
 COMMA_NUMBER_PATTERN = r"^-?[0-9]+(,[0-9]+)?$"
 DOT_NUMBER_PATTERN = r"^-?[0-9]+(\.[0-9]+)?$"
+
+_PINNED_SNAPSHOT: ContextVar[ArticleSnapshot | None] = ContextVar(
+    "assistant_pinned_snapshot", default=None
+)
+
+
+def set_pinned_snapshot(snapshot: ArticleSnapshot) -> Token[ArticleSnapshot | None]:
+    """Bind catalogue lookups and query tools to this snapshot for the current task."""
+    return _PINNED_SNAPSHOT.set(snapshot)
+
+
+def reset_pinned_snapshot(token: Token[ArticleSnapshot | None]) -> None:
+    _PINNED_SNAPSHOT.reset(token)
+
 
 _TEXT_OPS: tuple[Operator, ...] = (
     Operator.eq,
@@ -466,17 +481,26 @@ def numeric_rejected_message(col: QueryableColumn) -> str:
     )
 
 
-def _snapshot_for_catalog(session: Session) -> ArticleSnapshot | None:
-    tenant = settings.weclapp_tenant.strip()
+def snapshot_for_query(
+    session: Session, tenant: str | None = None
+) -> ArticleSnapshot | None:
+    pinned = _PINNED_SNAPSHOT.get()
+    if pinned is not None:
+        return pinned
+    tenant_id = (tenant if tenant is not None else settings.weclapp_tenant).strip()
     return session.scalars(
         select(ArticleSnapshot)
         .where(
             ArticleSnapshot.status == "complete",
-            ArticleSnapshot.weclapp_tenant == tenant,
+            ArticleSnapshot.weclapp_tenant == tenant_id,
         )
         .order_by(ArticleSnapshot.created_at.desc())
         .limit(1)
     ).first()
+
+
+def _snapshot_for_catalog(session: Session) -> ArticleSnapshot | None:
+    return snapshot_for_query(session)
 
 
 def _header_keys(session: Session, snapshot: ArticleSnapshot) -> tuple[str, ...]:

@@ -71,7 +71,8 @@ Q: Welche Artikel haben eine VPE grösser als 10?
 
 # Snapshot
 
-The data is a snapshot, not live weclapp, so recently registered articles may be absent.
+The data is the article snapshot the user currently has open, not live weclapp.
+It may be an older pull; recently registered articles may be absent.
 """
 
 

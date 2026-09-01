@@ -1122,7 +1122,7 @@ def test_excel_with_frage_exports_selection_and_records_question(db_session, use
 
 @patch("app.config.settings.weclapp_tenant", TENANT)
 @patch("app.assistant.tools.settings.weclapp_tenant", TENANT)
-def test_post_frage_on_non_current_snapshot_does_not_call_model(db_session, user_client):
+def test_post_frage_on_older_snapshot_calls_ask_with_that_snapshot(db_session, user_client):
     older = _make_complete_snapshot(db_session)
     older.created_at = datetime(2026, 1, 1, tzinfo=UTC)
     newer = _make_complete_snapshot(db_session)
@@ -1130,16 +1130,23 @@ def test_post_frage_on_non_current_snapshot_does_not_call_model(db_session, user
     db_session.commit()
     assert newer.id != older.id
 
+    audit_id = uuid.uuid4()
+    result = MagicMock()
+    result.audit_id = audit_id
+
     with (
         patch("app.config.settings.assistant_enabled", True),
-        patch("app.routes.snapshots.ask") as ask_mock,
+        patch("app.routes.snapshots.ask", return_value=result) as ask_mock,
     ):
         response = user_client.post(
             f"/artikel-uebersicht/{older.id}/frage",
             data={"frage": "Wie viele Artikel?"},
+            follow_redirects=False,
         )
-    ask_mock.assert_not_called()
-    assert response.status_code == 200
+    ask_mock.assert_called_once()
+    assert ask_mock.call_args.kwargs["snapshot"].id == older.id
+    assert response.status_code == 303
+    assert str(older.id) in response.headers["location"]
 
 
 @patch("app.config.settings.weclapp_tenant", TENANT)
@@ -1232,7 +1239,7 @@ def test_frage_card_renders_on_current_snapshot_when_enabled(db_session, user_cl
 
 @patch("app.config.settings.weclapp_tenant", TENANT)
 @patch("app.assistant.tools.settings.weclapp_tenant", TENANT)
-def test_frage_card_hidden_on_archived_snapshot(db_session, user_client):
+def test_frage_card_renders_on_older_snapshot_when_enabled(db_session, user_client):
     older = _make_complete_snapshot(db_session)
     older.created_at = datetime(2026, 1, 1, tzinfo=UTC)
     newer = _make_complete_snapshot(db_session)
@@ -1242,8 +1249,8 @@ def test_frage_card_hidden_on_archived_snapshot(db_session, user_client):
     with patch("app.config.settings.assistant_enabled", True):
         response = user_client.get(f"/artikel-uebersicht/{older.id}")
     assert response.status_code == 200
-    assert 'id="snapshot-frage-card"' not in response.text
-    assert 'name="frage"' not in response.text
+    assert 'id="snapshot-frage-card"' in response.text
+    assert 'name="frage"' in response.text
 
     with patch("app.config.settings.assistant_enabled", True):
         current = user_client.get(f"/artikel-uebersicht/{newer.id}")

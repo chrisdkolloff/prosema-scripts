@@ -22,6 +22,7 @@ from pydantic import BaseModel, ValidationError
 from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
+from app.assistant.catalog import reset_pinned_snapshot, set_pinned_snapshot
 from app.assistant.client import AssistantUnavailable, LLMClient, LLMResponse, ToolCall, get_client
 from app.assistant.prompts import (
     ANSWER_NOW_HINT,
@@ -403,10 +404,15 @@ def _pin_selection(
     return [number for number in fetched if number], False
 
 
-def ask(session: Session, user: SessionUser, question_de: str) -> AssistantResult:
+def ask(
+    session: Session,
+    user: SessionUser,
+    question_de: str,
+    *,
+    snapshot: ArticleSnapshot | None = None,
+) -> AssistantResult:
     started = time.perf_counter()
     audit_id = uuid.uuid4()
-    snapshot: ArticleSnapshot | None = None
     recorded_calls: list[dict[str, Any]] = []
     prompt_tokens = 0
     completion_tokens = 0
@@ -503,236 +509,255 @@ def ask(session: Session, user: SessionUser, question_de: str) -> AssistantResul
     if not settings.assistant_enabled:
         return finish(outcome="unavailable", hinweis_de=MSG_DISABLED, error=MSG_DISABLED)
 
-    snapshot = resolve_current_snapshot(session)
+    tenant = settings.weclapp_tenant.strip()
+    if snapshot is not None and (
+        snapshot.status != "complete" or snapshot.weclapp_tenant != tenant
+    ):
+        snapshot = None
+    if snapshot is None:
+        snapshot = resolve_current_snapshot(session)
     if snapshot is None:
         return finish(outcome="unavailable", hinweis_de=MSG_NO_SNAPSHOT, error=MSG_NO_SNAPSHOT)
 
-    stand_hinweis = (
-        f"Datenstand: Beginn des Abzugs vom {format_snapshot_timestamp(snapshot.created_at)}. "
-        "Der Zeitpunkt ist der Start der Abfrage, nicht deren Abschluss."
-    )
-
-    if not (question_de or "").strip():
-        return finish(
-            outcome="invalid_input",
-            hinweis_de=MSG_EMPTY_QUESTION,
-            datenstand=snapshot.created_at,
-            datenstand_hinweis_de=stand_hinweis,
-            error=MSG_EMPTY_QUESTION,
+    pin_token = set_pinned_snapshot(snapshot)
+    try:
+        stand_hinweis = (
+            f"Datenstand: Beginn des Abzugs vom {format_snapshot_timestamp(snapshot.created_at)}. "
+            "Der Zeitpunkt ist der Start der Abfrage, nicht deren Abschluss."
         )
 
-    schemas = _tool_schemas()
-    system = build_system_prompt(session)
-    messages: list[dict[str, Any]] = [
-        {"role": "user", "content": question_de.strip()},
-    ]
-    provider = settings.assistant_provider
-    client = get_client()
-    last_rows: list[dict[str, Any]] = []
-    last_columns: list[str] = []
-    last_total: int | None = None
-    last_truncated = False
-    last_datenstand = snapshot.created_at
-    last_stand_hinweis = stand_hinweis
-    last_empty_rows = False
-    had_row_returning = False
-    executed_payloads: dict[tuple[str, str], dict[str, Any]] = {}
-    call_counts: dict[tuple[str, str], int] = {}
-    allowed: set[str] = _collect_numbers(snapshot.created_at, question_de)
-
-    def finish_without_answer() -> AssistantResult:
-        # The table alone is more useful to the user than an error page, and this
-        # mirrors the existing answered_unverified behaviour where the prose is
-        # suppressed but the data is still shown.
-        if had_row_returning:
+        if not (question_de or "").strip():
             return finish(
-                outcome="no_answer",
-                answer_de=None,
-                hinweis_de=MSG_NO_ANSWER,
+                outcome="invalid_input",
+                hinweis_de=MSG_EMPTY_QUESTION,
+                datenstand=snapshot.created_at,
+                datenstand_hinweis_de=stand_hinweis,
+                error=MSG_EMPTY_QUESTION,
+            )
+
+        schemas = _tool_schemas()
+        system = build_system_prompt(session)
+        messages: list[dict[str, Any]] = [
+            {"role": "user", "content": question_de.strip()},
+        ]
+        provider = settings.assistant_provider
+        client = get_client()
+        last_rows: list[dict[str, Any]] = []
+        last_columns: list[str] = []
+        last_total: int | None = None
+        last_truncated = False
+        last_datenstand = snapshot.created_at
+        last_stand_hinweis = stand_hinweis
+        last_empty_rows = False
+        had_row_returning = False
+        executed_payloads: dict[tuple[str, str], dict[str, Any]] = {}
+        call_counts: dict[tuple[str, str], int] = {}
+        allowed: set[str] = _collect_numbers(snapshot.created_at, question_de)
+
+        def finish_without_answer() -> AssistantResult:
+            # The table alone is more useful to the user than an error page, and this
+            # mirrors the existing answered_unverified behaviour where the prose is
+            # suppressed but the data is still shown.
+            if had_row_returning:
+                return finish(
+                    outcome="no_answer",
+                    answer_de=None,
+                    hinweis_de=MSG_NO_ANSWER,
+                    rows=last_rows,
+                    columns=last_columns,
+                    total_count=last_total,
+                    truncated=last_truncated,
+                    datenstand=last_datenstand,
+                    datenstand_hinweis_de=last_stand_hinweis,
+                )
+            return finish(
+                outcome="error",
+                hinweis_de=MSG_TURN_BUDGET,
+                datenstand=last_datenstand,
+                datenstand_hinweis_de=last_stand_hinweis,
                 rows=last_rows,
                 columns=last_columns,
                 total_count=last_total,
                 truncated=last_truncated,
-                datenstand=last_datenstand,
-                datenstand_hinweis_de=last_stand_hinweis,
+                error=MSG_TURN_BUDGET,
             )
-        return finish(
-            outcome="error",
-            hinweis_de=MSG_TURN_BUDGET,
-            datenstand=last_datenstand,
-            datenstand_hinweis_de=last_stand_hinweis,
-            rows=last_rows,
-            columns=last_columns,
-            total_count=last_total,
-            truncated=last_truncated,
-            error=MSG_TURN_BUDGET,
-        )
 
-    max_turns = max(1, int(settings.assistant_max_tool_turns))
-    try:
-        for turn_index in range(max_turns):
-            last_turn = turn_index == max_turns - 1
-            parse_hint: str | None = None
-            step: LLMResponse | None = None
-            for attempt in range(2):
-                turn_messages = list(messages)
-                if last_turn:
-                    turn_messages.append({"role": "user", "content": FINAL_TURN_HINT})
-                if parse_hint:
-                    turn_messages.append({"role": "user", "content": parse_hint})
-                step = _next_step(
-                    client,
-                    provider=provider,
-                    system=system,
-                    messages=turn_messages,
-                    schemas=schemas,
-                    tool_choice="none" if last_turn else None,
-                )
-                turns += 1
-                prompt_tokens += step.prompt_tokens
-                completion_tokens += step.completion_tokens
-                if step.model:
-                    model_name = step.model
-                if provider != "openai_compatible":
-                    break
-                try:
-                    answer, calls = _parse_compatible_text(step.text)
-                    step = LLMResponse(
-                        text=answer,
-                        tool_calls=calls,
-                        prompt_tokens=step.prompt_tokens,
-                        completion_tokens=step.completion_tokens,
-                        model=step.model,
-                        raw_finish_reason=step.raw_finish_reason,
+        max_turns = max(1, int(settings.assistant_max_tool_turns))
+        try:
+            for turn_index in range(max_turns):
+                last_turn = turn_index == max_turns - 1
+                parse_hint: str | None = None
+                step: LLMResponse | None = None
+                for attempt in range(2):
+                    turn_messages = list(messages)
+                    if last_turn:
+                        turn_messages.append({"role": "user", "content": FINAL_TURN_HINT})
+                    if parse_hint:
+                        turn_messages.append({"role": "user", "content": parse_hint})
+                    step = _next_step(
+                        client,
+                        provider=provider,
+                        system=system,
+                        messages=turn_messages,
+                        schemas=schemas,
+                        tool_choice="none" if last_turn else None,
                     )
-                    break
-                except ValueError as exc:
-                    parse_hint = PARSE_RETRY_HINT.format(error=exc)
-                    if attempt == 0:
-                        continue
+                    turns += 1
+                    prompt_tokens += step.prompt_tokens
+                    completion_tokens += step.completion_tokens
+                    if step.model:
+                        model_name = step.model
+                    if provider != "openai_compatible":
+                        break
+                    try:
+                        answer, calls = _parse_compatible_text(step.text)
+                        step = LLMResponse(
+                            text=answer,
+                            tool_calls=calls,
+                            prompt_tokens=step.prompt_tokens,
+                            completion_tokens=step.completion_tokens,
+                            model=step.model,
+                            raw_finish_reason=step.raw_finish_reason,
+                        )
+                        break
+                    except ValueError as exc:
+                        parse_hint = PARSE_RETRY_HINT.format(error=exc)
+                        if attempt == 0:
+                            continue
+                        return finish(
+                            outcome="error",
+                            hinweis_de=MSG_PARSE_ERROR,
+                            datenstand=last_datenstand,
+                            datenstand_hinweis_de=last_stand_hinweis,
+                            rows=last_rows,
+                            columns=last_columns,
+                            total_count=last_total,
+                            truncated=last_truncated,
+                            error=str(exc),
+                        )
+                assert step is not None
+
+                if step.tool_calls:
+                    assistant_msg, tool_msgs = _tool_messages(provider, step.tool_calls)
+                    messages.append(assistant_msg)
+                    for call, tool_msg in zip(step.tool_calls, tool_msgs, strict=True):
+                        spec = TOOLS_BY_NAME.get(call.name)
+                        recorded: dict[str, Any] = {
+                            "name": call.name,
+                            "arguments": call.arguments,
+                        }
+                        if spec is None:
+                            payload = {"error": f"Unbekanntes Tool «{call.name}»."}
+                            recorded["error"] = payload["error"]
+                            recorded_calls.append(recorded)
+                            messages.append(_tool_payload_message(provider, tool_msg, payload))
+                            continue
+                        try:
+                            args = spec.args_model.model_validate(call.arguments or {})
+                        except ValidationError as exc:
+                            message = _validation_message(exc)
+                            recorded["error"] = message
+                            recorded_calls.append(recorded)
+                            messages.append(
+                                _tool_payload_message(provider, tool_msg, {"error": message})
+                            )
+                            continue
+                        key = _canonical_tool_key(spec.name, args)
+                        if key in executed_payloads:
+                            call_counts[key] += 1
+                            count = call_counts[key]
+                            logger.info(
+                                "assistant duplicate tool call name=%s repeat_count=%s",
+                                spec.name,
+                                count,
+                            )
+                            cached = executed_payloads[key]
+                            recorded["total_count"] = cached.get("total_count")
+                            recorded_calls.append(recorded)
+                            if count >= 3:
+                                return finish_without_answer()
+                            messages.append(
+                                _tool_payload_message(
+                                    provider, tool_msg, _with_duplicate_note(cached)
+                                )
+                            )
+                            continue
+                        try:
+                            result: ToolResult = spec.handler(session, args)
+                        except ValidationError as exc:
+                            message = _validation_message(exc)
+                            recorded["error"] = message
+                            recorded_calls.append(recorded)
+                            messages.append(
+                                _tool_payload_message(provider, tool_msg, {"error": message})
+                            )
+                            continue
+                        except ValueError as exc:
+                            message = str(exc)
+                            recorded["error"] = message
+                            recorded_calls.append(recorded)
+                            messages.append(
+                                _tool_payload_message(provider, tool_msg, {"error": message})
+                            )
+                            continue
+                        payload = _serialize_tool_result(result)
+                        recorded["total_count"] = result.total_count
+                        recorded_calls.append(recorded)
+                        executed_payloads[key] = payload
+                        call_counts[key] = 1
+                        had_row_returning = True
+                        allowed.update(_collect_numbers(call.arguments, payload, result.total_count))
+                        last_rows = result.rows
+                        last_columns = _columns_for(result.rows)
+                        last_total = result.total_count
+                        last_truncated = result.truncated
+                        last_empty_rows = not result.rows
+                        if spec.name in _SELECTION_TOOLS:
+                            last_selection_filter = args.filters
+                        if result.datenstand is not None:
+                            last_datenstand = result.datenstand
+                        if result.datenstand_hinweis_de:
+                            last_stand_hinweis = result.datenstand_hinweis_de
+                        messages.append(_tool_payload_message(provider, tool_msg, payload))
+                    continue
+
+                text = (step.text or "").strip()
+                if not text:
                     return finish(
                         outcome="error",
-                        hinweis_de=MSG_PARSE_ERROR,
+                        hinweis_de=MSG_EMPTY_ANSWER,
                         datenstand=last_datenstand,
                         datenstand_hinweis_de=last_stand_hinweis,
                         rows=last_rows,
                         columns=last_columns,
                         total_count=last_total,
                         truncated=last_truncated,
-                        error=str(exc),
+                        error=MSG_EMPTY_ANSWER,
                     )
-            assert step is not None
 
-            if step.tool_calls:
-                assistant_msg, tool_msgs = _tool_messages(provider, step.tool_calls)
-                messages.append(assistant_msg)
-                for call, tool_msg in zip(step.tool_calls, tool_msgs, strict=True):
-                    spec = TOOLS_BY_NAME.get(call.name)
-                    recorded: dict[str, Any] = {
-                        "name": call.name,
-                        "arguments": call.arguments,
-                    }
-                    if spec is None:
-                        payload = {"error": f"Unbekanntes Tool «{call.name}»."}
-                        recorded["error"] = payload["error"]
-                        recorded_calls.append(recorded)
-                        messages.append(_tool_payload_message(provider, tool_msg, payload))
-                        continue
-                    try:
-                        args = spec.args_model.model_validate(call.arguments or {})
-                    except ValidationError as exc:
-                        message = _validation_message(exc)
-                        recorded["error"] = message
-                        recorded_calls.append(recorded)
-                        messages.append(
-                            _tool_payload_message(provider, tool_msg, {"error": message})
-                        )
-                        continue
-                    key = _canonical_tool_key(spec.name, args)
-                    if key in executed_payloads:
-                        call_counts[key] += 1
-                        count = call_counts[key]
-                        logger.info(
-                            "assistant duplicate tool call name=%s repeat_count=%s",
-                            spec.name,
-                            count,
-                        )
-                        cached = executed_payloads[key]
-                        recorded["total_count"] = cached.get("total_count")
-                        recorded_calls.append(recorded)
-                        if count >= 3:
-                            return finish_without_answer()
-                        messages.append(
-                            _tool_payload_message(
-                                provider, tool_msg, _with_duplicate_note(cached)
-                            )
-                        )
-                        continue
-                    try:
-                        result: ToolResult = spec.handler(session, args)
-                    except ValidationError as exc:
-                        message = _validation_message(exc)
-                        recorded["error"] = message
-                        recorded_calls.append(recorded)
-                        messages.append(
-                            _tool_payload_message(provider, tool_msg, {"error": message})
-                        )
-                        continue
-                    except ValueError as exc:
-                        message = str(exc)
-                        recorded["error"] = message
-                        recorded_calls.append(recorded)
-                        messages.append(
-                            _tool_payload_message(provider, tool_msg, {"error": message})
-                        )
-                        continue
-                    payload = _serialize_tool_result(result)
-                    recorded["total_count"] = result.total_count
-                    recorded_calls.append(recorded)
-                    executed_payloads[key] = payload
-                    call_counts[key] = 1
-                    had_row_returning = True
-                    allowed.update(_collect_numbers(call.arguments, payload, result.total_count))
-                    last_rows = result.rows
-                    last_columns = _columns_for(result.rows)
-                    last_total = result.total_count
-                    last_truncated = result.truncated
-                    last_empty_rows = not result.rows
-                    if spec.name in _SELECTION_TOOLS:
-                        last_selection_filter = args.filters
-                    if result.datenstand is not None:
-                        last_datenstand = result.datenstand
-                    if result.datenstand_hinweis_de:
-                        last_stand_hinweis = result.datenstand_hinweis_de
-                    messages.append(_tool_payload_message(provider, tool_msg, payload))
-                continue
-
-            text = (step.text or "").strip()
-            if not text:
+                ok, unaccounted = verify_numbers(text, allowed)
+                if not ok:
+                    logger.warning(
+                        "assistant answer unverified audit_id=%s unaccounted=%s answer=%s",
+                        audit_id,
+                        sorted(unaccounted),
+                        text,
+                    )
+                    return finish(
+                        outcome="answered_unverified",
+                        answer_de=None,
+                        hinweis_de=MSG_UNVERIFIED,
+                        rows=last_rows,
+                        columns=last_columns,
+                        total_count=last_total,
+                        truncated=last_truncated,
+                        datenstand=last_datenstand,
+                        datenstand_hinweis_de=last_stand_hinweis,
+                    )
+                outcome: Outcome = "no_result" if last_empty_rows else "answered"
                 return finish(
-                    outcome="error",
-                    hinweis_de=MSG_EMPTY_ANSWER,
-                    datenstand=last_datenstand,
-                    datenstand_hinweis_de=last_stand_hinweis,
-                    rows=last_rows,
-                    columns=last_columns,
-                    total_count=last_total,
-                    truncated=last_truncated,
-                    error=MSG_EMPTY_ANSWER,
-                )
-
-            ok, unaccounted = verify_numbers(text, allowed)
-            if not ok:
-                logger.warning(
-                    "assistant answer unverified audit_id=%s unaccounted=%s answer=%s",
-                    audit_id,
-                    sorted(unaccounted),
-                    text,
-                )
-                return finish(
-                    outcome="answered_unverified",
-                    answer_de=None,
-                    hinweis_de=MSG_UNVERIFIED,
+                    outcome=outcome,
+                    answer_de=text,
                     rows=last_rows,
                     columns=last_columns,
                     total_count=last_total,
@@ -740,34 +765,25 @@ def ask(session: Session, user: SessionUser, question_de: str) -> AssistantResul
                     datenstand=last_datenstand,
                     datenstand_hinweis_de=last_stand_hinweis,
                 )
-            outcome: Outcome = "no_result" if last_empty_rows else "answered"
+
+            return finish_without_answer()
+        except AssistantUnavailable as exc:
+            message = str(exc) or MSG_GENERIC_ERROR
             return finish(
-                outcome=outcome,
-                answer_de=text,
-                rows=last_rows,
-                columns=last_columns,
-                total_count=last_total,
-                truncated=last_truncated,
-                datenstand=last_datenstand,
-                datenstand_hinweis_de=last_stand_hinweis,
+                outcome="unavailable",
+                hinweis_de=message,
+                datenstand=snapshot.created_at if snapshot is not None else None,
+                datenstand_hinweis_de=stand_hinweis,
+                error=message,
             )
-
-        return finish_without_answer()
-    except AssistantUnavailable as exc:
-        message = str(exc) or MSG_GENERIC_ERROR
-        return finish(
-            outcome="unavailable",
-            hinweis_de=message,
-            datenstand=snapshot.created_at if snapshot is not None else None,
-            datenstand_hinweis_de=stand_hinweis,
-            error=message,
-        )
-    except Exception as exc:
-        logger.exception("assistant ask failed")
-        return finish(
-            outcome="error",
-            hinweis_de=MSG_GENERIC_ERROR,
-            datenstand=snapshot.created_at if snapshot is not None else None,
-            datenstand_hinweis_de=stand_hinweis,
-            error=traceback.format_exc() or str(exc),
-        )
+        except Exception as exc:
+            logger.exception("assistant ask failed")
+            return finish(
+                outcome="error",
+                hinweis_de=MSG_GENERIC_ERROR,
+                datenstand=snapshot.created_at if snapshot is not None else None,
+                datenstand_hinweis_de=stand_hinweis,
+                error=traceback.format_exc() or str(exc),
+            )
+    finally:
+        reset_pinned_snapshot(pin_token)

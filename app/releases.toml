@@ -1,7 +1,16 @@
 # PROSEMA release history — edit this file to bump the version and document changes.
 # The top-level `version` is shown in the site header; `[[releases]]` entries appear on /changelog.
 
-version = "1.1.10"
+version = "1.1.11"
+
+[[releases]]
+version = "1.1.11"
+date = "2026-09-01"
+summary = "Implement snapshot pinning mechanism and enhance query handling. Introduce ContextVar for pinned snapshots, allowing queries to utilize the currently viewed snapshot during assistant interactions. Update the `ask` function to accept a snapshot parameter and adjust related functions to ensure correct snapshot resolution. Modify tests to validate the new behavior of querying older snapshots and ensure proper functionality in various scenarios."
+changes = [
+  "Implement snapshot pinning mechanism and enhance query handling. Introduce ContextVar for pinned snapshots, allowing queries to utilize the currently viewed snapshot during assistant interactions. Update the `ask` function to accept a snapshot parameter and adjust related functions to ensure correct snapshot resolution. Modify tests to validate the new behavior of querying older snapshots and ensure proper functionality in various scenarios.",
+]
+
 
 [[releases]]
 version = "1.1.10"

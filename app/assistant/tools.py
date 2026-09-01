@@ -1,4 +1,8 @@
-"""Read-only query tools over the current article snapshot."""
+"""Read-only query tools over a tenant article snapshot.
+
+By default this is the latest complete snapshot. During ``ask()`` the viewed
+snapshot is pinned so older Artikelübersichten query their own rows.
+"""
 
 from __future__ import annotations
 
@@ -23,6 +27,7 @@ from app.assistant.catalog import (
     is_not_empty_expression,
     numeric_expression,
     resolve_key,
+    snapshot_for_query,
     untergruppe_code_expression,
     volltext_expression,
 )
@@ -60,21 +65,12 @@ class ToolResult:
 
 
 def resolve_current_snapshot(session: Session) -> ArticleSnapshot | None:
-    """Latest complete snapshot for this tenant.
+    """Complete snapshot for this query: pinned if set, else the latest for the tenant.
 
     Do not use ``latest_completed_snapshot`` from ``app.numbering_high_water``:
     that helper does not filter by tenant and exists for numbering, not this query layer.
     """
-    tenant = settings.weclapp_tenant.strip()
-    return session.scalars(
-        select(ArticleSnapshot)
-        .where(
-            ArticleSnapshot.status == "complete",
-            ArticleSnapshot.weclapp_tenant == tenant,
-        )
-        .order_by(ArticleSnapshot.created_at.desc())
-        .limit(1)
-    ).first()
+    return snapshot_for_query(session, settings.weclapp_tenant)
 
 
 def _datenstand_hinweis(snapshot: ArticleSnapshot) -> str:
