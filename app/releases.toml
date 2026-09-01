@@ -1,7 +1,16 @@
 # PROSEMA release history — edit this file to bump the version and document changes.
 # The top-level `version` is shown in the site header; `[[releases]]` entries appear on /changelog.
 
-version = "1.1.11"
+version = "1.1.12"
+
+[[releases]]
+version = "1.1.12"
+date = "2026-09-01"
+summary = "Update article registration and snapshot overview templates for clarity and improved user guidance. Revise text to better describe article import and registration processes, and enhance snapshot overview description for user engagement."
+changes = [
+  "Update article registration and snapshot overview templates for clarity and improved user guidance. Revise text to better describe article import and registration processes, and enhance snapshot overview description for user engagement.",
+]
+
 
 [[releases]]
 version = "1.1.11"

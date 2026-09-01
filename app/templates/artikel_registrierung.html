@@ -15,8 +15,7 @@
   </div>
   {% endif %}
   <p class="text-body-secondary">
-    Lieferanten-Excel oder CSV hochladen, prüfen, freigeben und nach weclapp senden —
-    oder Zeilen direkt im Browser erfassen.
+    Erfasst neue Artikel über die Importdatei oder direkt im Browser. Prüft, gibt frei und registriert schliesslich die neuen Artikel in weclapp.
   </p>
 
   {% if error %}
@@ -35,14 +34,10 @@
       <p class="mb-2">
         Vorlage v{{ template_version }} · Stand {{ template_stand }}
       </p>
-      <div class="d-flex flex-wrap gap-2 mb-2">
-        <a class="btn btn-outline-secondary" href="/artikel-registrierung/vorlage">Vorlage herunterladen</a>
+      <div class="d-flex flex-wrap gap-2 mb-0">
+        <a class="btn btn-outline-secondary" href="/artikel-registrierung/vorlage">Artikelregistrierungsvorlage herunterladen</a>
         <a class="btn btn-outline-secondary" href="#felduebersicht">Feldübersicht</a>
       </div>
-      <p class="text-body-secondary small mb-0">
-        Die Spaltenreihenfolge spielt keine Rolle — die Spaltenüberschriften
-        müssen mit der Vorlage übereinstimmen.
-      </p>
     </div>
   </div>
 
