@@ -69,7 +69,7 @@ Outcome = Literal[
     "unavailable",
 ]
 
-MSG_DISABLED = "Der Artikel-Assistent ist derzeit nicht aktiv."
+MSG_DISABLED = f"{settings.assistant_name} ist derzeit nicht aktiv."
 MSG_NO_SNAPSHOT = (
     "Es liegt noch kein abgeschlossener Artikel-Snapshot vor. "
     "Bitte zuerst eine Artikelübersicht abfragen."
@@ -78,7 +78,7 @@ MSG_TURN_BUDGET = (
     "Die Frage konnte nicht innerhalb der zulässigen Schritte beantwortet werden."
 )
 MSG_NO_ANSWER = (
-    "Es konnte keine Zusammenfassung erzeugt werden. "
+    f"{settings.assistant_name} konnte keine Zusammenfassung erzeugen. "
     "Stattdessen wird das Rohresultat gezeigt."
 )
 MSG_DUPLICATE_CALL = (

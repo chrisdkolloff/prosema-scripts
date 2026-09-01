@@ -263,7 +263,7 @@ def _row_payload(session: Session, row: ArticleSnapshotRow) -> dict[str, Any]:
         get_column("Untergruppe"),
         get_column("Einheit"),
         get_column("Nettogewicht kg"),
-        get_column("Verkaufspreis €, BE"),
+        get_column("Nettoverkaufspreis CHF"),
         get_column("Einkaufspreis EUR netto"),
         get_column("Kategorie"),
         get_column("Lieferantenartikelnummer"),

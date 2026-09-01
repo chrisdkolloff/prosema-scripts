@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from app.assistant.examples import EXAMPLE_QUESTIONS
 from app.assistant.service import MSG_UNVERIFIED
 from app.auth import get_current_user
+from app.config import settings
 from app.db import engine, get_db
 from app.jobs import HANDLERS
 from app.main import app
@@ -442,7 +443,20 @@ def test_snapshot_column_title_matches_registration_where_applicable():
     assert snapshot_column_title("weclapp Aktiv") == "Aktiv"
     assert snapshot_column_title("Artikelnr.") == "Lieferantenartikelnummer"
     assert snapshot_column_title("Einkaufspreis EUR netto") == "Einkaufspreis EUR netto"
+    assert snapshot_column_title("Nettoverkaufspreis CHF") == "Nettoverkaufspreis CHF"
+    assert snapshot_column_title("Verkaufspreis €, BE") == "Nettoverkaufspreis CHF"
     assert snapshot_column_title("Legacy-Spalte") == "Legacy-Spalte"
+
+
+def test_apply_master_column_renames_rewrites_legacy_price_header():
+    from scripts.weclapp.master_columns import apply_master_column_renames
+
+    headers, rows = apply_master_column_renames(
+        ["Prosema Artikelnummer", "Verkaufspreis €, BE"],
+        [{"Prosema Artikelnummer": "1", "Verkaufspreis €, BE": "9.00"}],
+    )
+    assert headers == ["Prosema Artikelnummer", "Nettoverkaufspreis CHF"]
+    assert rows == [{"Prosema Artikelnummer": "1", "Nettoverkaufspreis CHF": "9.00"}]
 
 
 def test_flatten_uses_registration_column_keys_and_titles():
@@ -464,6 +478,7 @@ def test_grid_and_excel_show_registration_titles_for_historic_keys(db_session):
         {"key": "PROSEMA Langtext", "title": "PROSEMA Langtext", "width": 280},
         {"key": "Einheit", "title": "Einheit", "width": 90},
         {"key": "Einkaufspreis EUR netto", "title": "Einkaufspreis EUR netto", "width": 150},
+        {"key": "Verkaufspreis €, BE", "title": "Verkaufspreis €, BE", "width": 140},
     ]
     data = {
         "Prosema Artikelnummer": "010.020.0010",
@@ -471,6 +486,7 @@ def test_grid_and_excel_show_registration_titles_for_historic_keys(db_session):
         "PROSEMA Langtext": "Lang",
         "Einheit": "Stk.",
         "Einkaufspreis EUR netto": "1.00",
+        "Verkaufspreis €, BE": "2.50",
     }
     snapshot = ArticleSnapshot(
         status="complete",
@@ -502,11 +518,12 @@ def test_grid_and_excel_show_registration_titles_for_historic_keys(db_session):
         "Prosema-Langtext",
         "Einheit",
         "Einkaufspreis EUR netto",
+        "Nettoverkaufspreis CHF",
     ]
     config = build_grid_config(snapshot, [row])
     assert config["fields"] == [col["key"] for col in stored_columns]
     assert [col["title"] for col in config["columns"]] == expected_titles
-    assert config["data"] == [["010.020.0010", "Testname", "Lang", "Stk.", "1.00"]]
+    assert config["data"] == [["010.020.0010", "Testname", "Lang", "Stk.", "1.00", "2.50"]]
 
     wb = build_excel_workbook(snapshot, [row], SnapshotFilters())
     ws = wb["Artikel"]
@@ -1188,7 +1205,10 @@ def test_frage_card_renders_on_current_snapshot_when_enabled(db_session, user_cl
     assert response.status_code == 200
     assert 'id="snapshot-frage-card"' in response.text
     assert 'name="frage"' in response.text
-    assert "Stellen Sie eine Frage zur Artikelliste." in response.text
+    assert (
+        f"Stell {settings.assistant_name} eine Frage zur Artikelliste."
+        in response.text
+    )
     assert 'id="snapshot-frage-examples"' in response.text
     examples = json.loads(
         re.search(
@@ -1261,7 +1281,7 @@ def test_frage_banner_shows_question_timestamp_and_count(db_session, user_client
     assert "alert-info" in response.text
     assert "Auswahl aus der Frage vom" in response.text
     assert "«Welche Artikel von Dural?»" in response.text
-    assert "2 Artikel ausgewählt." in response.text
+    assert f"{settings.assistant_name} hat 2 Artikel gefunden." in response.text
     assert "Auswahl durch die Frage" in response.text
     match = re.search(r'id="snapshot-frage"[^>]*value="([^"]*)"', response.text)
     assert match is not None
@@ -1288,7 +1308,7 @@ def test_frage_banner_unverified_is_warning_without_empty_prose(
     assert response.status_code == 200
     assert "alert-warning" in response.text
     assert MSG_UNVERIFIED in response.text
-    assert "1 Artikel ausgewählt." in response.text
+    assert f"{settings.assistant_name} hat 1 Artikel gefunden." in response.text
     assert "«Welche Artikel?»" in response.text
     banner = response.text.split('id="snapshot-frage-banner"', 1)[1]
     banner = banner.split("</div>", 2)[0]
@@ -1310,7 +1330,7 @@ def test_frage_banner_truncated_explains_no_selection(db_session, user_client):
     assert response.status_code == 200
     assert "Das Ergebnis ist zu gross, um es als Auswahl zu setzen" in response.text
     assert "Es ist keine Auswahl aktiv." in response.text
-    assert "Stellen Sie eine engere Frage." in response.text
+    assert "Stell eine engere Frage." in response.text
     assert "Artikel ausgewählt" not in response.text
     assert "Auswahl durch die Frage" not in response.text
 

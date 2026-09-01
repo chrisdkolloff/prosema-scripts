@@ -38,10 +38,10 @@ def test_load_questions_parses_new_fields():
     questions = {q.id: q for q in load_questions(QUESTIONS_PATH)}
     teuerste = questions["teuerste-duschsysteme"].expect
     assert teuerste.score_sort is True
-    assert teuerste.sort_column == "Verkaufspreis €, BE"
+    assert teuerste.sort_column == "Nettoverkaufspreis CHF"
     assert teuerste.sort_direction == "desc"
     assert teuerste.max_conditions == 1
-    assert teuerste.forbid_columns == ["Verkaufspreis €, BE"]
+    assert teuerste.forbid_columns == ["Nettoverkaufspreis CHF"]
     grouped = questions["count-by-hauptgruppe"].expect
     assert grouped.score_group_by is True
     assert grouped.group_by == "Hauptgruppe"
@@ -124,10 +124,10 @@ def test_invented_price_filter_fails_forbid_and_max_conditions():
         columns=["Hauptgruppe"],
         operators=["eq"],
         score_sort=True,
-        sort_column="Verkaufspreis €, BE",
+        sort_column="Nettoverkaufspreis CHF",
         sort_direction="desc",
         max_conditions=1,
-        forbid_columns=["Verkaufspreis €, BE"],
+        forbid_columns=["Nettoverkaufspreis CHF"],
     )
     score = score_question(
         question,
@@ -140,13 +140,13 @@ def test_invented_price_filter_fails_forbid_and_max_conditions():
                         "conditions": [
                             {"column": "Hauptgruppe", "operator": "eq", "value": "Duschsysteme"},
                             {
-                                "column": "Verkaufspreis €, BE",
+                                "column": "Nettoverkaufspreis CHF",
                                 "operator": "gt",
                                 "value": "0",
                             },
                         ]
                     },
-                    "sort": {"column": "Verkaufspreis €, BE", "direction": "desc"},
+                    "sort": {"column": "Nettoverkaufspreis CHF", "direction": "desc"},
                 },
             )
         ],
@@ -182,7 +182,7 @@ def test_sort_direction_optional():
     question = _q(
         tools=["artikel_suchen"],
         score_sort=True,
-        sort_column="Verkaufspreis €, BE",
+        sort_column="Nettoverkaufspreis CHF",
     )
     score = score_question(
         question,
@@ -190,7 +190,7 @@ def test_sort_direction_optional():
         tool_calls=[
             _call(
                 "artikel_suchen",
-                {"sort": {"column": "Verkaufspreis €, BE", "direction": "desc"}},
+                {"sort": {"column": "Nettoverkaufspreis CHF", "direction": "desc"}},
             )
         ],
         total_count=1,

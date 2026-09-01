@@ -194,11 +194,11 @@
     operators:
       - eq
     sort:
-      column: "Verkaufspreis €, BE"
+      column: "Nettoverkaufspreis CHF"
       direction: desc
     max_conditions: 1
     forbid_columns:
-      - "Verkaufspreis €, BE"
+      - "Nettoverkaufspreis CHF"
   notes: >
     Needs a sort on Verkaufspreis desc, not a filter. Tests whether "teuerste"
     becomes sort rather than an invented threshold.

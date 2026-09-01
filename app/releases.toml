@@ -1,7 +1,16 @@
 # PROSEMA release history — edit this file to bump the version and document changes.
 # The top-level `version` is shown in the site header; `[[releases]]` entries appear on /changelog.
 
-version = "1.1.5"
+version = "1.1.6"
+
+[[releases]]
+version = "1.1.6"
+date = "2026-09-01"
+summary = "1.1.6: Introduce assistant name configuration and update references throughout the application. Add a new setting for the assistant's name in the configuration, enhancing personalization. Update templates, prompts, and messages to utilize the configured assistant name, improving user interaction. Refactor legacy price headers to \"Nettoverkaufspreis CHF\" and ensure consistent handling across various components. Modify tests to validate the new assistant name functionality and legacy header handling."
+changes = [
+  "1.1.6: Introduce assistant name configuration and update references throughout the application. Add a new setting for the assistant's name in the configuration, enhancing personalization. Update templates, prompts, and messages to utilize the configured assistant name, improving user interaction. Refactor legacy price headers to \"Nettoverkaufspreis CHF\" and ensure consistent handling across various components. Modify tests to validate the new assistant name functionality and legacy header handling.",
+]
+
 
 [[releases]]
 version = "1.1.5"

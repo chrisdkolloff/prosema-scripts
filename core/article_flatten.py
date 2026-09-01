@@ -13,7 +13,7 @@ from core.article_payload import (
     get_row_value,
 )
 from scripts.weclapp.master_columns import (
-    EXPORT_COLUMNS,
+    MASTER_COLUMN_RENAMES,
     article_to_master_row,
     build_lookups,
 )
@@ -107,7 +107,8 @@ _COLUMN_WIDTHS: dict[str, int] = {
     "Produkt-ID (Prosema)": 160,
     "Varianten-ID (Prosema)": 160,
     "Einkaufspreis EUR netto": 150,
-    "Verkaufspreis €, BE": 140,
+    "Nettoverkaufspreis CHF": 170,
+    "Verkaufspreis €, BE": 170,
     "Einkaufspreis Prosema": 150,
     "Verkaufspreis": 130,
     "weclapp Artikel-ID": 140,
@@ -180,6 +181,9 @@ def snapshot_column_title(key: str, stored_title: str | None = None) -> str:
     if mapped:
         mapped_field = find_field(mapped)
         return mapped_field.label if mapped_field is not None else mapped
+    renamed = MASTER_COLUMN_RENAMES.get(key)
+    if renamed:
+        return renamed
     return display_label(stored_title or key) or key
 
 

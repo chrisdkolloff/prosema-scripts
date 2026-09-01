@@ -26,8 +26,8 @@ MASTER_COLUMNS = {
     "Lieferantenartikelnummer": "Artikelnr.",
     "Lieferanten Firmenname": "Lieferanten Firmenname",
     "LIEFERANTENNUMMER": "Lieferantennummer",
-    "Bruttokaufpreis": "Verkaufspreis €, BE",
-    "Bruttopreis des zugehörigen Verkaufsartikels": "Verkaufspreis €, BE",
+    "Bruttokaufpreis": "Nettoverkaufspreis CHF",
+    "Bruttopreis des zugehörigen Verkaufsartikels": "Nettoverkaufspreis CHF",
     "Verkaufsartikel-Nummer": "Prosema Artikelnummer",
     "Artikel-Mengeneinheit": "Basiseinheitencode",
     "Matchcode": MATCHCODE_SOURCE_COLUMN,
@@ -193,11 +193,14 @@ def format_output_value(column: str, value: object) -> str:
 
 
 def read_master_rows(path: Path) -> list[dict[str, object]]:
+    from scripts.weclapp.master_columns import MASTER_COLUMN_RENAMES
+
     wb = load_workbook(path, read_only=True, data_only=True)
     ws = wb.active
     row_iter = ws.iter_rows(values_only=True)
     header_row = next(row_iter)
     headers = ["" if cell is None else str(cell) for cell in header_row]
+    headers = [MASTER_COLUMN_RENAMES.get(name, name) for name in headers]
     required_columns = (
         *MASTER_COLUMNS.values(),
         RABATT_CATEGORY_COLUMN,

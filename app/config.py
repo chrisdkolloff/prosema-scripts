@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     assistant_timeout_seconds: int = 20
     assistant_max_tool_turns: int = 4
     assistant_strict_schema: bool = True
+    assistant_name: str = "Noa"
 
     @field_validator("environment", mode="before")
     @classmethod

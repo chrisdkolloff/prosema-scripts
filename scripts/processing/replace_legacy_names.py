@@ -287,7 +287,7 @@ def format_legacy_errors(errors: list[LegacyNormalizationError]) -> str:
         lines.append("".join(parts))
 
     lines.append(
-        "\nBitte korrigieren Sie die Werte in input.xlsx oder ergänzen Sie die Ersetzungstabellen."
+        "\nBitte korrigiere die Werte in input.xlsx oder ergänze die Ersetzungstabellen."
     )
     return "\n".join(lines)
 

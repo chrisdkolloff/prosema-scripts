@@ -46,7 +46,7 @@ MSG_FRAGE_OTHER_USER = "Diese Frage gehört zu einem anderen Benutzer."
 MSG_FRAGE_OTHER_SNAPSHOT = "Diese Frage bezieht sich auf einen anderen Datenstand."
 MSG_FRAGE_NOT_CURRENT = (
     "Fragen sind nur auf dem neuesten Datenstand möglich. "
-    "Bitte die aktuelle Artikelübersicht öffnen."
+    "Öffne bitte die aktuelle Artikelübersicht."
 )
 MSG_SELECTION_TRUNCATED = (
     "Die Treffermenge ist zu groß für eine Auswahl (mehr als 5000 Artikel). "

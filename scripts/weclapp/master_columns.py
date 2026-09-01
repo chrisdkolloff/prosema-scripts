@@ -38,7 +38,7 @@ MASTER_COLUMNS: tuple[str, ...] = (
     "GTIN (EAN-Nummer)",
     "Zolltarifnummer",
     "Einkaufspreis EUR netto",
-    "Verkaufspreis €, BE",
+    "Nettoverkaufspreis CHF",
     "Einkaufspreis Prosema",
     "Verkaufspreis",
     "Verkaufspreis o. Verkn.",
@@ -74,6 +74,43 @@ WECLAPP_EXTRA_COLUMNS: tuple[str, ...] = (
 )
 
 EXPORT_COLUMNS: tuple[str, ...] = MASTER_COLUMNS + WECLAPP_EXTRA_COLUMNS
+
+# Historic master-list headers still present in older files and snapshots.
+MASTER_COLUMN_RENAMES: dict[str, str] = {
+    "Verkaufspreis €, BE": "Nettoverkaufspreis CHF",
+}
+
+
+def apply_master_column_renames(
+    headers: list[str],
+    rows: list[dict[str, str]],
+) -> tuple[list[str], list[dict[str, str]]]:
+    """Rewrite historic headers onto the current master-list names."""
+    if not MASTER_COLUMN_RENAMES:
+        return headers, rows
+    if not any(
+        old in headers or any(old in row for row in rows)
+        for old in MASTER_COLUMN_RENAMES
+    ):
+        return headers, rows
+    seen: set[str] = set()
+    new_headers: list[str] = []
+    for header in headers:
+        current = MASTER_COLUMN_RENAMES.get(header, header)
+        if current in seen:
+            continue
+        new_headers.append(current)
+        seen.add(current)
+    remapped_rows: list[dict[str, str]] = []
+    for row in rows:
+        out: dict[str, str] = {}
+        for key, value in row.items():
+            current = MASTER_COLUMN_RENAMES.get(key, key)
+            if current not in out or not out[current]:
+                out[current] = value
+        remapped_rows.append(out)
+    return new_headers, remapped_rows
+
 
 # (display column name, source column in raw export, or None for empty column)
 _EXPORT_DISPLAY_MAPPING: tuple[tuple[str, str | None], ...] = (
@@ -160,6 +197,9 @@ def master_list_rows(rows: list[dict[str, str]]) -> list[dict[str, str]]:
     normalized: list[dict[str, str]] = []
     for row in rows:
         master = {column: row.get(column, "") for column in MASTER_COLUMNS}
+        for old, new in MASTER_COLUMN_RENAMES.items():
+            if not master.get(new) and row.get(old):
+                master[new] = row[old]
         if master["GTIN (EAN-Nummer)"]:
             master["GTIN (EAN-Nummer)"] = _format_ean(master["GTIN (EAN-Nummer)"])
         normalized.append(master)
@@ -424,7 +464,7 @@ def article_to_master_row(
     row["Zolltarifnummer"] = lookups.customs_tariff_name(
         str(article.get("customsTariffNumberId") or "")
     )
-    row["Verkaufspreis €, BE"] = _first_price(
+    row["Nettoverkaufspreis CHF"] = _first_price(
         article.get("articlePrices"),
         sales_channel="GROSS1",
     )
@@ -496,7 +536,7 @@ def flat_weclapp_csv_to_master_row(row: dict[str, str]) -> dict[str, str]:
     if row.get("articleNetWeight"):
         master["Nettogewicht kg"] = _format_decimal(row["articleNetWeight"])
     if row.get("articlePrices"):
-        master["Verkaufspreis €, BE"] = _first_price(json.loads(row["articlePrices"]))
+        master["Nettoverkaufspreis CHF"] = _first_price(json.loads(row["articlePrices"]))
     if row.get("active", "").lower() == "true":
         master["Datenstatus"] = "Aktiv"
         master["weclapp Aktiv"] = "Ja"
@@ -558,6 +598,7 @@ def ensure_export_columns(
     rows: list[dict[str, str]],
 ) -> tuple[list[str], list[dict[str, str]]]:
     """Ensure weclapp export snapshots expose all export columns in order."""
+    headers, rows = apply_master_column_renames(headers, rows)
     header_set = set(headers)
     ordered = [column for column in EXPORT_COLUMNS if column in header_set]
     ordered.extend(header for header in headers if header not in ordered)

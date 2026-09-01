@@ -387,10 +387,11 @@ COLUMNS: tuple[QueryableColumn, ...] = (
         description_de="Nettogewicht in Kilogramm. Dezimaltrennzeichen ist das Komma.",
     ),
     _q(
-        "Verkaufspreis €, BE",
+        "Nettoverkaufspreis CHF",
         type="number",
         numeric_format="dot",
-        description_de="Verkaufspreis in Euro. Dezimaltrennzeichen ist der Punkt.",
+        aliases=("Verkaufspreis €, BE",),
+        description_de="Nettoverkaufspreis in CHF. Dezimaltrennzeichen ist der Punkt.",
     ),
     _q(
         "Einkaufspreis EUR netto",

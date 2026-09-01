@@ -267,3 +267,12 @@ def test_column_expression_raises_for_virtual():
     assert set(VOLLTEXT_COLUMNS) <= {c.name for c in COLUMNS}
     with pytest.raises(ValueError, match="virtuelle Spalte «Volltext»"):
         column_expression(None, col)  # session unused; virtual has no expression
+
+
+def test_nettoverkaufspreis_keeps_legacy_alias():
+    col = get_column("Nettoverkaufspreis CHF")
+    assert col is not None
+    assert col.name == "Nettoverkaufspreis CHF"
+    assert get_column("Verkaufspreis €, BE") is col
+    assert "Verkaufspreis €, BE" in col.aliases
+    assert "CHF" in col.description_de

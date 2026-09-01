@@ -45,6 +45,7 @@ templates = Jinja2Templates(directory=str(_APP_DIR / "templates"))
 templates.env.auto_reload = settings.environment != "production"
 _version_info = load_version_info()
 templates.env.globals["app_version"] = _version_info.version
+templates.env.globals["assistant_name"] = settings.assistant_name
 
 _worker_thread: threading.Thread | None = None
 

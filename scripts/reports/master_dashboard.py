@@ -139,6 +139,7 @@ def load_master_data(path: Path) -> tuple[list[str], list[dict[str, str]]]:
     if suffix == ".csv":
         from scripts.weclapp.master_columns import (
             EXPORT_COLUMNS,
+            apply_master_column_renames,
             flat_weclapp_csv_to_master_row,
             is_master_format,
             is_raw_weclapp_export,
@@ -150,11 +151,13 @@ def load_master_data(path: Path) -> tuple[list[str], list[dict[str, str]]]:
             headers = list(EXPORT_COLUMNS)
         elif is_master_format(headers):
             headers = _ordered_master_headers(headers)
-        return headers, rows
+        return apply_master_column_renames(headers, rows)
 
     if suffix in {".xlsx", ".xlsm", ".xltx", ".xltm"}:
+        from scripts.weclapp.master_columns import apply_master_column_renames
+
         headers, rows = load_xlsx_data(path)
-        return headers, rows
+        return apply_master_column_renames(headers, rows)
 
     raise ValueError(
         f"Nicht unterstütztes Dateiformat: {path.suffix}. "

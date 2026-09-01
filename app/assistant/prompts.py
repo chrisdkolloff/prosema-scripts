@@ -11,6 +11,7 @@ import json
 from sqlalchemy.orm import Session
 
 from app.assistant.catalog import render_for_prompt
+from app.config import settings
 
 _JSON_PROTOCOL = """
 # Response format (openai_compatible only)
@@ -76,7 +77,7 @@ The data is a snapshot, not live weclapp, so recently registered articles may be
 
 def build_system_prompt(session: Session) -> str:
     catalogue = render_for_prompt(session)
-    return f"""You are the PROSEMA article assistant. Answer questions about PROSEMA's registered articles using only the provided tools. Do not use any other knowledge.
+    return f"""You are {settings.assistant_name}, the PROSEMA article assistant. Answer questions about PROSEMA's registered articles using only the provided tools. Do not use any other knowledge.
 
 # Column catalogue
 

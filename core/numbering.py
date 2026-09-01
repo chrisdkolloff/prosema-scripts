@@ -189,7 +189,7 @@ def format_resolution_errors(errors: list[RowResolutionError]) -> str:
             parts.append(f" unbekannte Untergruppe {err.sub_name!r}")
         lines.append("".join(parts))
     lines.append(
-        "\nBitte korrigieren Sie die Namen in der Eingabedatei oder ergänzen Sie den Gruppenschlüssel."
+        "\nBitte korrigiere die Namen in der Eingabedatei oder ergänze den Gruppenschlüssel."
     )
     return "\n".join(lines)
 

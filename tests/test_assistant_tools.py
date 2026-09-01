@@ -41,7 +41,7 @@ HEADER = [
         "Prosema Artikelnummer",
         "PROSEMA Kurztext",
         "Nettogewicht kg",
-        "Verkaufspreis €, BE",
+        "Nettoverkaufspreis CHF",
         "Einkaufspreis EUR netto",
         "Einheit",
         "Hauptgruppe",
@@ -108,7 +108,7 @@ def snapshot(db_session):
             "Prosema Artikelnummer": "881.010.0010",
             "PROSEMA Kurztext": "Alpha",
             "Nettogewicht kg": "1,50",
-            "Verkaufspreis €, BE": "12.50",
+            "Nettoverkaufspreis CHF": "12.50",
             "Einkaufspreis EUR netto": "8.00",
             "Einheit": "Stk.",
             "Hauptgruppe": "AssistHG",
@@ -129,7 +129,7 @@ def snapshot(db_session):
             "Prosema Artikelnummer": "881.010.0020",
             "PROSEMA Kurztext": "Beta",
             "Nettogewicht kg": "10",
-            "Verkaufspreis €, BE": "3.00",
+            "Nettoverkaufspreis CHF": "3.00",
             "Einheit": "lfm",
             "Hauptgruppe": "AssistHG",
             "Untergruppe": "AssistUG",
@@ -149,7 +149,7 @@ def snapshot(db_session):
             "Prosema Artikelnummer": "881.010.0030",
             "PROSEMA Kurztext": "Gamma",
             "Nettogewicht kg": "abc",
-            "Verkaufspreis €, BE": "1.00",
+            "Nettoverkaufspreis CHF": "1.00",
             "Einheit": "Stk.",
             "Hauptgruppe": "AssistHG",
             "Untergruppe": "AssistUG",
@@ -167,7 +167,7 @@ def snapshot(db_session):
             "Prosema Artikelnummer": "LEGACY",
             "PROSEMA Kurztext": "Legacy",
             "Nettogewicht kg": "0,10",
-            "Verkaufspreis €, BE": "0.50",
+            "Nettoverkaufspreis CHF": "0.50",
             "Einheit": "Stk.",
             "Aktiv": "Ja",
         },
@@ -297,7 +297,7 @@ def test_dot_price_and_absent_einkauf(db_session, snapshot):
             filters=QueryFilter(
                 conditions=[
                     FilterCondition(
-                        column="Verkaufspreis €, BE", operator=Operator.lt, value="5"
+                        column="Nettoverkaufspreis CHF", operator=Operator.lt, value="5"
                     )
                 ]
             )

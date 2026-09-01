@@ -39,6 +39,7 @@
 
   {% if assistant_available %}
   <div class="card mb-4" id="snapshot-frage-card">
+    <div class="card-header">{{ assistant_name }}</div>
     <div class="card-body">
       <form
         id="snapshot-frage-form"
@@ -57,7 +58,7 @@
         {% if filters.untergruppe %}
         <input type="hidden" name="untergruppe" value="{{ filters.untergruppe }}">
         {% endif %}
-        <label class="form-label" for="snapshot-frage">Stellen Sie eine Frage zur Artikelliste. Die Treffer werden in der Tabelle ausgewählt.</label>
+        <label class="form-label" for="snapshot-frage">Stell {{ assistant_name }} eine Frage zur Artikelliste. Die Treffer werden in der Tabelle ausgewählt.</label>
         <div class="row g-3 align-items-end">
           <div class="col">
             <input
@@ -102,11 +103,11 @@
         {% if assistant_truncated %}
         <p class="mb-1">
           Das Ergebnis ist zu gross, um es als Auswahl zu setzen{% if assistant_selection_count is not none %} ({{ format_swiss_number(assistant_selection_count) }} Artikel){% endif %}.
-          Es ist keine Auswahl aktiv. Stellen Sie eine engere Frage.
+          Es ist keine Auswahl aktiv. Stell eine engere Frage.
         </p>
         {% else %}
         {% if assistant_selection_count is not none %}
-        <p class="mb-1">{{ format_swiss_number(assistant_selection_count) }} Artikel ausgewählt.</p>
+        <p class="mb-1">{{ assistant_name }} hat {{ format_swiss_number(assistant_selection_count) }} Artikel gefunden.</p>
         {% endif %}
         {% if assistant_answer %}
         <p class="mb-1">{{ assistant_answer }}</p>
