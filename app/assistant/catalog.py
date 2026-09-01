@@ -370,13 +370,9 @@ COLUMNS: tuple[QueryableColumn, ...] = (
     ),
     _q(
         "Länge in cm",
-        type="text",
-        # Formats are mixed (1.234 as thousands or decimal); not a numeric column.
-        description_de=(
-            "Länge in Zentimeter. Die Formate sind gemischt (Tausender oder "
-            "Dezimal unklar); nicht numerisch vergleichen. Stattdessen exakter Wert "
-            "oder Untergruppe."
-        ),
+        type="number",
+        numeric_format="comma",
+        description_de="Länge in Zentimeter. Dezimaltrennzeichen ist das Komma.",
     ),
     _q(
         "Höhe in mm",
@@ -454,11 +450,6 @@ def get_column(name: str) -> QueryableColumn | None:
 
 
 def numeric_rejected_message(col: QueryableColumn) -> str:
-    if col.name == "Länge in cm":
-        return (
-            "«Länge in cm» kann nicht numerisch verglichen werden. "
-            "Filtern Sie nach einem exakten Wert oder nach der Untergruppe."
-        )
     if col.name.startswith("VPE "):
         return (
             f"«{col.label_de}» kann nicht numerisch verglichen werden, "

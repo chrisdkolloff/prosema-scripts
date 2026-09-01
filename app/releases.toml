@@ -1,7 +1,16 @@
 # PROSEMA release history — edit this file to bump the version and document changes.
 # The top-level `version` is shown in the site header; `[[releases]]` entries appear on /changelog.
 
-version = "1.1.3"
+version = "1.1.4"
+
+[[releases]]
+version = "1.1.4"
+date = "2026-09-01"
+summary = "Refactor dimension column handling in catalog and prompts. Update \"Länge in cm\" to be a numeric column with comma formatting, enhancing data consistency. Adjust related prompts and tests to reflect the new numeric handling and improve user feedback for filtering options. Remove deprecated rejection messages for numeric comparisons. Add tests to validate new behavior for dimension columns."
+changes = [
+  "Refactor dimension column handling in catalog and prompts. Update \"Länge in cm\" to be a numeric column with comma formatting, enhancing data consistency. Adjust related prompts and tests to reflect the new numeric handling and improve user feedback for filtering options. Remove deprecated rejection messages for numeric comparisons. Add tests to validate new behavior for dimension columns.",
+]
+
 
 [[releases]]
 version = "1.1.3"

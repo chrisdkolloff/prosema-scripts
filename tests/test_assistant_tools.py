@@ -231,6 +231,63 @@ def test_numeric_comma_weight_and_non_matching_text_null(db_session, snapshot):
     assert "881.010.0030" not in numbers
 
 
+DIMENSION_KEYS = ("Länge in cm", "Breite in mm", "Höhe in mm")
+
+
+@patch("app.assistant.tools.settings.weclapp_tenant", TENANT)
+@patch("app.assistant.catalog.settings.weclapp_tenant", TENANT)
+def test_dimension_numeric_filter_keeps_comma_drops_dot(db_session):
+    """Comma-format values match; the other decimal convention is NULL, not an error."""
+    header = [{"key": key, "title": key, "width": 120} for key in DIMENSION_KEYS]
+    header.append({"key": "Prosema Artikelnummer", "title": "Prosema Artikelnummer", "width": 160})
+    snap = ArticleSnapshot(
+        status="complete",
+        created_by_oid="oid",
+        created_by_name="Tester",
+        weclapp_tenant=TENANT,
+        row_count=2,
+        columns=header,
+        created_at=datetime.now(UTC),
+    )
+    db_session.add(snap)
+    db_session.flush()
+    declared = {key: "80,5" for key in DIMENSION_KEYS}
+    other = {key: "90.5" for key in DIMENSION_KEYS}
+    _add_row(
+        db_session,
+        snap,
+        0,
+        {"Prosema Artikelnummer": "883.010.0010", **declared},
+        article_number="883.010.0010",
+        article_name="Comma",
+        active=True,
+    )
+    _add_row(
+        db_session,
+        snap,
+        1,
+        {"Prosema Artikelnummer": "883.010.0020", **other},
+        article_number="883.010.0020",
+        article_name="Dot",
+        active=True,
+    )
+    db_session.flush()
+    for column in DIMENSION_KEYS:
+        result = artikel_suchen(
+            db_session,
+            ArtikelSuchenArgs(
+                filters=QueryFilter(
+                    conditions=[
+                        FilterCondition(column=column, operator=Operator.gt, value="50")
+                    ]
+                )
+            ),
+        )
+        numbers = {row["article_number"] for row in result.rows}
+        assert numbers == {"883.010.0010"}, column
+        assert result.total_count == 1, column
+
+
 @patch("app.assistant.tools.settings.weclapp_tenant", TENANT)
 @patch("app.assistant.catalog.settings.weclapp_tenant", TENANT)
 def test_dot_price_and_absent_einkauf(db_session, snapshot):

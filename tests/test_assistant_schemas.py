@@ -23,11 +23,11 @@ def test_unknown_column_lists_valid_names():
     assert "Nettogewicht kg" in message
 
 
-def test_numeric_operator_on_laenge_suggests_alternative():
-    with pytest.raises(ValidationError, match="Länge in cm") as exc:
-        FilterCondition(column="Länge in cm", operator=Operator.gt, value="10")
-    assert "Untergruppe" in str(exc.value)
-    assert "numerisch" in str(exc.value)
+def test_numeric_gt_accepted_on_dimension_columns():
+    for column in ("Länge in cm", "Breite in mm", "Höhe in mm"):
+        condition = FilterCondition(column=column, operator=Operator.gt, value="10")
+        assert condition.column == column
+        assert condition.operator == Operator.gt
 
 
 def test_numeric_operator_on_vpe_rejected():

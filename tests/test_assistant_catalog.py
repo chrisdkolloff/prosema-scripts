@@ -215,7 +215,8 @@ def test_verify_and_prompt(db_session):
     assert any("Hauptgruppe" in w for w in warnings)
     prompt = render_for_prompt(db_session)
     assert "Nettogewicht kg | number" in prompt
-    assert "Länge in cm | text" in prompt
+    assert "Länge in cm | number" in prompt
+    assert "Dezimaltrennzeichen ist das Komma." in prompt
     assert "34 Werte" not in prompt
     assert "weclapp_id | text" in prompt
     assert "hauptgruppe_code" not in prompt
@@ -243,6 +244,18 @@ def test_verify_and_prompt(db_session):
     assert "weclapp Artikel-ID |" not in prompt
     assert "volltext | text | Volltext" in prompt
     assert "contains" in prompt
+
+
+def test_dimension_columns_are_comma_numbers():
+    for name in ("Breite in mm", "Höhe in mm", "Länge in cm"):
+        col = get_column(name)
+        assert col is not None
+        assert col.type == "number"
+        assert col.numeric_format == "comma"
+        for op in (Operator.gt, Operator.gte, Operator.lt, Operator.lte):
+            assert op in col.allowed_operators
+        assert "Dezimaltrennzeichen ist das Komma." in col.description_de
+        assert "gemischt" not in col.description_de
 
 
 def test_column_expression_raises_for_virtual():

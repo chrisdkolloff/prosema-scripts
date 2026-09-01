@@ -539,9 +539,8 @@ def _scripted_responses(question: Question, *, provider: str) -> list[LLMRespons
     expect = question.expect
     if expect.kind == "refusal":
         answer = (
-            "«Länge in cm» kann nicht numerisch verglichen werden, weil die "
-            "Formate gemischt sind. Filtern Sie nach einem exakten Wert oder "
-            "nach der Untergruppe."
+            "«VPE 1» kann nicht numerisch verglichen werden, weil Komma- und "
+            "Punkt-Schreibweisen gemischt vorkommen (1,00 und 1.000)."
         )
         if provider == "openai_compatible":
             return [

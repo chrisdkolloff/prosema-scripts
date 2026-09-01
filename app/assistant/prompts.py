@@ -65,8 +65,8 @@ Q: Profile die mehr als 2 kg wiegen
 Q: Welche Artikel in der Hauptgruppe Profile sind aus Messing?
 {"tool": "artikel_suchen", "args": {"filters": {"conditions": [{"column": "Hauptgruppe", "operator": "eq", "value": "Profile"}, {"column": "volltext", "operator": "contains", "value": "Messing"}]}}}
 
-Q: Welche Artikel sind länger als 100 cm?
-{"answer": "«Länge in cm» kann nicht numerisch verglichen werden, weil die Formate gemischt sind. Filtern Sie nach einem exakten Wert oder nach der Untergruppe."}
+Q: Welche Artikel haben eine VPE grösser als 10?
+{"answer": "«VPE 1» kann nicht numerisch verglichen werden, weil Komma- und Punkt-Schreibweisen gemischt vorkommen (1,00 und 1.000)."}
 
 # Snapshot
 

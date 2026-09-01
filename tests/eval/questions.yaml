@@ -78,15 +78,31 @@
     named «Profile»; «Bauchemie» is registry 130 (one row, 130.010.0010).
     Filtering Hauptgruppe eq Bauchemie for "020" is confidently wrong.
 
-- id: refuse-laenge-numeric
-  question_de: Welche Artikel sind länger als 100 cm?
+- id: laenge-numeric
+  question_de: Wieviele Balkonwinkelprofile sind länger als 50 cm?
+  expect:
+    kind: tool_call
+    tool: [artikel_zaehlen, artikel_suchen]
+    columns:
+      - Untergruppe
+      - Länge in cm
+    operators:
+      - eq
+      - gt
+    outcome: [answered, no_result]
+  notes: >
+    Länge in cm is numeric (comma decimal). Must filter Untergruppe and
+    Länge gt 50, not refuse. Balkonwinkelprofile is an Untergruppe name.
+
+- id: refuse-vpe-numeric
+  question_de: Welche Artikel haben eine VPE grösser als 10?
   expect:
     kind: refusal
-    reason: laenge_not_numeric
-    outcome: [refused, answered]
+    reason: vpe_mixed_formats
+    outcome: [answered, refused]
   notes: >
-    "Länge in cm" is a text column with mixed formats, so gt/lt are illegal.
-    The model must say so in German and not approximate with another column.
+    VPE 1 still mixes 1,00 and 1.000, so gt/lt are illegal. The model must
+    refuse in German and not approximate with another column.
 
 # First ten of the real set. Bounds are snapshot-dependent (id
 # 4ccb5964-46cb-44db-8265-d040234b0533 when they were written).
