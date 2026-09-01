@@ -77,6 +77,14 @@
   font-weight: 650;
 }
 
+body:not(.is-frage-busy) #snapshot-frage-running-banner {
+  display: none;
+}
+
+body.is-frage-busy #snapshot-frage-banner {
+  display: none;
+}
+
 /* Status colours */
 .job-status-queued strong { color: var(--queued); }
 .job-status-running strong { color: var(--running); }
@@ -128,7 +136,7 @@
 }
 
 .sunburst .label-inner { fill: #fff; font-size: 13px; font-weight: 600; }
-.sunburst .label-outer { fill: #1c1917; font-size: 11px; font-weight: 600; }
+.sunburst .label-outer { fill: #1c1917; font-size: 10px; font-weight: 600; }
 
 .sunburst-centre {
   fill: #212631;

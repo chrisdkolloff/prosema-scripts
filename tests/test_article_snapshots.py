@@ -1193,6 +1193,8 @@ def test_frage_card_renders_on_current_snapshot_when_enabled(db_session, user_cl
     assert 'id="snapshot-frage-status"' in response.text
     assert 'id="snapshot-frage-running-banner"' in response.text
     assert "Suchanfrage läuft..." in response.text
+    assert "is-frage-busy" in response.text
+    assert "snapshot_grid.js?v=" in response.text
     assert 'id="snapshot-frage"' in response.text
     assert re.search(r'id="snapshot-frage"[^>]*value=""', response.text)
 

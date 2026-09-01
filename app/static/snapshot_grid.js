@@ -151,7 +151,6 @@
     var btn = document.getElementById("snapshot-frage-submit");
     var input = document.getElementById("snapshot-frage");
     var status = document.getElementById("snapshot-frage-status");
-    var running = document.getElementById("snapshot-frage-running-banner");
 
     function setStatus(kind, message) {
       if (!status) return;
@@ -165,9 +164,9 @@
 
     function setBusy(busy) {
       form.dataset.busy = busy ? "1" : "0";
+      document.body.classList.toggle("is-frage-busy", busy);
       if (btn) btn.disabled = busy;
       if (input) input.readOnly = busy;
-      if (running) running.hidden = !busy;
       if (busy) setStatus("error", "");
     }
 

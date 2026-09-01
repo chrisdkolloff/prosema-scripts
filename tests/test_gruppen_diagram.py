@@ -23,7 +23,9 @@ from app.groups_service import (
 )
 from app.gruppen_diagram import (
     CHAR_W,
+    INNER_FONT,
     INNER_R,
+    OUTER_FONT,
     OUTER_R,
     build_sunburst_arcs,
     load_active_group_tree,
@@ -300,7 +302,7 @@ def test_long_name_is_truncated_with_ellipsis_code_intact():
     long_name = "Abschlussprofile rund mit sehr langem Namen"
     tree = [(_hg("010", "Profil"), [_ug("010", long_name)])]
     outer = next(a for a in build_sunburst_arcs(tree) if a["ring"] == "outer")
-    budget = max_chars_for(OUTER_R[0], OUTER_R[1], 11)
+    budget = max_chars_for(OUTER_R[0], OUTER_R[1], OUTER_FONT)
     keep = budget - len("010") - 2
     expected = f"010 {long_name[:keep].rstrip()}…"
     assert len(f"010 {long_name}") > budget
@@ -317,7 +319,7 @@ def test_long_name_is_truncated_with_ellipsis_code_intact():
 
 
 def test_truncation_strips_space_before_ellipsis():
-    budget = max_chars_for(OUTER_R[0], OUTER_R[1], 11)
+    budget = max_chars_for(OUTER_R[0], OUTER_R[1], OUTER_FONT)
     keep = budget - len("010") - 2
     name = ("x" * (keep - 1)) + " extra words that continue"
     tree = [(_hg("010", "Profil"), [_ug("010", name)])]
@@ -337,10 +339,10 @@ def test_label_falls_back_to_code_when_name_cannot_fit():
 
 
 def test_label_char_budget_follows_ring_depth():
-    inner_budget = max_chars_for(INNER_R[0], INNER_R[1], 13)
-    outer_budget = max_chars_for(OUTER_R[0], OUTER_R[1], 11)
-    assert inner_budget == int((125 - 8 - 10) / (13 * CHAR_W))
-    assert outer_budget == int((133 - 8 - 10) / (11 * CHAR_W))
+    inner_budget = max_chars_for(INNER_R[0], INNER_R[1], INNER_FONT)
+    outer_budget = max_chars_for(OUTER_R[0], OUTER_R[1], OUTER_FONT)
+    assert inner_budget == int((125 - 8 - 10) / (INNER_FONT * CHAR_W))
+    assert outer_budget == int((133 - 8 - 10) / (OUTER_FONT * CHAR_W))
 
 
 def test_hauptgruppe_context_uses_singular():

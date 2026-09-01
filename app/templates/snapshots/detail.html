@@ -11,16 +11,6 @@
   <link rel="stylesheet" href="/static/jsuites.css">
   <link rel="stylesheet" href="/static/jspreadsheet.css">
 {% endblock %}
-{% block page_status %}
-  {% if snapshot.status == "complete" and assistant_available %}
-  <div
-    id="snapshot-frage-running-banner"
-    class="alert alert-warning licence-banner mb-0 rounded-0"
-    hidden
-    role="status"
-  >Suchanfrage läuft...</div>
-  {% endif %}
-{% endblock %}
 {% block content %}
   <p class="mb-2"><a href="/artikel-uebersicht">Zur Übersicht</a></p>
 
@@ -56,6 +46,7 @@
         action="/artikel-uebersicht/{{ snapshot.id }}/frage{% if keep_qs %}?{{ keep_qs }}{% endif %}"
         hx-boost="false"
         hx-disinherit="*"
+        onsubmit="document.body.classList.add('is-frage-busy')"
       >
         {% if filters.query %}
         <input type="hidden" name="q" value="{{ filters.query }}">
@@ -86,6 +77,9 @@
         <p id="snapshot-frage-status" class="alert alert-info mt-3 mb-0" hidden role="status"></p>
       </form>
     </div>
+  </div>
+  <div class="alert alert-info mb-4" id="snapshot-frage-running-banner" role="status">
+    Suchanfrage läuft...
   </div>
   {% endif %}
 
@@ -190,7 +184,7 @@
   {% if snapshot.status == "complete" %}
   <script src="/static/jsuites.js"></script>
   <script src="/static/jspreadsheet.js"></script>
-  <script src="/static/snapshot_grid.js"></script>
+  <script src="/static/snapshot_grid.js?v={{ app_version }}"></script>
   <script>
   (function () {
     var banner = document.getElementById("snapshot-stand-banner");

@@ -1,7 +1,18 @@
 # PROSEMA release history — edit this file to bump the version and document changes.
 # The top-level `version` is shown in the site header; `[[releases]]` entries appear on /changelog.
 
-version = "1.1.2"
+version = "1.1.3"
+
+[[releases]]
+version = "1.1.3"
+date = "2026-09-01"
+summary = "Refactor snapshot running banner visibility logic in CSS and templates. Update the detail view to display the running banner conditionally based on the snapshot status, enhancing user feedback during query processing. Remove redundant page status block from base template for cleaner structure. (+2 more)"
+changes = [
+  "Update font sizes for outer labels in gruppen_diagram and CSS. Adjust related tests to reflect new OUTER_FONT constant for consistent label truncation behavior.",
+  "Refactor snapshot query handling by removing the running banner from the DOM and implementing a CSS-based visibility toggle. Update the snapshot detail template to reflect these changes and ensure the UI indicates when a query is in progress. Adjust related tests to validate the new behavior and confirm the presence of updated JavaScript and CSS elements.",
+  "Refactor snapshot running banner visibility logic in CSS and templates. Update the detail view to display the running banner conditionally based on the snapshot status, enhancing user feedback during query processing. Remove redundant page status block from base template for cleaner structure.",
+]
+
 
 [[releases]]
 version = "1.1.2"
