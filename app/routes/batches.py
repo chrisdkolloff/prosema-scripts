@@ -38,6 +38,7 @@ from app.batches import (
     filtered_rows,
     group_dropdowns,
     load_batch_rows,
+    refresh_draft_validation,
     schema_dropdowns,
     touch_presence,
 )
@@ -126,6 +127,8 @@ def _page_context(
 ) -> dict[str, Any]:
     filters = _filters(request)
     all_rows = load_batch_rows(db, batch.id)
+    if refresh_draft_validation(db, batch, all_rows):
+        db.commit()
     page_rows, total, pages = filtered_rows(all_rows, **filters)
     haupt, _unter_by_haupt = group_dropdowns(db)
     categories = schema_dropdowns().get("Kategorie") or []

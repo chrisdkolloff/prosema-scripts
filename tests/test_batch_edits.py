@@ -271,6 +271,69 @@ def test_grid_config_untergruppe_map_follows_registry(user_client, db_session):
     assert "untergruppeByHauptgruppe" in js.text
 
 
+def test_edits_accepts_registry_group_missing_from_weclapp_schema(user_client, db_session):
+    code = _unused_code(db_session, prefix="3")
+    haupt = create_hauptgruppe(db_session, code=code, name="Bauchemie", actor=ACTOR)
+    create_untergruppe(db_session, haupt, code="020", name="Pflasterfugenmörtel", actor=ACTOR)
+    label_h = f"Bauchemie - {code}"
+    label_u = "Pflasterfugenmörtel - 020"
+    batch, rows = _make_batch(
+        db_session,
+        rows=[_raw_article(Hauptgruppe=label_h, Untergruppe=label_u)],
+    )
+    row = rows[0]
+    response = user_client.post(
+        f"/batches/{batch.id}/edits",
+        json=[
+            {"row_id": str(row.id), "field": "Hauptgruppe", "value": label_h},
+            {"row_id": str(row.id), "field": "Untergruppe", "value": label_u},
+        ],
+    )
+    assert response.status_code == 200
+    body = response.json()["rows"][0]
+    error = body["validation_error"] or ""
+    assert "Ungültiger Wert" not in error
+    assert "Hauptwarengruppe" not in error
+    assert body["proposed_article_number"].startswith(f"{code}.020.")
+
+    page = user_client.get(f"/batches/{batch.id}")
+    assert page.status_code == 200
+    match = re.search(
+        r'<script type="application/json" id="batch-grid-config">(.*?)</script>',
+        page.text,
+        re.DOTALL,
+    )
+    assert match is not None
+    config = json.loads(match.group(1))
+    haupt_col = next(col for col in config["columns"] if col["name"] == "Hauptgruppe")
+    unter_col = next(col for col in config["columns"] if col["name"] == "Untergruppe")
+    assert label_h in haupt_col["source"]
+    assert label_u in unter_col["source"]
+    assert config["untergruppeByHauptgruppe"][label_h] == [label_u]
+
+
+def test_grid_reload_clears_stale_weclapp_group_list_error(user_client, db_session):
+    code = _unused_code(db_session, prefix="2")
+    haupt = create_hauptgruppe(db_session, code=code, name="Bauchemie", actor=ACTOR)
+    create_untergruppe(db_session, haupt, code="020", name="Pflasterfugenmörtel", actor=ACTOR)
+    label_h = f"Bauchemie - {code}"
+    label_u = "Pflasterfugenmörtel - 020"
+    batch, rows = _make_batch(
+        db_session,
+        rows=[_raw_article(Hauptgruppe=label_h, Untergruppe=label_u)],
+        numbers=[f"{code}.020.0010"],
+    )
+    row = rows[0]
+    row.validation_error = "Ungültiger Wert für Hauptwarengruppe (Auswahl): Bauchemie - 130"
+    db_session.flush()
+
+    response = user_client.get(f"/batches/{batch.id}")
+    assert response.status_code == 200
+    db_session.refresh(row)
+    assert "Ungültiger Wert" not in (row.validation_error or "")
+    assert "Hauptwarengruppe" not in (row.validation_error or "")
+
+
 def test_edits_rejects_approved_batch(user_client, db_session):
     batch, rows = _make_batch(db_session, status="approved")
     row = rows[0]

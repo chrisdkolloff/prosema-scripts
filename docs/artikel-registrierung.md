@@ -32,13 +32,20 @@ still appear in that result set.
 
 ## Group labels (registry vs weclapp)
 
-The group registry zero-pads Untergruppe codes to three digits
+The group registry (Gruppenverwaltung) is the only source of valid
+Hauptgruppe / Untergruppe values: dropdowns, numbering, and grid validation
+all read from there. weclapp's Shopify lists `Hauptwarengruppe (Auswahl)` and
+`Warengruppe (Auswahl)` are a write target, not a second catalogue.
+
+The registry zero-pads Untergruppe codes to three digits
 (`Nivelliersystem - 010`). weclapp's `Warengruppe (Auswahl)` list is mixed:
 most values use two digits (`Nivelliersystem - 10`), codes ≥ 100 use three.
 
 Do not canonicalise either direction. Match selectable values on **display
 name + integer code**; the payload uses weclapp's own option id (and thus
-weclapp's literal label). The registry owns the code; weclapp owns its label.
+weclapp's literal label) when that option exists. If the Shopify list has
+not caught up, the custom attribute is omitted rather than rejecting the row.
+The registry owns the code; weclapp owns its label.
 
 ## Deploy order
 

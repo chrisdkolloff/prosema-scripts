@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import engine
 from app.models import ArticleSnapshot, ArticleSnapshotRow
 from app.numbering_high_water import seed_high_water
-from scripts.weclapp.article_import import LookupTables, _load_schema
+from core.article_payload import row_to_payload
+from scripts.weclapp.article_import import LookupTables, _load_schema, dropdown_options
 
 
 def test_high_water_includes_inactive_snapshot_rows():
@@ -71,3 +73,47 @@ def test_list_value_id_hauptgruppe_padded_codes_still_match():
     # Hauptwarengruppe uses 3-digit codes in weclapp; integer 10 == 010.
     assert a == b
     assert lookups.list_value_literal("Hauptwarengruppe (Auswahl)", "Zubehör - 10") == "Zubehör - 010"
+
+
+def test_find_list_value_id_unknown_group_is_none_not_dropdown_source():
+    lookups = LookupTables(_load_schema())
+    assert lookups.find_list_value_id("Hauptwarengruppe (Auswahl)", "Bauchemie - 130") is None
+    with pytest.raises(ValueError, match="Ungültiger Wert für Hauptwarengruppe"):
+        lookups.list_value_id("Hauptwarengruppe (Auswahl)", "Bauchemie - 130")
+    options = dropdown_options(lookups)
+    assert "Hauptgruppe" not in options
+    assert "Untergruppe" not in options
+
+
+def test_row_to_payload_omits_group_lists_missing_from_weclapp():
+    lookups = LookupTables(_load_schema())
+    payload = row_to_payload(
+        {
+            "Prosema-Artikelnummer": "130.020.0010",
+            "Prosema-Artikelname": "BM 4",
+            "Hauptgruppe": "Bauchemie - 130",
+            "Untergruppe": "Pflasterfugenmörtel - 020",
+        },
+        lookups,
+    )
+    selected = [
+        item["selectedValueId"]
+        for item in payload.get("customAttributes") or []
+        if "selectedValueId" in item
+    ]
+    assert selected == []
+
+    known = row_to_payload(
+        {
+            "Prosema-Artikelnummer": "010.010.0010",
+            "Prosema-Artikelname": "Known",
+            "Hauptgruppe": "Zubehör - 010",
+        },
+        lookups,
+    )
+    known_ids = [
+        item["selectedValueId"]
+        for item in known.get("customAttributes") or []
+        if "selectedValueId" in item
+    ]
+    assert lookups.list_value_id("Hauptwarengruppe (Auswahl)", "Zubehör - 010") in known_ids

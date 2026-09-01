@@ -281,6 +281,10 @@ def _cached_lookups() -> LookupTables:
 
 
 def schema_dropdowns() -> dict[str, list[str]]:
+    """weclapp schema dropdowns — never Hauptgruppe/Untergruppe.
+
+    Those columns are filled by ``group_dropdowns`` from Gruppenverwaltung.
+    """
     global _DROPDOWN_CACHE
     if _DROPDOWN_CACHE is None:
         options = dropdown_options(_cached_lookups())
@@ -435,6 +439,32 @@ def validate_effective(values: dict[str, str], group_error: str | None) -> str:
         if text not in messages:
             messages.append(text)
     return " ".join(messages)
+
+
+def recompute_row_validation(db: Session, row: ArticleBatchRow) -> bool:
+    """Refresh stored group resolution and validation from Gruppenverwaltung."""
+    values = effective_values(row)
+    haupt, unter, group_error = resolve_row_groups(db, values)
+    row.resolved_hauptgruppe_id = haupt.id if haupt is not None else None
+    row.resolved_untergruppe_id = unter.id if unter is not None else None
+    error = validate_effective(values, group_error)
+    if (row.validation_error or "") != (error or ""):
+        row.validation_error = error
+        return True
+    return False
+
+
+def refresh_draft_validation(
+    db: Session, batch: ArticleBatch, rows: list[ArticleBatchRow]
+) -> bool:
+    """Recompute validation on a draft so stale weclapp-list errors do not linger."""
+    if batch.status != "draft":
+        return False
+    changed = False
+    for row in rows:
+        if recompute_row_validation(db, row):
+            changed = True
+    return changed
 
 
 def _number_matches(number: str, main: str, sub: str) -> bool:

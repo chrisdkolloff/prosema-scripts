@@ -315,3 +315,14 @@
 .footer-logo {
   height: 1.85rem;
 }
+
+/* Native file inputs keep the browser UI language ("Choose file"). Replace
+   them with a German label and the selected filename. */
+.file-picker {
+  min-width: 22rem;
+  cursor: pointer;
+}
+
+.file-picker .file-picker-name {
+  min-width: 12rem;
+}

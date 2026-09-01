@@ -56,6 +56,8 @@ BOOLEAN_CUSTOM_ATTRS: dict[str, str] = {
     "Plattenleger": "Plattenleger",
 }
 
+# Best-effort writes onto weclapp Shopify lists. Valid groups come from
+# Gruppenverwaltung, not from these selectable-value catalogues.
 LIST_CUSTOM_ATTRS: dict[str, str] = {
     "Hauptgruppe": "Hauptwarengruppe (Auswahl)",
     "Untergruppe": "Warengruppe (Auswahl)",
@@ -132,6 +134,26 @@ def _row_value(row: dict[str, str], column: str) -> str:
     if raw:
         return raw
     return DEFAULTS.get(canonical_label(column), DEFAULTS.get(column, ""))
+
+
+def _optional_list_value_id(
+    lookups: LookupTablesProtocol, attr_label: str, value: str
+) -> str | None:
+    """weclapp option id, or None when the Shopify list has not caught up.
+
+    Missing attribute *definitions* still raise: that is a schema problem.
+    Missing *options* are skipped so Gruppenverwaltung can add groups without
+    also extending weclapp's Hauptwarengruppe / Warengruppe lists first.
+    """
+    finder = getattr(lookups, "find_list_value_id", None)
+    if callable(finder):
+        return finder(attr_label, value)
+    try:
+        return lookups.list_value_id(attr_label, value)
+    except ValueError as exc:
+        if str(exc).startswith("Ungültiger Wert für"):
+            return None
+        raise
 
 
 def row_to_payload(row: dict[str, str], lookups: LookupTablesProtocol) -> dict[str, Any]:
@@ -211,10 +233,13 @@ def row_to_payload(row: dict[str, str], lookups: LookupTablesProtocol) -> dict[s
         value = _row_value(row, column)
         if not value:
             continue
+        option_id = _optional_list_value_id(lookups, label, value)
+        if option_id is None:
+            continue
         custom_attributes.append(
             {
                 "attributeDefinitionId": lookups.attr_id(label),
-                "selectedValueId": lookups.list_value_id(label, value),
+                "selectedValueId": option_id,
             }
         )
 

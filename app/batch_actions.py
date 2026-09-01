@@ -15,6 +15,7 @@ from app.batches import (
     ARTICLE_NUMBER_FIELD,
     effective_values,
     load_batch_rows,
+    refresh_draft_validation,
 )
 from app.excel_export import TEXT_EXCEL_COLUMNS, workbook_bytes, write_cell
 from app.models import ArticleBatch, ArticleBatchRow, ArticleSnapshot
@@ -126,6 +127,7 @@ def approve_batch(
         raise BatchActionError(MSG_NO_SNAPSHOT)
 
     rows = load_batch_rows(db, locked.id)
+    refresh_draft_validation(db, locked, rows)
     included = [row for row in rows if row.include]
     error_count = sum(1 for row in included if (row.validation_error or "").strip())
     if error_count:

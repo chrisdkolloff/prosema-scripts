@@ -150,8 +150,8 @@ class LookupTables:
             raise ValueError(f"Unbekannte Kategorie: {value}")
         return category_id
 
-    def list_value_id(self, attr_label: str, value: str) -> str:
-        """Resolve a selectable-value id.
+    def find_list_value_id(self, attr_label: str, value: str) -> str | None:
+        """Resolve a selectable-value id, or None if the option is absent.
 
         Group labels may disagree on zero-padding (``Nivelliersystem - 010`` in
         the registry vs ``Nivelliersystem - 10`` in weclapp). Match on the
@@ -163,7 +163,7 @@ class LookupTables:
             raise ValueError(f"Zusatzfeld nicht gefunden: {attr_label}")
         wanted = _norm(value)
         if not wanted:
-            raise ValueError(f"Ungültiger Wert für {attr_label}: {value}")
+            return None
         wanted_lower = wanted.lower()
         wanted_name, wanted_code = _split_group_label(wanted)
 
@@ -195,7 +195,13 @@ class LookupTables:
             return code_name_id
         if prefix_id is not None:
             return prefix_id
-        raise ValueError(f"Ungültiger Wert für {attr_label}: {value}")
+        return None
+
+    def list_value_id(self, attr_label: str, value: str) -> str:
+        option_id = self.find_list_value_id(attr_label, value)
+        if option_id is None:
+            raise ValueError(f"Ungültiger Wert für {attr_label}: {value}")
+        return option_id
 
     def list_value_literal(self, attr_label: str, value: str) -> str:
         """Return weclapp's own selectable-value string for ``value``."""
@@ -250,8 +256,6 @@ def dropdown_options(lookups: LookupTables | None = None) -> dict[str, list[str]
         "Landschaftsgärtner": yes_no,
         "Plattenleger": yes_no,
         "Gewichtseinheit": ["kg", "g", "lb"],
-        "Hauptgruppe": lookups.list_values("Hauptwarengruppe (Auswahl)"),
-        "Untergruppe": lookups.list_values("Warengruppe (Auswahl)"),
     }
 
 

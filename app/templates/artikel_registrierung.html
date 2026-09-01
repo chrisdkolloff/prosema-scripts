@@ -55,7 +55,11 @@
     <input type="hidden" name="bestaetigt" value="1">
     <input type="hidden" name="source_sha256" value="{{ duplicate_sha }}">
     <div class="col-auto">
-      <input class="form-control" type="file" name="datei" accept="{{ upload_accept }}" required>
+      <label class="file-picker input-group mb-0" for="upload-datei">
+        <span class="input-group-text">Datei auswählen</span>
+        <span class="form-control file-picker-name">Keine Datei ausgewählt</span>
+      </label>
+      <input class="visually-hidden" id="upload-datei" type="file" name="datei" accept="{{ upload_accept }}" required>
     </div>
     <div class="col-auto">
       <button type="submit" class="btn btn-primary">Trotzdem hochladen</button>
@@ -65,10 +69,14 @@
   <form method="post" action="/artikel-registrierung/upload" enctype="multipart/form-data" class="row g-3 align-items-end mb-4">
     <div class="col-auto">
       <label class="form-label" for="upload-datei">Excel- oder CSV-Datei hochladen</label>
-      <input class="form-control" id="upload-datei" type="file" name="datei" accept="{{ upload_accept }}" required>
+      <label class="file-picker input-group mb-0" for="upload-datei">
+        <span class="input-group-text">Datei auswählen</span>
+        <span class="form-control file-picker-name">Keine Datei ausgewählt</span>
+      </label>
+      <input class="visually-hidden" id="upload-datei" type="file" name="datei" accept="{{ upload_accept }}" required>
     </div>
     <div class="col-auto">
-      <button type="submit" class="btn btn-primary">Neue Datei auswählen</button>
+      <button type="submit" class="btn btn-primary">Hochladen</button>
     </div>
   </form>
   {% endif %}
@@ -142,4 +150,17 @@
       </table>
     </div>
   </section>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+  document.querySelectorAll("input[type=file][id=upload-datei]").forEach((input) => {
+    const nameEl = input.form.querySelector(".file-picker-name");
+    const empty = "Keine Datei ausgewählt";
+    const sync = () => {
+      nameEl.textContent = input.files[0] ? input.files[0].name : empty;
+    };
+    input.addEventListener("change", sync);
+    sync();
+  });
+</script>
 {% endblock %}

@@ -1,7 +1,17 @@
 # PROSEMA release history — edit this file to bump the version and document changes.
 # The top-level `version` is shown in the site header; `[[releases]]` entries appear on /changelog.
 
-version = "1.1.0"
+version = "1.1.1"
+
+[[releases]]
+version = "1.1.1"
+date = "2026-09-01"
+summary = "Enhance file upload interface by replacing native file input with a custom label for improved user experience. The new design includes a German label and dynamically displays the selected filename. Update related CSS for styling adjustments. Modify tests to validate the new UI elements and ensure proper functionality. (+1 more)"
+changes = [
+  "Enhance draft validation process by introducing refresh_draft_validation function to recompute validation for draft batches. Update approve_batch to call this function, ensuring stale validation errors are cleared. Modify related tests to validate new functionality and ensure accurate handling of group values from the registry.",
+  "Enhance file upload interface by replacing native file input with a custom label for improved user experience. The new design includes a German label and dynamically displays the selected filename. Update related CSS for styling adjustments. Modify tests to validate the new UI elements and ensure proper functionality.",
+]
+
 
 [[releases]]
 version = "1.1.0"

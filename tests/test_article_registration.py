@@ -190,7 +190,7 @@ def _group_labels(haupt, unter) -> tuple[str, str]:
 
 
 def _clear_row_errors(db_session, batch_id) -> None:
-    """Registry test groups are not weclapp list values; clear payload validation noise."""
+    """Drop leftover validation strings so approve tests start from a clean row."""
     for row in db_session.scalars(
         select(ArticleBatchRow).where(ArticleBatchRow.batch_id == batch_id)
     ):
@@ -395,7 +395,7 @@ def test_freigeben_with_validation_error_refused(db_session):
     row = db_session.scalars(
         select(ArticleBatchRow).where(ArticleBatchRow.batch_id == result.batch.id)
     ).one()
-    row.validation_error = "Kaputt"
+    row.edits = {**(row.edits or {}), "Hauptgruppe": ""}
     db_session.flush()
     with pytest.raises(Exception, match="Freigabe nicht möglich"):
         approve_batch(db_session, result.batch, actor=ACTOR)
@@ -651,6 +651,10 @@ def test_stub_text_gone(user_client):
     assert response.status_code == 200
     assert "folgt in Woche 3" not in response.text
     assert "Excel- oder CSV-Datei hochladen" in response.text
+    assert "Datei auswählen" in response.text
+    assert ">Hochladen<" in response.text
+    assert "Neue Datei auswählen" not in response.text
+    assert "Choose file" not in response.text
 
 
 def test_registration_usable_without_weclapp_token(db_session, user_client):
@@ -662,6 +666,10 @@ def test_registration_usable_without_weclapp_token(db_session, user_client):
     assert "Kein Token hinterlegt" in response.text
     assert "Entwürfe können weiter bearbeitet werden" in response.text
     assert "Excel- oder CSV-Datei hochladen" in response.text
+    assert "Datei auswählen" in response.text
+    assert ">Hochladen<" in response.text
+    assert "Neue Datei auswählen" not in response.text
+    assert "Choose file" not in response.text
     assert "Manuell erfassen" in response.text
     assert f"/batches/{batch.id}" in response.text
     grid = user_client.get(f"/batches/{batch.id}")
