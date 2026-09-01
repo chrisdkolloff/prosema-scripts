@@ -1,7 +1,33 @@
 # PROSEMA release history — edit this file to bump the version and document changes.
 # The top-level `version` is shown in the site header; `[[releases]]` entries appear on /changelog.
 
-version = "1.0.8"
+version = "1.1.0"
+
+[[releases]]
+version = "1.1.0"
+date = "2026-09-01"
+summary = "Refactor stale snapshot warning test to ensure accurate timestamp handling. Update the test to set the created_at time for snapshots and adjust related entries in the database, improving the reliability of the test case for age warnings. (+17 more)"
+changes = [
+  "Update article type from BASIC to STORABLE across multiple files, including article fields, payload, import template, and article import script, ensuring consistency in article classification.",
+  "Add azure-identity dependency and update Settings class with assistant configuration options",
+  "Update requirements and refactor snapshot handling to improve column title management and enhance Excel export functionality. Add new dependencies for Azure integration and streamline imports across multiple files. Update tests to validate new snapshot column title logic and ensure consistent behavior in article snapshots.",
+  "Add AssistantQuery model to handle article-assistant interactions, including fields for user input, timestamps, and outcomes. Update imports in assistant module to include new functionalities for prompt building and result handling.",
+  "Enhance assistant functionality by adding strict schema validation options and updating outcome handling. Introduce a new configuration setting for strict schema in the Settings class, modify AssistantQuery outcomes to include 'invalid_input', and implement retry logic for strict schema rejections in the client. Additionally, update catalog prompts and remove deprecated fields to streamline the assistant's response structure.",
+  "Refactor AssistantQuery model to improve outcome handling and enhance user input management. Update related imports and streamline prompt building functionalities. Ensure consistency in handling article-assistant interactions.",
+  "Update question evaluation schema to support multiple acceptable tool names. Refactor related YAML and Python files to handle tool lists, enhancing flexibility in question expectations. Update documentation to reflect changes in tool handling and evaluation criteria.",
+  "Add new evaluation questions to YAML for article queries, enhancing test coverage for various scenarios. Include questions on article counts, supplier conditions, weight thresholds, and data accuracy. Ensure proper handling of tool calls and refusal cases in the model's response logic.",
+  "Enhance assistant service by adding 'no_answer' outcome and related messaging for duplicate tool calls. Implement logic to suppress responses after three identical calls, improving user experience. Update model constraints and prompts to reflect these changes, ensuring consistent behavior across queries.",
+  "Enhance evaluation framework by adding support for group_by, sort, forbid_columns, max_conditions, and outcome fields in YAML questions. Update related Python logic to parse and validate these new fields, improving the evaluation criteria and flexibility of question expectations. Update documentation to reflect these enhancements, ensuring clarity on new scoring metrics.",
+  "Enhance assistant client and service by introducing optional 'tool_choice' parameter in relevant methods. Update logic to handle tool choice in request bodies, ensuring default behavior remains intact. Add new hints for user guidance in prompts and improve JSON parsing for trailing content. Update tests to validate these changes and ensure consistent behavior across tool interactions.",
+  "Enhance AssistantQuery and related services by adding fields for applied article numbers, applied filters, and selection truncation. Update logic in the assistant service to handle these new fields, ensuring accurate tracking of user queries and responses. Modify snapshot handling to incorporate assistant query details, improving user experience and data integrity. Update tests to validate the new functionality and ensure consistent behavior across interactions.",
+  "Implement snapshot question feature by adding a form for user queries in the snapshot detail view. Enhance the snapshot context to determine assistant availability and update the UI to display relevant assistant responses. Modify the snapshot grid to reflect query selections and improve test coverage for the new functionality, ensuring proper rendering and behavior of the question card and associated alerts.",
+  "Enhance assistant client and UI by introducing a timeout configuration for HTTP requests, improving error handling with detailed logging for request failures. Update snapshot question form to include status messages and prevent multiple submissions. Modify tests to validate new timeout behavior and UI changes, ensuring consistent functionality across interactions.",
+  "Improve error logging in assistant client for strict schema rejections and add tests for new evaluation model label functionality. Update runtime settings to disable strict schema during evaluation, ensuring compatibility with Azure deployments.",
+  "Implement schema enhancements in assistant client to ensure compatibility with Azure by stripping unsupported keywords and enforcing type declarations. Add new filter conditions for article queries in prompts and update tests to validate these changes, improving overall functionality and error handling.",
+  "Enhance catalog functionality by introducing a new 'volltext' storage type for virtual columns, allowing for comprehensive text searches across multiple fields. Update related query logic and error handling to support this feature, ensuring only valid operators are used. Modify prompts and tests to validate the new functionality, improving user experience and search capabilities.",
+  "Refactor stale snapshot warning test to ensure accurate timestamp handling. Update the test to set the created_at time for snapshots and adjust related entries in the database, improving the reliability of the test case for age warnings.",
+]
+
 
 [[releases]]
 version = "1.0.8"

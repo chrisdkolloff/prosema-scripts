@@ -31,6 +31,16 @@ class Settings(BaseSettings):
     # encrypted with token_encryption_key — never a shared app-level token.
     weclapp_tenant: str
     token_encryption_key: str
+    assistant_enabled: bool = False
+    assistant_provider: Literal["azure", "openai_compatible"] = "azure"
+    azure_openai_endpoint: str | None = None
+    azure_openai_deployment: str | None = None
+    azure_openai_api_version: str = "2024-10-21"
+    assistant_base_url: str | None = None
+    assistant_model: str | None = None
+    assistant_timeout_seconds: int = 20
+    assistant_max_tool_turns: int = 4
+    assistant_strict_schema: bool = True
 
     @field_validator("environment", mode="before")
     @classmethod

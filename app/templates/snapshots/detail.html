@@ -33,6 +33,93 @@
   {% else %}
   {% include "snapshots/partials/stand_banner.html" %}
 
+  {% set keep = namespace(parts=[]) %}
+  {% if filters.query %}{% set keep.parts = keep.parts + ['q=' ~ (filters.query | urlencode)] %}{% endif %}
+  {% if filters.hauptgruppe %}{% set keep.parts = keep.parts + ['hauptgruppe=' ~ (filters.hauptgruppe | urlencode)] %}{% endif %}
+  {% if filters.untergruppe %}{% set keep.parts = keep.parts + ['untergruppe=' ~ (filters.untergruppe | urlencode)] %}{% endif %}
+  {% set keep_qs = keep.parts | join('&') %}
+
+  {% if assistant_available %}
+  <div class="card mb-4" id="snapshot-frage-card">
+    <div class="card-body">
+      <form
+        id="snapshot-frage-form"
+        method="post"
+        action="/artikel-uebersicht/{{ snapshot.id }}/frage{% if keep_qs %}?{{ keep_qs }}{% endif %}"
+        hx-boost="false"
+        hx-disinherit="*"
+      >
+        {% if filters.query %}
+        <input type="hidden" name="q" value="{{ filters.query }}">
+        {% endif %}
+        {% if filters.hauptgruppe %}
+        <input type="hidden" name="hauptgruppe" value="{{ filters.hauptgruppe }}">
+        {% endif %}
+        {% if filters.untergruppe %}
+        <input type="hidden" name="untergruppe" value="{{ filters.untergruppe }}">
+        {% endif %}
+        <label class="form-label" for="snapshot-frage">Stellen Sie eine Frage zur Artikelliste. Die Treffer werden in der Tabelle ausgewählt.</label>
+        <div class="row g-3 align-items-end">
+          <div class="col">
+            <input
+              class="form-control"
+              id="snapshot-frage"
+              type="text"
+              name="frage"
+              placeholder="Welche Artikel von Dural wiegen mehr als 2 kg?"
+              autocomplete="off"
+            >
+          </div>
+          <div class="col-auto">
+            <button type="submit" class="btn btn-primary" id="snapshot-frage-submit">Fragen</button>
+          </div>
+        </div>
+        <p id="snapshot-frage-status" class="alert alert-info mt-3 mb-0" hidden role="status"></p>
+      </form>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if assistant_query_id %}
+  {% set assistant_alert_class = {
+    "answered": "alert-info",
+    "answered_unverified": "alert-warning",
+    "no_answer": "alert-warning",
+    "no_result": "alert-info",
+    "refused": "alert-secondary",
+    "invalid_input": "alert-secondary",
+    "error": "alert-danger",
+    "unavailable": "alert-danger",
+  }.get(assistant_outcome, "alert-secondary") %}
+  <div class="alert {{ assistant_alert_class }} mb-4" id="snapshot-frage-banner" role="status">
+    <div class="d-flex align-items-start justify-content-between gap-3 flex-wrap">
+      <div>
+        <p class="mb-1">Auswahl aus der Frage vom {{ format_timestamp(assistant_asked_at) }}: «{{ assistant_question }}»</p>
+        {% if assistant_truncated %}
+        <p class="mb-1">
+          Das Ergebnis ist zu gross, um es als Auswahl zu setzen{% if assistant_selection_count is not none %} ({{ format_swiss_number(assistant_selection_count) }} Artikel){% endif %}.
+          Es ist keine Auswahl aktiv. Stellen Sie eine engere Frage.
+        </p>
+        {% else %}
+        {% if assistant_selection_count is not none %}
+        <p class="mb-1">{{ format_swiss_number(assistant_selection_count) }} Artikel ausgewählt.</p>
+        {% endif %}
+        {% if assistant_answer %}
+        <p class="mb-1">{{ assistant_answer }}</p>
+        {% endif %}
+        {% endif %}
+        {% if assistant_hinweis %}
+        <p class="mb-0 small text-body-secondary">{{ assistant_hinweis }}</p>
+        {% endif %}
+      </div>
+      <a
+        class="alert-link"
+        href="/artikel-uebersicht/{{ snapshot.id }}{% if keep_qs %}?{{ keep_qs }}{% endif %}"
+      >Auswahl aufheben</a>
+    </div>
+  </div>
+  {% endif %}
+
   <div class="card mb-4">
     <div class="card-body">
       <form
@@ -47,6 +134,9 @@
       >
         {% if is_fresh_pull %}
         <input type="hidden" name="neu" value="1">
+        {% endif %}
+        {% if assistant_query_id %}
+        <input type="hidden" name="frage" value="{{ assistant_query_id }}">
         {% endif %}
         <div class="col-auto">
           <label class="form-label" for="snapshot-filter-q">Suche</label>

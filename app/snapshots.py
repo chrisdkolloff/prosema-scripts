@@ -11,14 +11,14 @@ from zoneinfo import ZoneInfo
 
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
-from sqlalchemy import delete, func, or_, select, text
+from sqlalchemy import delete, false, func, or_, select, text
 from sqlalchemy.orm import Session
 
 from app.batches import JSPREADSHEET_CE_VERSION, JSUITES_VERSION
 from app.config import settings
 from app.excel_export import workbook_bytes, write_cell
 from app.models import ArticleSnapshot, ArticleSnapshotRow, Job
-from core.article_flatten import flatten_articles
+from core.article_flatten import flatten_articles, snapshot_column_title
 from core.article_payload import ARTICLE_NAME_FIELD, ARTICLE_NUMBER_FIELD, label_variants
 from core.numbering import Scheme
 
@@ -46,6 +46,8 @@ class SnapshotFilters:
     untergruppe: str = ""
     nur_aktive: bool = True
     page: int = 1
+    assistant_query_id: uuid.UUID | None = None
+    assistant_article_numbers: list[str] | None = None
 
 
 def format_swiss_number(value: int) -> str:
@@ -96,6 +98,12 @@ def _base_row_query(snapshot_id: uuid.UUID, filters: SnapshotFilters):
                 func.lower(ArticleSnapshotRow.article_name).like(pattern),
             )
         )
+    if filters.assistant_article_numbers is not None:
+        numbers = filters.assistant_article_numbers
+        if not numbers:
+            stmt = stmt.where(false())
+        else:
+            stmt = stmt.where(ArticleSnapshotRow.article_number.in_(numbers))
     return stmt
 
 
@@ -180,10 +188,11 @@ def build_grid_config(
     for col in columns:
         key = str(col.get("key", ""))
         keys.append(key)
+        stored_title = str(col.get("title", key) or key)
         jss_columns.append(
             {
                 "type": "text",
-                "title": str(col.get("title", key)),
+                "title": snapshot_column_title(key, stored_title),
                 "width": int(col.get("width", 140)),
                 "readOnly": True,
                 "name": key,
@@ -204,15 +213,21 @@ def build_excel_workbook(
     snapshot: ArticleSnapshot,
     rows: list[ArticleSnapshotRow],
     filters: SnapshotFilters,
+    *,
+    question_de: str | None = None,
 ) -> Workbook:
     columns = snapshot.columns or []
     keys = [str(col.get("key", "")) for col in columns]
+    headers = [
+        snapshot_column_title(str(col.get("key", "")), str(col.get("title") or col.get("key") or ""))
+        for col in columns
+    ]
     wb = Workbook()
     ws = wb.active
     ws.title = "Artikel"
 
-    for col_idx, key in enumerate(keys, start=1):
-        ws.cell(row=1, column=col_idx, value=key)
+    for col_idx, header in enumerate(headers, start=1):
+        ws.cell(row=1, column=col_idx, value=header)
 
     for row_idx, row in enumerate(rows, start=2):
         data = row.data if isinstance(row.data, dict) else {}
@@ -234,6 +249,9 @@ def build_excel_workbook(
     meta.append(["Hauptgruppe", filters.hauptgruppe or "(alle)"])
     meta.append(["Untergruppe", filters.untergruppe or "(alle)"])
     meta.append(["Nur aktive Artikel", "Ja" if filters.nur_aktive else "Nein"])
+    if question_de:
+        meta.append(["Frage", question_de])
+        meta.append(["Datenstand", format_snapshot_timestamp(snapshot.created_at)])
     return wb
 
 
@@ -241,8 +259,12 @@ def excel_bytes(
     snapshot: ArticleSnapshot,
     rows: list[ArticleSnapshotRow],
     filters: SnapshotFilters,
+    *,
+    question_de: str | None = None,
 ) -> bytes:
-    return workbook_bytes(build_excel_workbook(snapshot, rows, filters))
+    return workbook_bytes(
+        build_excel_workbook(snapshot, rows, filters, question_de=question_de)
+    )
 
 
 def apply_retention(db: Session, *, tenant: str) -> list[uuid.UUID]:

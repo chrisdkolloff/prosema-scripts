@@ -63,7 +63,7 @@ LIST_CUSTOM_ATTRS: dict[str, str] = {
 
 DEFAULTS: dict[str, str] = {
     ARTICLE_NUMBER_FIELD: NUMBER_PLACEHOLDER,
-    "Artikeltyp": "BASIC",
+    "Artikeltyp": "STORABLE",
     "Einheit": "Stk.",
     "Aktiv": "Ja",
     "Im Verkauf": "Ja",
@@ -149,7 +149,7 @@ def row_to_payload(row: dict[str, str], lookups: LookupTablesProtocol) -> dict[s
     payload: dict[str, Any] = {
         "articleNumber": article_number,
         "name": name,
-        "articleType": _row_value(row, "Artikeltyp").upper() or "BASIC",
+        "articleType": _row_value(row, "Artikeltyp").upper() or "STORABLE",
         "unitId": lookups.unit_id(unit_value),
         "taxRateType": _row_value(row, "Steuersatz").upper() or "STANDARD",
         "active": _parse_bool(_row_value(row, "Aktiv"), default=True),

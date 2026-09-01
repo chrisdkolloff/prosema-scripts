@@ -23,6 +23,7 @@ dependencies = [
     "itsdangerous",
     "httpx",
     "cryptography",
+    "azure-identity",
 ]
 
 [project.optional-dependencies]

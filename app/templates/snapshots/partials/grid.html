@@ -1,7 +1,7 @@
 <div id="snapshot-grid-panel">
   <div class="d-flex align-items-baseline justify-content-between gap-3 mb-2 flex-wrap">
     <p class="mb-0">
-      Gefiltert: {{ format_swiss_number(total_filtered) }} von {{ format_swiss_number(total_all) }} Zeilen
+      Gefiltert: {{ format_swiss_number(total_filtered) }} von {{ format_swiss_number(total_all) }} Zeilen{% if assistant_query_id and not assistant_truncated %} · Auswahl durch die Frage{% endif %}
     </p>
     <a
       class="btn btn-outline-secondary"

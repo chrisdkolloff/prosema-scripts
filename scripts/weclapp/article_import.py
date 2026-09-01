@@ -459,7 +459,7 @@ def write_template(path: Path, *, include_dummy: bool = True) -> None:
         "Kurzbeschreibung": "TEST Dummy Artikel Import Pipeline",
         "Referenz (Matchcode)": "TEST-DUMMY",
         "GTIN (EAN-Nummer)": "",
-        "Artikeltyp": "BASIC",
+        "Artikeltyp": "STORABLE",
         "Einheit": "Stk.",
         "Kategorie": "Zubehör allgemein",
         "Aktiv": "Ja",

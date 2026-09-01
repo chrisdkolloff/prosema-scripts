@@ -1,0 +1,236 @@
+# Offline assistant eval set.
+#
+# Each entry is one German question scored against the current article snapshot.
+# Bounds (min_rows / max_rows) and even which tool is "right" can change when
+# the snapshot is replaced — the runner records the snapshot id in every result.
+#
+# Fields:
+#   id              Short slug. Table row key, and the value passed to --id.
+#   question_de     The German question as a user would type it.
+#   expect          What a correct model turn looks like.
+#     kind          tool_call — the model must invoke a catalogue tool.
+#                   refusal   — the model must answer without calling a tool
+#                               (the question cannot be expressed with the
+#                               catalogue / allowed operators).
+#     tool          Expected tool name(s) when kind=tool_call. A string or a
+#                   list — any one of the names is a pass (several questions
+#                   have more than one correct path). Names:
+#                   artikel_suchen, artikel_zaehlen, artikel_details,
+#                   gruppen_auflisten, einheiten_auflisten, datenstand.
+#     columns       Catalogue column names that must appear in the tool
+#                   filter, any order. Aliases (e.g. "Prosema Artikelnummer"
+#                   for article_number) are accepted. Omit or [] if the
+#                   filter may be empty (a bare count, group_by-only, …).
+#     operators     Filter operators that must appear, any order
+#                   (eq, ne, contains, starts_with, gt, gte, lt, lte,
+#                   is_null, is_not_null, in_list). Omit or [] if none.
+#     min_rows      Optional lower bound on the tool result's total_count.
+#                   Snapshot-dependent — tighten after measuring a pull.
+#     max_rows      Optional upper bound on total_count.
+#     group_by      Expected group_by column. null means the call must not
+#                   group. Omit the field to skip scoring group_by.
+#     sort          Expected sort column (string), or {column, direction}.
+#                   Direction is scored only when given. Omit to skip.
+#     forbid_columns
+#                   Columns that must not appear in any filter condition
+#                   (sort/group_by do not count). Omit to skip.
+#     max_conditions
+#                   Upper bound on filter conditions in a single tool call.
+#                   Omit to skip.
+#     outcome       Acceptable ask() outcomes. Scored for every question,
+#                   default ['answered'] when omitted. A run that ends in
+#                   error or no_answer therefore cannot fully pass unless
+#                   those values are listed.
+#     reason        When kind=refusal: the capability gap the model should
+#                   name. Documented here; "refusal correct" scores whether
+#                   it refused rather than answering with a tool, not a
+#                   string match on this field.
+#   notes           Free text for whoever maintains the set.
+#
+# Add a question: copy an entry, give it a new id, fill question_de / expect,
+# leave min_rows/max_rows off until you have measured them on a snapshot.
+
+- id: count-all
+  question_de: Wie viele Artikel gibt es?
+  expect:
+    kind: tool_call
+    tool: [artikel_zaehlen, datenstand]
+    columns: []
+    operators: []
+    min_rows: 1
+  notes: >
+    Bare count. Filter must be empty; the model must not tally rows itself.
+    datenstand.row_count is as correct as artikel_zaehlen with no filter —
+    cheaper, one query.
+
+- id: search-hg-020
+  question_de: Welche Artikel gehören zur Hauptgruppe 020?
+  expect:
+    kind: tool_call
+    tool: artikel_suchen
+    columns:
+      - article_number
+    operators:
+      - starts_with
+  notes: >
+    Hauptgruppe codes live in the article number (prefix "020."), not in the
+    Hauptgruppe name column. On snapshot dddb230b 020. is 2320 rows, all
+    named «Profile»; «Bauchemie» is registry 130 (one row, 130.010.0010).
+    Filtering Hauptgruppe eq Bauchemie for "020" is confidently wrong.
+
+- id: refuse-laenge-numeric
+  question_de: Welche Artikel sind länger als 100 cm?
+  expect:
+    kind: refusal
+    reason: laenge_not_numeric
+    outcome: [refused, answered]
+  notes: >
+    "Länge in cm" is a text column with mixed formats, so gt/lt are illegal.
+    The model must say so in German and not approximate with another column.
+
+# First ten of the real set. Bounds are snapshot-dependent (id
+# 4ccb5964-46cb-44db-8265-d040234b0533 when they were written).
+
+- id: count-by-hauptgruppe
+  question_de: Wie viele Artikel haben wir pro Hauptgruppe?
+  expect:
+    kind: tool_call
+    tool: [artikel_zaehlen]
+    columns: []
+    operators: []
+    group_by: Hauptgruppe
+  notes: >
+    group_by on Hauptgruppe. Baseline aggregate. Should NOT use artikel_suchen.
+
+- id: dural-ohne-ek
+  question_de: Welche Artikel von Dural haben keinen Einkaufspreis?
+  expect:
+    kind: tool_call
+    tool: [artikel_suchen, artikel_zaehlen]
+    columns:
+      - Lieferanten Firmenname
+      - Einkaufspreis EUR netto
+    operators:
+      - eq
+      - is_null
+    outcome: [answered, no_result]
+  notes: >
+    Two conditions, one of them the absent-key encoding. On this snapshot
+    Dural (4110 rows) all have an Einkaufspreis; the 53 missing-EK rows have
+    no supplier. A correct Dural + is_null query is therefore 0 rows — do not
+    bound total_count against 53, that would reward dropping the supplier
+    filter. "Dural" must map to «DURAL GmbH» from the select list. ask()
+    records a zero-row tool result as no_result; that is a pass.
+
+- id: schwere-profile
+  question_de: Profile die mehr als 2 kg wiegen
+  expect:
+    kind: tool_call
+    tool: [artikel_suchen]
+    columns:
+      - Hauptgruppe
+      - Nettogewicht kg
+    operators:
+      - eq
+      - gt
+    outcome: [answered, no_result]
+  notes: >
+    Not a question, just a phrase — this is how people actually type. Needs
+    Hauptgruppe eq Profile and Nettogewicht kg gt 2. On this snapshot the
+    heaviest Profile is 0,77 kg, so the correct query is 0 rows (the 105
+    articles over 2 kg live in Duschsysteme, Matten, Balkon, …). ask()
+    records that as no_result; that is a pass. Dropping Hauptgruppe is the
+    failure to catch.
+
+- id: eloxiert
+  question_de: Zeig mir alle eloxierten Artikel
+  expect:
+    kind: tool_call
+    tool: [artikel_suchen]
+    columns:
+      - Oberfläche
+    operators:
+      - contains
+  notes: >
+    Oberfläche holds comma-joined multi-values, so eq would miss rows. Tests
+    whether the model reads the description and picks contains.
+
+- id: stueck-vs-stk
+  question_de: Wie viele Artikel werden in Stück verkauft?
+  expect:
+    kind: tool_call
+    tool: [artikel_zaehlen]
+    columns:
+      - Verkaufseinheit
+    operators:
+      - eq
+  notes: >
+    Trap. «Stück» is Verkaufseinheit; «Stk.» is Einheit. The prompt warns about
+    this twice. Picking Einheit is the failure to catch.
+
+- id: teuerste-duschsysteme
+  question_de: Was sind die teuersten Artikel bei den Duschsystemen?
+  expect:
+    kind: tool_call
+    tool: [artikel_suchen]
+    columns:
+      - Hauptgruppe
+    operators:
+      - eq
+    sort:
+      column: "Verkaufspreis €, BE"
+      direction: desc
+    max_conditions: 1
+    forbid_columns:
+      - "Verkaufspreis €, BE"
+  notes: >
+    Needs a sort on Verkaufspreis desc, not a filter. Tests whether "teuerste"
+    becomes sort rather than an invented threshold.
+
+- id: marge-frage
+  question_de: Bei welchen Artikeln ist der Verkaufspreis kleiner als der Einkaufspreis?
+  expect:
+    kind: refusal
+    reason: column-to-column comparison not supported
+    outcome: [refused, answered]
+  notes: >
+    Filters compare a column to a VALUE, never to another column. The correct
+    answer is a German refusal. High risk the model invents a threshold and
+    answers confidently. This is the margin question Dennis will ask.
+
+- id: shop-aktiv-inaktiv
+  question_de: Artikel die im Shop aktiv sind aber in weclapp nicht aktiv
+  expect:
+    kind: tool_call
+    tool: [artikel_suchen, artikel_zaehlen]
+    columns:
+      - Im Shop aktiv
+      - active
+    operators:
+      - eq
+  notes: >
+    Two boolean-ish columns with different value vocabularies: «Ja»/«Nein» for
+    the custom attribute, Ja/Nein for the indexed active column. Plausible real
+    question, small expected result.
+
+- id: datenstand-und-anzahl
+  question_de: Wie aktuell sind die Daten und wie viele Artikel sind drin?
+  expect:
+    kind: tool_call
+    tool: [datenstand]
+    group_by: null
+    max_conditions: 0
+  notes: >
+    Two-part question answerable by one tool. Tests that the model doesn't
+    over-call. Answer must state pull start, not completion.
+
+- id: lieferzeit
+  question_de: Welche Artikel haben eine Lieferzeit über 10 Tage?
+  expect:
+    kind: refusal
+    reason: column not in catalogue
+    outcome: [refused, answered]
+  notes: >
+    Lieferzeit does not exist. Correct answer names what is missing. Risk is
+    substituting a nearby column and answering as if it were the same thing.
+

@@ -701,7 +701,16 @@ def test_snapshot_age_warning_after_24_hours():
 def test_stale_snapshot_warning_has_refresh_button(db_session, user_client):
     _grant_weclapp(db_session)
     snapshot = _make_snapshot(db_session)
-    snapshot.created_at = datetime.now(UTC) - timedelta(hours=30)
+    stale_at = datetime.now(UTC) - timedelta(hours=30)
+    snapshot.created_at = stale_at
+    # Tests share the local DB; older-than-24h only shows if this row is latest.
+    for other in db_session.scalars(
+        select(ArticleSnapshot).where(
+            ArticleSnapshot.status == "complete",
+            ArticleSnapshot.id != snapshot.id,
+        )
+    ).all():
+        other.created_at = stale_at - timedelta(hours=1)
     batch = create_manual_batch(db_session, user=ACTOR, row_count=1)
     db_session.flush()
 

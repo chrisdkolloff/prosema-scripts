@@ -109,7 +109,7 @@ _DESCRIPTIONS: dict[str, str] = {
     "Kurzbeschreibung": "Kurze Beschreibung (shortDescription1); fällt auf den Artikelnamen zurück.",
     "Referenz (Matchcode)": "Matchcode / Referenz in weclapp.",
     "GTIN (EAN-Nummer)": "EAN/GTIN.",
-    "Artikeltyp": "weclapp-Artikeltyp, typischerweise BASIC.",
+    "Artikeltyp": "weclapp-Artikeltyp, typischerweise STORABLE.",
     "Einheit": "Mengeneinheit (unitId).",
     "Kategorie": "weclapp-Artikelkategorie.",
     "Aktiv": "Artikel aktiv in weclapp.",
@@ -152,7 +152,7 @@ _EXAMPLES: dict[str, str] = {
     "Kurzbeschreibung": "TEST Dummy Artikel",
     "Referenz (Matchcode)": "TEST-DUMMY",
     "GTIN (EAN-Nummer)": "",
-    "Artikeltyp": "BASIC",
+    "Artikeltyp": "STORABLE",
     "Einheit": "Stk.",
     "Kategorie": "Zubehör allgemein",
     "Aktiv": "Ja",
@@ -321,6 +321,14 @@ def find_field(label: object) -> ArticleField | None:
     if direct is not None:
         return direct
     return _BY_LABEL_FOLD.get(cleaned.casefold())
+
+
+def display_label(label: object) -> str:
+    """Current Artikelregistrierung label, or the original string if unknown."""
+    field = find_field(label)
+    if field is not None:
+        return field.label
+    return normalize_label(label)
 
 
 def seed_template_columns() -> list[dict[str, object]]:

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import io
+import json
+import re
 import uuid
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
@@ -13,13 +15,23 @@ from openpyxl import load_workbook
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.assistant.service import MSG_UNVERIFIED
 from app.auth import get_current_user
 from app.db import engine, get_db
 from app.jobs import HANDLERS
 from app.main import app
-from app.models import ArticleSnapshot, ArticleSnapshotRow, Job
+from app.models import ArticleSnapshot, ArticleSnapshotRow, AssistantQuery, Job
+from app.routes.snapshots import (
+    MSG_FRAGE_NOT_FOUND,
+    MSG_FRAGE_OTHER_SNAPSHOT,
+    MSG_FRAGE_OTHER_USER,
+    MSG_SELECTION_TRUNCATED,
+    _viewer_context,
+)
 from app.snapshots import (
+    GRID_PAGE_SIZE,
     SnapshotFilters,
+    build_excel_workbook,
     build_grid_config,
     count_filtered_rows,
     fetch_filtered_rows,
@@ -29,6 +41,7 @@ from core.article_flatten import (
     build_snapshot_columns,
     extract_indexed_fields,
     master_row_to_snapshot_data,
+    snapshot_column_title,
 )
 
 PLAIN_USER = {
@@ -378,7 +391,94 @@ def test_snapshot_uses_stored_columns_not_current_schema(db_session):
 
     config = build_grid_config(snapshot, [row])
     assert config["fields"] == ["Legacy-Spalte", "Prosema Artikelnummer"]
+    assert [col["title"] for col in config["columns"]] == [
+        "Legacy-Spalte",
+        "Prosema-Artikelnummer",
+    ]
     assert config["data"] == [["alt", "010.020.0010"]]
+
+
+def test_snapshot_column_title_matches_registration_where_applicable():
+    assert snapshot_column_title("Prosema Artikelnummer") == "Prosema-Artikelnummer"
+    assert snapshot_column_title("PROSEMA Kurztext") == "Prosema-Artikelname"
+    assert snapshot_column_title("PROSEMA Langtext") == "Prosema-Langtext"
+    assert snapshot_column_title("Prosema-Artikelname") == "Prosema-Artikelname"
+    assert snapshot_column_title("Breite mm") == "Breite in mm"
+    assert snapshot_column_title("weclapp Aktiv") == "Aktiv"
+    assert snapshot_column_title("Artikelnr.") == "Lieferantenartikelnummer"
+    assert snapshot_column_title("Einkaufspreis EUR netto") == "Einkaufspreis EUR netto"
+    assert snapshot_column_title("Legacy-Spalte") == "Legacy-Spalte"
+
+
+def test_flatten_uses_registration_column_keys_and_titles():
+    data = master_row_to_snapshot_data(_sample_master("010.020.0010"))
+    assert data["Prosema-Artikelnummer"] == "010.020.0010"
+    assert data["Prosema-Artikelname"] == "Artikel 010.020.0010"
+    columns = build_snapshot_columns([data])
+    by_key = {col["key"]: col["title"] for col in columns}
+    assert by_key["Prosema-Artikelnummer"] == "Prosema-Artikelnummer"
+    assert by_key["Prosema-Artikelname"] == "Prosema-Artikelname"
+    assert by_key["Prosema-Langtext"] == "Prosema-Langtext"
+
+
+@patch("app.config.settings.weclapp_tenant", TENANT)
+def test_grid_and_excel_show_registration_titles_for_historic_keys(db_session):
+    stored_columns = [
+        {"key": "Prosema Artikelnummer", "title": "Prosema Artikelnummer", "width": 160},
+        {"key": "PROSEMA Kurztext", "title": "PROSEMA Kurztext", "width": 220},
+        {"key": "PROSEMA Langtext", "title": "PROSEMA Langtext", "width": 280},
+        {"key": "Einheit", "title": "Einheit", "width": 90},
+        {"key": "Einkaufspreis EUR netto", "title": "Einkaufspreis EUR netto", "width": 150},
+    ]
+    data = {
+        "Prosema Artikelnummer": "010.020.0010",
+        "PROSEMA Kurztext": "Testname",
+        "PROSEMA Langtext": "Lang",
+        "Einheit": "Stk.",
+        "Einkaufspreis EUR netto": "1.00",
+    }
+    snapshot = ArticleSnapshot(
+        status="complete",
+        created_by_oid=PLAIN_USER["oid"],
+        created_by_name=PLAIN_USER["name"],
+        weclapp_tenant=TENANT,
+        row_count=1,
+        columns=stored_columns,
+    )
+    db_session.add(snapshot)
+    db_session.flush()
+    row = ArticleSnapshotRow(
+        snapshot_id=snapshot.id,
+        position=0,
+        data=data,
+        article_number="010.020.0010",
+        article_name="Testname",
+        hauptgruppe_code="010",
+        untergruppe_code="020",
+        active=True,
+        weclapp_id="1",
+    )
+    db_session.add(row)
+    db_session.flush()
+
+    expected_titles = [
+        "Prosema-Artikelnummer",
+        "Prosema-Artikelname",
+        "Prosema-Langtext",
+        "Einheit",
+        "Einkaufspreis EUR netto",
+    ]
+    config = build_grid_config(snapshot, [row])
+    assert config["fields"] == [col["key"] for col in stored_columns]
+    assert [col["title"] for col in config["columns"]] == expected_titles
+    assert config["data"] == [["010.020.0010", "Testname", "Lang", "Stk.", "1.00"]]
+
+    wb = build_excel_workbook(snapshot, [row], SnapshotFilters())
+    ws = wb["Artikel"]
+    headers = [ws.cell(1, col).value for col in range(1, ws.max_column + 1)]
+    assert headers == expected_titles
+    assert ws.cell(2, 1).value == "010.020.0010"
+    assert ws.cell(2, 1).number_format == "@"
 
 
 @patch("app.config.settings.weclapp_tenant", TENANT)
@@ -725,3 +825,476 @@ def test_retention_failure_does_not_roll_back_snapshot(db_session, caplog):
 
 def test_job_handler_registered():
     assert "weclapp_article_snapshot" in HANDLERS
+
+
+def _grid_article_numbers(html: str) -> list[str]:
+    match = re.search(
+        r'<script type="application/json" id="snapshot-grid-config">(.*?)</script>',
+        html,
+        re.DOTALL,
+    )
+    assert match is not None
+    config = json.loads(match.group(1))
+    fields = config["fields"]
+    idx = next(
+        i
+        for i, key in enumerate(fields)
+        if "Artikelnummer" in key or key == "article_number"
+    )
+    return [row[idx] for row in config["data"]]
+
+
+def _request(frage: str | None = None, **params: str) -> MagicMock:
+    query: dict[str, str] = dict(params)
+    if frage is not None:
+        query["frage"] = frage
+    request = MagicMock()
+    request.query_params = query
+    return request
+
+
+def _make_assistant_query(
+    db_session,
+    snapshot: ArticleSnapshot,
+    *,
+    numbers: list[str] | None,
+    truncated: bool = False,
+    user_oid: str = PLAIN_USER["oid"],
+    question: str = "Welche Artikel?",
+    outcome: str = "answered",
+    answer_de: str | None = "Drei Artikel.",
+) -> AssistantQuery:
+    query = AssistantQuery(
+        user_oid=user_oid,
+        user_name=PLAIN_USER["name"],
+        question_de=question,
+        snapshot_id=snapshot.id,
+        tool_calls=[],
+        answer_de=answer_de,
+        outcome=outcome,
+        applied_article_numbers=numbers,
+        applied_filter={"conditions": []},
+        selection_truncated=truncated,
+    )
+    db_session.add(query)
+    db_session.flush()
+    return query
+
+
+@patch("app.config.settings.weclapp_tenant", TENANT)
+def test_assistant_selection_renders_exactly_those_rows(db_session, user_client):
+    snapshot = _make_complete_snapshot(db_session)
+    query = _make_assistant_query(
+        db_session,
+        snapshot,
+        numbers=["010.020.0010", "020.010.0005"],
+    )
+    db_session.commit()
+
+    response = user_client.get(f"/artikel-uebersicht/{snapshot.id}?frage={query.id}")
+    assert response.status_code == 200
+    assert "Gefiltert: 2 von 3 Zeilen" in response.text
+    assert _grid_article_numbers(response.text) == ["010.020.0010", "020.010.0005"]
+
+
+@patch("app.config.settings.weclapp_tenant", TENANT)
+def test_assistant_selection_ands_with_q(db_session, user_client):
+    snapshot = _make_complete_snapshot(db_session)
+    query = _make_assistant_query(
+        db_session,
+        snapshot,
+        numbers=["010.020.0010", "020.010.0005"],
+    )
+    db_session.commit()
+
+    response = user_client.get(
+        f"/artikel-uebersicht/{snapshot.id}?frage={query.id}&q=010.020"
+    )
+    assert "Gefiltert: 1 von 3 Zeilen" in response.text
+    assert _grid_article_numbers(response.text) == ["010.020.0010"]
+
+
+@patch("app.config.settings.weclapp_tenant", TENANT)
+def test_assistant_selection_paging(db_session, user_client):
+    rows = [
+        master_row_to_snapshot_data(
+            _sample_master(f"010.020.{i:04d}", name=f"Artikel {i}")
+        )
+        for i in range(300)
+    ]
+    snapshot = _make_complete_snapshot(db_session, rows=rows)
+    numbers = [f"010.020.{i:04d}" for i in range(300)]
+    query = _make_assistant_query(db_session, snapshot, numbers=numbers)
+    db_session.commit()
+
+    page2 = user_client.get(
+        f"/artikel-uebersicht/{snapshot.id}?frage={query.id}&seite=2"
+    )
+    assert page2.status_code == 200
+    assert "Gefiltert: 300 von 300 Zeilen" in page2.text
+    shown = _grid_article_numbers(page2.text)
+    assert len(shown) == 50
+    assert shown == [f"010.020.{i:04d}" for i in range(GRID_PAGE_SIZE, 300)]
+
+
+@patch("app.config.settings.weclapp_tenant", TENANT)
+def test_truncated_selection_renders_unfiltered_with_hinweis(db_session, user_client):
+    snapshot = _make_complete_snapshot(db_session)
+    query = _make_assistant_query(db_session, snapshot, numbers=None, truncated=True)
+    db_session.commit()
+
+    response = user_client.get(f"/artikel-uebersicht/{snapshot.id}?frage={query.id}")
+    assert response.status_code == 200
+    assert "Gefiltert: 2 von 3 Zeilen" in response.text
+    ctx = _viewer_context(
+        db_session, snapshot, PLAIN_USER, _request(frage=str(query.id))
+    )
+    assert ctx["assistant_truncated"] is True
+    assert ctx["assistant_selection_count"] is None
+    assert ctx["assistant_hinweis"] == MSG_SELECTION_TRUNCATED
+    assert ctx["assistant_asked_at"] is not None
+    assert ctx["assistant_question"] == "Welche Artikel?"
+
+
+@patch("app.config.settings.weclapp_tenant", TENANT)
+def test_frage_from_other_user_is_ignored(db_session, user_client):
+    snapshot = _make_complete_snapshot(db_session)
+    query = _make_assistant_query(
+        db_session,
+        snapshot,
+        numbers=["020.010.0005"],
+        user_oid="someone-else",
+    )
+    db_session.commit()
+
+    response = user_client.get(f"/artikel-uebersicht/{snapshot.id}?frage={query.id}")
+    assert "Gefiltert: 2 von 3 Zeilen" in response.text
+    ctx = _viewer_context(
+        db_session, snapshot, PLAIN_USER, _request(frage=str(query.id))
+    )
+    assert ctx["assistant_query_id"] is None
+    assert ctx["assistant_hinweis"] == MSG_FRAGE_OTHER_USER
+
+
+@patch("app.config.settings.weclapp_tenant", TENANT)
+def test_frage_from_other_snapshot_is_ignored(db_session, user_client):
+    snapshot = _make_complete_snapshot(db_session)
+    other = _make_complete_snapshot(db_session)
+    query = _make_assistant_query(db_session, other, numbers=["020.010.0005"])
+    db_session.commit()
+
+    response = user_client.get(f"/artikel-uebersicht/{snapshot.id}?frage={query.id}")
+    assert "Gefiltert: 2 von 3 Zeilen" in response.text
+    ctx = _viewer_context(
+        db_session, snapshot, PLAIN_USER, _request(frage=str(query.id))
+    )
+    assert ctx["assistant_query_id"] is None
+    assert ctx["assistant_hinweis"] == MSG_FRAGE_OTHER_SNAPSHOT
+
+
+@patch("app.config.settings.weclapp_tenant", TENANT)
+def test_nonexistent_frage_is_ignored(db_session, user_client):
+    snapshot = _make_complete_snapshot(db_session)
+    db_session.commit()
+    missing = uuid.uuid4()
+
+    response = user_client.get(f"/artikel-uebersicht/{snapshot.id}?frage={missing}")
+    assert response.status_code == 200
+    assert "Gefiltert: 2 von 3 Zeilen" in response.text
+    ctx = _viewer_context(
+        db_session, snapshot, PLAIN_USER, _request(frage=str(missing))
+    )
+    assert ctx["assistant_hinweis"] == MSG_FRAGE_NOT_FOUND
+
+
+@patch("app.config.settings.weclapp_tenant", TENANT)
+def test_selection_forces_nur_aktive_false_unless_explicit(db_session, user_client):
+    snapshot = _make_complete_snapshot(db_session)
+    query = _make_assistant_query(
+        db_session,
+        snapshot,
+        numbers=["010.020.0010", "010.030.0001", "020.010.0005"],
+    )
+    db_session.commit()
+
+    implicit = user_client.get(f"/artikel-uebersicht/{snapshot.id}?frage={query.id}")
+    assert "Gefiltert: 3 von 3 Zeilen" in implicit.text
+    assert "010.030.0001" in _grid_article_numbers(implicit.text)
+
+    explicit = user_client.get(
+        f"/artikel-uebersicht/{snapshot.id}?frage={query.id}&nur_aktive=1"
+    )
+    assert "Gefiltert: 2 von 3 Zeilen" in explicit.text
+    assert "010.030.0001" not in _grid_article_numbers(explicit.text)
+
+
+@patch("app.config.settings.weclapp_tenant", TENANT)
+def test_selection_number_absent_from_snapshot_matches_nothing(db_session, user_client):
+    snapshot = _make_complete_snapshot(db_session)
+    query = _make_assistant_query(db_session, snapshot, numbers=["999.999.9999"])
+    db_session.commit()
+
+    response = user_client.get(f"/artikel-uebersicht/{snapshot.id}?frage={query.id}")
+    assert response.status_code == 200
+    assert "Gefiltert: 0 von 3 Zeilen" in response.text
+
+
+@patch("app.config.settings.weclapp_tenant", TENANT)
+def test_excel_with_frage_exports_selection_and_records_question(db_session, user_client):
+    snapshot = _make_complete_snapshot(db_session)
+    query = _make_assistant_query(
+        db_session,
+        snapshot,
+        numbers=["020.010.0005"],
+        question="Nur Metall?",
+    )
+    db_session.commit()
+
+    excel = user_client.get(f"/artikel-uebersicht/{snapshot.id}/excel?frage={query.id}")
+    assert excel.status_code == 200
+    wb = load_workbook(io.BytesIO(excel.content))
+    ws = wb["Artikel"]
+    headers = [ws.cell(1, col).value for col in range(1, ws.max_column + 1)]
+    artikel_col = headers.index("Prosema-Artikelnummer") + 1
+    numbers = {ws.cell(row, artikel_col).value for row in range(2, ws.max_row + 1)}
+    assert numbers == {"020.010.0005"}
+    abfrage = wb["Abfrage"]
+    pairs = {
+        abfrage.cell(row, 1).value: abfrage.cell(row, 2).value
+        for row in range(2, abfrage.max_row + 1)
+    }
+    assert pairs["Frage"] == "Nur Metall?"
+    assert pairs["Datenstand"]
+
+
+@patch("app.config.settings.weclapp_tenant", TENANT)
+@patch("app.assistant.tools.settings.weclapp_tenant", TENANT)
+def test_post_frage_on_non_current_snapshot_does_not_call_model(db_session, user_client):
+    older = _make_complete_snapshot(db_session)
+    older.created_at = datetime(2026, 1, 1, tzinfo=UTC)
+    newer = _make_complete_snapshot(db_session)
+    newer.created_at = datetime(2026, 8, 1, tzinfo=UTC)
+    db_session.commit()
+    assert newer.id != older.id
+
+    with (
+        patch("app.config.settings.assistant_enabled", True),
+        patch("app.routes.snapshots.ask") as ask_mock,
+    ):
+        response = user_client.post(
+            f"/artikel-uebersicht/{older.id}/frage",
+            data={"frage": "Wie viele Artikel?"},
+        )
+    ask_mock.assert_not_called()
+    assert response.status_code == 200
+
+
+@patch("app.config.settings.weclapp_tenant", TENANT)
+@patch("app.assistant.tools.settings.weclapp_tenant", TENANT)
+def test_post_frage_disabled_does_not_call_model(db_session, user_client):
+    snapshot = _make_complete_snapshot(db_session)
+    db_session.commit()
+
+    with (
+        patch("app.config.settings.assistant_enabled", False),
+        patch("app.routes.snapshots.ask") as ask_mock,
+    ):
+        response = user_client.post(
+            f"/artikel-uebersicht/{snapshot.id}/frage",
+            data={"frage": "Wie viele Artikel?"},
+        )
+    ask_mock.assert_not_called()
+    assert response.status_code == 200
+
+
+@patch("app.config.settings.weclapp_tenant", TENANT)
+@patch("app.assistant.tools.settings.weclapp_tenant", TENANT)
+def test_post_frage_redirects_with_audit_id(db_session, user_client):
+    snapshot = _make_complete_snapshot(db_session)
+    db_session.commit()
+    audit_id = uuid.uuid4()
+    result = MagicMock()
+    result.audit_id = audit_id
+
+    with (
+        patch("app.config.settings.assistant_enabled", True),
+        patch("app.routes.snapshots.ask", return_value=result) as ask_mock,
+    ):
+        response = user_client.post(
+            f"/artikel-uebersicht/{snapshot.id}/frage?q=holz",
+            data={"frage": "Welche Artikel?"},
+            follow_redirects=False,
+        )
+    ask_mock.assert_called_once()
+    assert response.status_code == 303
+    location = response.headers["location"]
+    assert f"frage={audit_id}" in location
+    assert "q=holz" in location
+    assert str(snapshot.id) in location
+
+
+def _href_before_label(html: str, label: str) -> str:
+    match = re.search(
+        rf'href="([^"]*)"[^>]*>\s*{re.escape(label)}',
+        html,
+    )
+    assert match is not None, f"no href for {label!r}"
+    return match.group(1)
+
+
+@patch("app.config.settings.weclapp_tenant", TENANT)
+@patch("app.assistant.tools.settings.weclapp_tenant", TENANT)
+def test_frage_card_renders_on_current_snapshot_when_enabled(db_session, user_client):
+    snapshot = _make_complete_snapshot(db_session)
+    db_session.commit()
+
+    with patch("app.config.settings.assistant_enabled", True):
+        response = user_client.get(f"/artikel-uebersicht/{snapshot.id}")
+    assert response.status_code == 200
+    assert 'id="snapshot-frage-card"' in response.text
+    assert 'name="frage"' in response.text
+    assert "Stellen Sie eine Frage zur Artikelliste." in response.text
+    assert "Welche Artikel von Dural wiegen mehr als 2 kg?" in response.text
+    assert 'hx-boost="false"' in response.text
+    assert 'id="snapshot-frage-status"' in response.text
+
+
+@patch("app.config.settings.weclapp_tenant", TENANT)
+@patch("app.assistant.tools.settings.weclapp_tenant", TENANT)
+def test_frage_card_hidden_on_archived_snapshot(db_session, user_client):
+    older = _make_complete_snapshot(db_session)
+    older.created_at = datetime(2026, 1, 1, tzinfo=UTC)
+    newer = _make_complete_snapshot(db_session)
+    newer.created_at = datetime(2026, 8, 1, tzinfo=UTC)
+    db_session.commit()
+
+    with patch("app.config.settings.assistant_enabled", True):
+        response = user_client.get(f"/artikel-uebersicht/{older.id}")
+    assert response.status_code == 200
+    assert 'id="snapshot-frage-card"' not in response.text
+    assert 'name="frage"' not in response.text
+
+    with patch("app.config.settings.assistant_enabled", True):
+        current = user_client.get(f"/artikel-uebersicht/{newer.id}")
+    assert 'id="snapshot-frage-card"' in current.text
+
+
+@patch("app.config.settings.weclapp_tenant", TENANT)
+@patch("app.assistant.tools.settings.weclapp_tenant", TENANT)
+def test_frage_card_hidden_when_assistant_disabled(db_session, user_client):
+    snapshot = _make_complete_snapshot(db_session)
+    db_session.commit()
+
+    with patch("app.config.settings.assistant_enabled", False):
+        response = user_client.get(f"/artikel-uebersicht/{snapshot.id}")
+    assert response.status_code == 200
+    assert 'id="snapshot-frage-card"' not in response.text
+    assert 'name="frage"' not in response.text
+
+
+@patch("app.config.settings.weclapp_tenant", TENANT)
+@patch("app.assistant.tools.settings.weclapp_tenant", TENANT)
+def test_frage_banner_shows_question_timestamp_and_count(db_session, user_client):
+    snapshot = _make_complete_snapshot(db_session)
+    query = _make_assistant_query(
+        db_session,
+        snapshot,
+        numbers=["010.020.0010", "020.010.0005"],
+        question="Welche Artikel von Dural?",
+    )
+    db_session.commit()
+
+    with patch("app.config.settings.assistant_enabled", True):
+        response = user_client.get(f"/artikel-uebersicht/{snapshot.id}?frage={query.id}")
+    assert response.status_code == 200
+    assert 'id="snapshot-frage-banner"' in response.text
+    assert "alert-info" in response.text
+    assert "Auswahl aus der Frage vom" in response.text
+    assert "«Welche Artikel von Dural?»" in response.text
+    assert "2 Artikel ausgewählt." in response.text
+    assert "Auswahl durch die Frage" in response.text
+
+
+@patch("app.config.settings.weclapp_tenant", TENANT)
+@patch("app.assistant.tools.settings.weclapp_tenant", TENANT)
+def test_frage_banner_unverified_is_warning_without_empty_prose(
+    db_session, user_client
+):
+    snapshot = _make_complete_snapshot(db_session)
+    query = _make_assistant_query(
+        db_session,
+        snapshot,
+        numbers=["020.010.0005"],
+        outcome="answered_unverified",
+        answer_de=None,
+    )
+    db_session.commit()
+
+    with patch("app.config.settings.assistant_enabled", True):
+        response = user_client.get(f"/artikel-uebersicht/{snapshot.id}?frage={query.id}")
+    assert response.status_code == 200
+    assert "alert-warning" in response.text
+    assert MSG_UNVERIFIED in response.text
+    assert "1 Artikel ausgewählt." in response.text
+    assert "«Welche Artikel?»" in response.text
+    banner = response.text.split('id="snapshot-frage-banner"', 1)[1]
+    banner = banner.split("</div>", 2)[0]
+    assert "<p class=\"mb-1\"></p>" not in banner
+    assert not re.search(r"<p class=\"mb-1\">\s*</p>", banner)
+
+
+@patch("app.config.settings.weclapp_tenant", TENANT)
+@patch("app.assistant.tools.settings.weclapp_tenant", TENANT)
+def test_frage_banner_truncated_explains_no_selection(db_session, user_client):
+    snapshot = _make_complete_snapshot(db_session)
+    query = _make_assistant_query(
+        db_session, snapshot, numbers=None, truncated=True
+    )
+    db_session.commit()
+
+    with patch("app.config.settings.assistant_enabled", True):
+        response = user_client.get(f"/artikel-uebersicht/{snapshot.id}?frage={query.id}")
+    assert response.status_code == 200
+    assert "Das Ergebnis ist zu gross, um es als Auswahl zu setzen" in response.text
+    assert "Es ist keine Auswahl aktiv." in response.text
+    assert "Stellen Sie eine engere Frage." in response.text
+    assert "Artikel ausgewählt" not in response.text
+    assert "Auswahl durch die Frage" not in response.text
+
+
+@patch("app.config.settings.weclapp_tenant", TENANT)
+@patch("app.assistant.tools.settings.weclapp_tenant", TENANT)
+def test_auswahl_aufheben_drops_frage_keeps_q(db_session, user_client):
+    snapshot = _make_complete_snapshot(db_session)
+    query = _make_assistant_query(
+        db_session, snapshot, numbers=["020.010.0005"]
+    )
+    db_session.commit()
+
+    with patch("app.config.settings.assistant_enabled", True):
+        response = user_client.get(
+            f"/artikel-uebersicht/{snapshot.id}?frage={query.id}&q=holz"
+        )
+    href = _href_before_label(response.text, "Auswahl aufheben")
+    assert "frage=" not in href
+    assert "q=holz" in href
+    assert str(snapshot.id) in href
+
+
+@patch("app.config.settings.weclapp_tenant", TENANT)
+@patch("app.assistant.tools.settings.weclapp_tenant", TENANT)
+def test_excel_link_includes_frage_when_selection_active(db_session, user_client):
+    snapshot = _make_complete_snapshot(db_session)
+    query = _make_assistant_query(
+        db_session, snapshot, numbers=["020.010.0005"]
+    )
+    db_session.commit()
+
+    with patch("app.config.settings.assistant_enabled", True):
+        response = user_client.get(f"/artikel-uebersicht/{snapshot.id}?frage={query.id}")
+    match = re.search(
+        r'href="(/artikel-uebersicht/[^"]+/excel[^"]*)"',
+        response.text,
+    )
+    assert match is not None
+    assert f"frage={query.id}" in match.group(1)

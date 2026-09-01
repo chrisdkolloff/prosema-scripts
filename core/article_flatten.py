@@ -5,13 +5,13 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from core.article_fields import IMPORT_COLUMNS, display_label, find_field
 from core.article_payload import (
     ARTICLE_NAME_FIELD,
     ARTICLE_NUMBER_FIELD,
     LONG_TEXT_FIELD,
     get_row_value,
 )
-from scripts.weclapp.article_import import IMPORT_COLUMNS
 from scripts.weclapp.master_columns import (
     EXPORT_COLUMNS,
     article_to_master_row,
@@ -171,6 +171,18 @@ def extract_indexed_fields(
     }
 
 
+def snapshot_column_title(key: str, stored_title: str | None = None) -> str:
+    """Artikelregistrierung label when the snapshot column is the same field."""
+    field = find_field(key)
+    if field is not None:
+        return field.label
+    mapped = _MASTER_TO_IMPORT.get(key)
+    if mapped:
+        mapped_field = find_field(mapped)
+        return mapped_field.label if mapped_field is not None else mapped
+    return display_label(stored_title or key) or key
+
+
 def build_snapshot_columns(rows: list[dict[str, str]]) -> list[dict[str, Any]]:
     """Ordered column list: import template first, then extras alphabetically."""
     present: set[str] = set()
@@ -185,8 +197,9 @@ def build_snapshot_columns(rows: list[dict[str, str]]) -> list[dict[str, Any]]:
     return [
         {
             "key": key,
-            "title": key,
-            "width": _COLUMN_WIDTHS.get(key, _DEFAULT_WIDTH),
+            "title": snapshot_column_title(key),
+            "width": _COLUMN_WIDTHS.get(key)
+            or _COLUMN_WIDTHS.get(snapshot_column_title(key), _DEFAULT_WIDTH),
         }
         for key in ordered_keys
     ]
@@ -223,4 +236,5 @@ __all__ = [
     "extract_indexed_fields",
     "flatten_articles",
     "master_row_to_snapshot_data",
+    "snapshot_column_title",
 ]

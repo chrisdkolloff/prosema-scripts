@@ -140,3 +140,78 @@
     init(document);
   }
 })();
+
+(function () {
+  var BUSY_LABEL = "Antwort wird erstellt …";
+  var BUSY_MSG = "Antwort wird erstellt … Das kann eine Weile dauern.";
+  var FAIL_MSG = "Die Anfrage ist fehlgeschlagen. Bitte erneut versuchen.";
+
+  function bindFrageForm() {
+    var form = document.getElementById("snapshot-frage-form");
+    if (!form || form.dataset.bound === "1") return;
+    form.dataset.bound = "1";
+    var btn = document.getElementById("snapshot-frage-submit");
+    var input = document.getElementById("snapshot-frage");
+    var status = document.getElementById("snapshot-frage-status");
+
+    function setStatus(kind, message) {
+      if (!status) return;
+      status.hidden = !message;
+      status.textContent = message || "";
+      status.className =
+        kind === "error"
+          ? "alert alert-danger mt-3 mb-0"
+          : "alert alert-info mt-3 mb-0";
+    }
+
+    function setBusy(busy) {
+      form.dataset.busy = busy ? "1" : "0";
+      if (btn) {
+        btn.disabled = busy;
+        btn.textContent = busy ? BUSY_LABEL : "Fragen";
+      }
+      if (input) input.disabled = busy;
+      setStatus(busy ? "busy" : "error", busy ? BUSY_MSG : "");
+    }
+
+    form.addEventListener("submit", function (event) {
+      if (form.dataset.busy === "1") {
+        event.preventDefault();
+        return;
+      }
+      var body = new FormData(form);
+      setBusy(true);
+      if (typeof fetch !== "function") return;
+
+      event.preventDefault();
+      fetch(form.action, {
+        method: "POST",
+        body: body,
+        credentials: "same-origin",
+        redirect: "follow",
+        headers: { Accept: "text/html" },
+      })
+        .then(function (res) {
+          if (res.redirected) {
+            window.location.assign(res.url);
+            return;
+          }
+          if (!res.ok) throw new Error("fail");
+          return res.text().then(function (html) {
+            document.open();
+            document.write(html);
+            document.close();
+          });
+        })
+        .catch(function () {
+          setBusy(false);
+          setStatus("error", FAIL_MSG);
+        });
+    });
+  }
+
+  document.addEventListener("DOMContentLoaded", bindFrageForm);
+  if (document.readyState !== "loading") {
+    bindFrageForm();
+  }
+})();

@@ -201,7 +201,7 @@ def test_unknown_header_rejected(db_session):
 
 def test_hyphenated_prosema_headers_are_catalogue_fields():
     from app.article_templates import parse_template_headers
-    from core.article_fields import find_field
+    from core.article_fields import display_label, find_field
 
     for label in (
         "Prosema-Artikelnummer",
@@ -213,6 +213,9 @@ def test_hyphenated_prosema_headers_are_catalogue_fields():
         assert field.label == label
     assert find_field("PROSEMA Kurztext").label == "Prosema-Artikelname"
     assert find_field("Prosema Artikelnummer").label == "Prosema-Artikelnummer"
+    assert display_label("PROSEMA Kurztext") == "Prosema-Artikelname"
+    assert display_label("Prosema Artikelnummer") == "Prosema-Artikelnummer"
+    assert display_label("Einkaufspreis EUR netto") == "Einkaufspreis EUR netto"
 
     columns = parse_template_headers(
         [

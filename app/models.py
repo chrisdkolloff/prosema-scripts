@@ -880,3 +880,62 @@ class ExportRow(Base):
         Index("ix_export_row_run_included", "run_id", "included"),
         Index("ix_export_row_run_discount_category", "run_id", "discount_category"),
     )
+
+
+class AssistantQuery(Base):
+    """One article-assistant question. Survives snapshot retention."""
+
+    __tablename__ = "assistant_queries"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    asked_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+    )
+    user_oid: Mapped[str] = mapped_column(Text, nullable=False)
+    user_name: Mapped[str] = mapped_column(Text, nullable=False)
+    question_de: Mapped[str] = mapped_column(Text, nullable=False)
+    snapshot_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("article_snapshots.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    tool_calls: Mapped[list] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=list,
+        server_default=text("'[]'::jsonb"),
+    )
+    answer_de: Mapped[str | None] = mapped_column(Text, nullable=True)
+    outcome: Mapped[str] = mapped_column(Text, nullable=False)
+    total_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    turns: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    prompt_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    completion_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    model: Mapped[str | None] = mapped_column(Text, nullable=True)
+    latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    applied_article_numbers: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    applied_filter: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    selection_truncated: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=text("false"),
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "outcome IN ("
+            "'answered','answered_unverified','no_result','no_answer',"
+            "'refused','invalid_input','error','unavailable'"
+            ")",
+            name="ck_assistant_queries_outcome",
+        ),
+        Index("ix_assistant_queries_asked_at", "asked_at"),
+    )
