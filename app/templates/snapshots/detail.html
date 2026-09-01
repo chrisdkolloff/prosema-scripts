@@ -29,8 +29,6 @@
   <div class="alert alert-danger" role="alert">Abfrage fehlgeschlagen{% if snapshot.error %}: {{ snapshot.error }}{% endif %}</div>
 
   {% else %}
-  {% include "snapshots/partials/stand_banner.html" %}
-
   {% set keep = namespace(parts=[]) %}
   {% if filters.query %}{% set keep.parts = keep.parts + ['q=' ~ (filters.query | urlencode)] %}{% endif %}
   {% if filters.hauptgruppe %}{% set keep.parts = keep.parts + ['hauptgruppe=' ~ (filters.hauptgruppe | urlencode)] %}{% endif %}
@@ -154,22 +152,5 @@
   <script src="/static/jsuites.js"></script>
   <script src="/static/jspreadsheet.js"></script>
   <script src="/static/snapshot_grid.js?v={{ app_version }}"></script>
-  <script>
-  (function () {
-    var banner = document.getElementById("snapshot-stand-banner");
-    if (!banner) return;
-    var key = "snapshot-banner-dismissed-" + banner.dataset.snapshotId;
-    if (localStorage.getItem(key)) {
-      banner.hidden = true;
-      return;
-    }
-    var close = banner.querySelector(".snapshot-stand-banner__close");
-    if (!close) return;
-    close.addEventListener("click", function () {
-      banner.hidden = true;
-      localStorage.setItem(key, "1");
-    });
-  })();
-  </script>
   {% endif %}
 {% endblock %}

@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}FAQs — PROSEMA{% endblock %}
+{% block container_class %}container-fluid px-4 sharepoint-page{% endblock %}
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/">Home</a></li>
+<li class="breadcrumb-item active"><span>FAQs</span></li>
+{% endblock %}
+{% block content %}
+  <h1 class="mb-2">FAQs</h1>
+  <p class="text-body-secondary mb-3">
+    Anleitung zur Tools-Website und zum weclapp-API-Token.
+    <a href="{{ sharepoint_url }}" target="_blank" rel="noopener noreferrer">In SharePoint öffnen</a>
+  </p>
+  <iframe
+    class="sharepoint-frame"
+    title="FAQs in SharePoint"
+    src="{{ sharepoint_url }}"
+  ></iframe>
+{% endblock %}

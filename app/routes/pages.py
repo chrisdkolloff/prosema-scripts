@@ -11,6 +11,8 @@ from app.auth import SessionUser, require_user
 from app.version_info import load_version_info
 from app.weclapp import LANDING_TOOLS
 
+SHAREPOINT_TOOLS_URL = "https://prosemaag.sharepoint.com/sites/tools.prosema.ch"
+
 router = APIRouter()
 
 
@@ -20,6 +22,15 @@ def index(request: Request, user: SessionUser = Depends(require_user)) -> HTMLRe
         request,
         "index.html",
         {"user": user, "tools": LANDING_TOOLS},
+    )
+
+
+@router.get("/faqs", response_class=HTMLResponse)
+def faqs(request: Request, user: SessionUser = Depends(require_user)) -> HTMLResponse:
+    return request.app.state.templates.TemplateResponse(
+        request,
+        "faqs.html",
+        {"user": user, "sharepoint_url": SHAREPOINT_TOOLS_URL},
     )
 
 

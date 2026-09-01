@@ -252,19 +252,19 @@ def test_post_abfragen_while_running_does_not_enqueue_second_job(db_session, use
 
 
 @patch("app.config.settings.weclapp_tenant", TENANT)
-def test_stand_banner_fresh_pull_is_green_list_link_is_yellow(db_session, user_client):
+def test_snapshot_detail_has_no_stand_banner(db_session, user_client):
     snapshot = _make_complete_snapshot(db_session)
     db_session.commit()
 
     fresh = user_client.get(f"/artikel-uebersicht/{snapshot.id}?neu=1")
     assert fresh.status_code == 200
-    assert "snapshot-stand-banner--current" in fresh.text
-    assert 'class="snapshot-stand-banner__close"' in fresh.text
+    assert "snapshot-stand-banner" not in fresh.text
+    assert "abgefragt von" not in fresh.text
 
     from_list = user_client.get(f"/artikel-uebersicht/{snapshot.id}")
     assert from_list.status_code == 200
-    assert "snapshot-stand-banner--archive" in from_list.text
-    assert 'class="snapshot-stand-banner__close"' not in from_list.text
+    assert "snapshot-stand-banner" not in from_list.text
+    assert "abgefragt von" not in from_list.text
 
 
 @patch("app.routes.snapshots.create_snapshot_pull")

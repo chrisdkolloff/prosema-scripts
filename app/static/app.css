@@ -193,46 +193,6 @@ tr.batch-row-excluded > td {
   font-weight: 650;
 }
 
-.snapshot-stand-banner {
-  font-size: 1.15rem;
-  font-weight: 650;
-  margin: 0 0 1rem;
-  padding: 0.85rem 1rem;
-}
-
-.snapshot-stand-banner--current {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  background: #dcfce7;
-  border: 1px solid #86efac;
-  color: #166534;
-}
-
-.snapshot-stand-banner--archive {
-  background: #fef3c7;
-  border: 1px solid #fde68a;
-  color: #78350f;
-}
-
-.snapshot-stand-banner__close {
-  flex-shrink: 0;
-  appearance: none;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  font-size: 1.35rem;
-  line-height: 1;
-  padding: 0 0.15rem;
-  opacity: 0.75;
-}
-
-.snapshot-stand-banner__close:hover {
-  opacity: 1;
-}
-
 .supply-column-picker {
   margin: 0 0 0.85rem;
   padding: 0.85rem 1rem;
