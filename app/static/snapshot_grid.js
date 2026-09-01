@@ -142,8 +142,6 @@
 })();
 
 (function () {
-  var BUSY_LABEL = "Antwort wird erstellt …";
-  var BUSY_MSG = "Antwort wird erstellt … Das kann eine Weile dauern.";
   var FAIL_MSG = "Die Anfrage ist fehlgeschlagen. Bitte erneut versuchen.";
 
   function bindFrageForm() {
@@ -153,6 +151,7 @@
     var btn = document.getElementById("snapshot-frage-submit");
     var input = document.getElementById("snapshot-frage");
     var status = document.getElementById("snapshot-frage-status");
+    var running = document.getElementById("snapshot-frage-running-banner");
 
     function setStatus(kind, message) {
       if (!status) return;
@@ -166,12 +165,10 @@
 
     function setBusy(busy) {
       form.dataset.busy = busy ? "1" : "0";
-      if (btn) {
-        btn.disabled = busy;
-        btn.textContent = busy ? BUSY_LABEL : "Fragen";
-      }
-      if (input) input.disabled = busy;
-      setStatus(busy ? "busy" : "error", busy ? BUSY_MSG : "");
+      if (btn) btn.disabled = busy;
+      if (input) input.readOnly = busy;
+      if (running) running.hidden = !busy;
+      if (busy) setStatus("error", "");
     }
 
     form.addEventListener("submit", function (event) {

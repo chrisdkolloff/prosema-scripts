@@ -11,20 +11,28 @@
   <link rel="stylesheet" href="/static/jsuites.css">
   <link rel="stylesheet" href="/static/jspreadsheet.css">
 {% endblock %}
+{% block page_status %}
+  {% if snapshot.status == "complete" and assistant_available %}
+  <div
+    id="snapshot-frage-running-banner"
+    class="alert alert-warning licence-banner mb-0 rounded-0"
+    hidden
+    role="status"
+  >Suchanfrage läuft...</div>
+  {% endif %}
+{% endblock %}
 {% block content %}
   <p class="mb-2"><a href="/artikel-uebersicht">Zur Übersicht</a></p>
 
   {% if snapshot.status == "running" %}
   <h1 class="mb-2">Artikelübersicht</h1>
-  <div class="alert alert-info" role="status">Abfrage läuft…</div>
+  <p class="text-body-secondary">Die Abfrage kann einige Minuten dauern. Diese Seite aktualisiert sich automatisch.</p>
   <div
     id="snapshot-status-panel"
     hx-get="/artikel-uebersicht/{{ snapshot.id }}/status{% if is_fresh_pull %}?neu=1{% endif %}"
     hx-trigger="every 3s"
-    hx-swap="innerHTML"
-  >
-    <p class="text-body-secondary">Die Abfrage kann einige Minuten dauern. Diese Seite aktualisiert sich automatisch.</p>
-  </div>
+    hx-swap="none"
+  ></div>
 
   {% elif snapshot.status == "failed" %}
   <h1 class="mb-2">Artikelübersicht</h1>
@@ -66,6 +74,7 @@
               id="snapshot-frage"
               type="text"
               name="frage"
+              value="{{ assistant_question or '' }}"
               placeholder="Welche Artikel von Dural wiegen mehr als 2 kg?"
               autocomplete="off"
             >

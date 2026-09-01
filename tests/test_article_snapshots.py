@@ -285,6 +285,40 @@ def test_post_abfragen_redirects_with_fresh_pull_flag(pull_mock, user_client):
 
 
 @patch("app.config.settings.weclapp_tenant", TENANT)
+def test_running_snapshot_has_no_duplicate_abfrage_laeuft_copy(db_session, user_client):
+    snapshot = ArticleSnapshot(
+        status="running",
+        created_by_oid=PLAIN_USER["oid"],
+        created_by_name=PLAIN_USER["name"],
+        weclapp_tenant=TENANT,
+    )
+    db_session.add(snapshot)
+    db_session.commit()
+
+    response = user_client.get(f"/artikel-uebersicht/{snapshot.id}")
+    assert response.status_code == 200
+    assert "Abfrage läuft" not in response.text
+    assert "alert-info" not in response.text
+    assert "Diese Seite aktualisiert sich automatisch." in response.text
+    assert 'id="snapshot-status-panel"' in response.text
+
+    poll = user_client.get(f"/artikel-uebersicht/{snapshot.id}/status")
+    assert poll.status_code == 200
+    assert poll.text == ""
+    assert "HX-Redirect" not in poll.headers
+
+
+@patch("app.config.settings.weclapp_tenant", TENANT)
+def test_status_poll_redirects_when_snapshot_complete(db_session, user_client):
+    snapshot = _make_complete_snapshot(db_session)
+    db_session.commit()
+
+    poll = user_client.get(f"/artikel-uebersicht/{snapshot.id}/status")
+    assert poll.status_code == 200
+    assert poll.headers["HX-Redirect"] == f"/artikel-uebersicht/{snapshot.id}"
+
+
+@patch("app.config.settings.weclapp_tenant", TENANT)
 def test_filter_hauptgruppe_matches_count(db_session, user_client):
     snapshot = _make_complete_snapshot(db_session)
     db_session.commit()
@@ -1157,6 +1191,10 @@ def test_frage_card_renders_on_current_snapshot_when_enabled(db_session, user_cl
     assert "Welche Artikel von Dural wiegen mehr als 2 kg?" in response.text
     assert 'hx-boost="false"' in response.text
     assert 'id="snapshot-frage-status"' in response.text
+    assert 'id="snapshot-frage-running-banner"' in response.text
+    assert "Suchanfrage läuft..." in response.text
+    assert 'id="snapshot-frage"' in response.text
+    assert re.search(r'id="snapshot-frage"[^>]*value=""', response.text)
 
 
 @patch("app.config.settings.weclapp_tenant", TENANT)
@@ -1213,6 +1251,9 @@ def test_frage_banner_shows_question_timestamp_and_count(db_session, user_client
     assert "«Welche Artikel von Dural?»" in response.text
     assert "2 Artikel ausgewählt." in response.text
     assert "Auswahl durch die Frage" in response.text
+    match = re.search(r'id="snapshot-frage"[^>]*value="([^"]*)"', response.text)
+    assert match is not None
+    assert match.group(1) == "Welche Artikel von Dural?"
 
 
 @patch("app.config.settings.weclapp_tenant", TENANT)

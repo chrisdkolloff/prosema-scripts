@@ -1,7 +1,17 @@
 # PROSEMA release history — edit this file to bump the version and document changes.
 # The top-level `version` is shown in the site header; `[[releases]]` entries appear on /changelog.
 
-version = "1.1.1"
+version = "1.1.2"
+
+[[releases]]
+version = "1.1.2"
+date = "2026-09-01"
+summary = "Refactor snapshot status handling in templates and JavaScript. Remove redundant status messages for running snapshots and implement a dedicated running banner in the detail view. Update related tests to ensure correct rendering and behavior of the new UI elements, enhancing user experience during snapshot processing. (+1 more)"
+changes = [
+  "Update .env.example to add configuration options for the article assistant, including settings for Azure OpenAI integration and local model usage. This enhances the assistant's functionality and provides flexibility for different environments.",
+  "Refactor snapshot status handling in templates and JavaScript. Remove redundant status messages for running snapshots and implement a dedicated running banner in the detail view. Update related tests to ensure correct rendering and behavior of the new UI elements, enhancing user experience during snapshot processing.",
+]
+
 
 [[releases]]
 version = "1.1.1"

@@ -376,10 +376,7 @@ def snapshot_status_poll(
     if snapshot is None:
         raise HTTPException(status_code=404, detail="Abfrage nicht gefunden")
     if snapshot.status == "running":
-        return HTMLResponse(
-            '<p class="muted">Abfrage läuft…</p>',
-            headers=_FRAGMENT_HEADERS,
-        )
+        return HTMLResponse("", headers=_FRAGMENT_HEADERS)
     redirect_url = _snapshot_detail_url(snapshot_id, fresh_pull=_is_fresh_pull(request))
     return HTMLResponse("", headers={"HX-Redirect": redirect_url})
 
