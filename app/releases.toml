@@ -1,7 +1,16 @@
 # PROSEMA release history — edit this file to bump the version and document changes.
 # The top-level `version` is shown in the site header; `[[releases]]` entries appear on /changelog.
 
-version = "1.1.8"
+version = "1.1.9"
+
+[[releases]]
+version = "1.1.9"
+date = "2026-09-01"
+summary = "Update SharePoint tools integration by adding a global URL and modifying navigation links. Remove the FAQs template and related route, replacing it with a direct link to SharePoint tools. Adjust tests to reflect these changes."
+changes = [
+  "Update SharePoint tools integration by adding a global URL and modifying navigation links. Remove the FAQs template and related route, replacing it with a direct link to SharePoint tools. Adjust tests to reflect these changes.",
+]
+
 
 [[releases]]
 version = "1.1.8"

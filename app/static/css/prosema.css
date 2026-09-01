@@ -402,12 +402,3 @@ body.is-frage-busy #snapshot-frage-banner {
 .file-picker .file-picker-name {
   min-width: 12rem;
 }
-
-.sharepoint-frame {
-  display: block;
-  width: 100%;
-  height: calc(100vh - 14rem);
-  border: 1px solid var(--cui-border-color, #d8dbe0);
-  border-radius: 0.25rem;
-  background: #fff;
-}

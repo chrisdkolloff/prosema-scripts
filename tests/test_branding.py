@@ -54,7 +54,8 @@ def test_layout_includes_favicon_and_logos():
     assert "sidebar-brand-narrow" in html
     assert 'aria-label="PROSEMA Tools"' in html
     assert 'class="nav-link header-account-link" href="/me"' in html
-    assert 'href="/faqs"' in html
+    assert 'href="https://prosemaag.sharepoint.com/sites/tools.prosema.ch"' in html
+    assert 'target="_blank"' in html
     assert "FAQs" in html
     assert "Fragen zur Artikelliste" not in html
     css = client.get("/static/css/prosema.css").text
@@ -88,16 +89,3 @@ def test_docs_use_brand_favicon():
     assert "/static/brand/favicon.svg" in docs.text
     assert "/static/brand/favicon.svg" in redoc.text
 
-
-def test_faqs_embeds_sharepoint():
-    app.dependency_overrides[get_current_user] = lambda: PLAIN_USER
-    client = TestClient(app)
-    try:
-        response = client.get("/faqs")
-    finally:
-        app.dependency_overrides.clear()
-
-    assert response.status_code == 200
-    assert "FAQs" in response.text
-    assert "https://prosemaag.sharepoint.com/sites/tools.prosema.ch" in response.text
-    assert 'class="sharepoint-frame"' in response.text

@@ -46,6 +46,9 @@ templates.env.auto_reload = settings.environment != "production"
 _version_info = load_version_info()
 templates.env.globals["app_version"] = _version_info.version
 templates.env.globals["assistant_name"] = settings.assistant_name
+templates.env.globals["sharepoint_tools_url"] = (
+    "https://prosemaag.sharepoint.com/sites/tools.prosema.ch"
+)
 
 _worker_thread: threading.Thread | None = None
 
