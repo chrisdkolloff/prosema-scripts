@@ -57,6 +57,8 @@ def test_layout_includes_favicon_and_logos():
     css = client.get("/static/css/prosema.css").text
     assert "--cui-primary: var(--prosema-tools-blue)" in css
     assert "#1183c5" in css
+    assert "#fc6f07" in css
+    assert "td.highlight" in css
     assert "header-account-link" in css
     assert "table-layout: fixed" in css
 

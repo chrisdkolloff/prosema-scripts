@@ -1264,7 +1264,7 @@ def test_frage_card_hidden_when_assistant_disabled(db_session, user_client):
 
 @patch("app.config.settings.weclapp_tenant", TENANT)
 @patch("app.assistant.tools.settings.weclapp_tenant", TENANT)
-def test_frage_banner_shows_question_timestamp_and_count(db_session, user_client):
+def test_frage_banner_shows_question_timestamp_and_answer(db_session, user_client):
     snapshot = _make_complete_snapshot(db_session)
     query = _make_assistant_query(
         db_session,
@@ -1279,9 +1279,12 @@ def test_frage_banner_shows_question_timestamp_and_count(db_session, user_client
     assert response.status_code == 200
     assert 'id="snapshot-frage-banner"' in response.text
     assert "alert-info" in response.text
+    card = response.text.split('id="snapshot-frage-card"', 1)[1]
+    assert 'id="snapshot-frage-banner"' in card.split('id="snapshot-filter-q"', 1)[0]
     assert "Auswahl aus der Frage vom" in response.text
     assert "«Welche Artikel von Dural?»" in response.text
-    assert f"{settings.assistant_name} hat 2 Artikel gefunden." in response.text
+    assert "Drei Artikel." in response.text
+    assert f"{settings.assistant_name} hat" not in response.text
     assert "Auswahl durch die Frage" in response.text
     match = re.search(r'id="snapshot-frage"[^>]*value="([^"]*)"', response.text)
     assert match is not None
@@ -1308,7 +1311,7 @@ def test_frage_banner_unverified_is_warning_without_empty_prose(
     assert response.status_code == 200
     assert "alert-warning" in response.text
     assert MSG_UNVERIFIED in response.text
-    assert f"{settings.assistant_name} hat 1 Artikel gefunden." in response.text
+    assert f"{settings.assistant_name} hat" not in response.text
     assert "«Welche Artikel?»" in response.text
     banner = response.text.split('id="snapshot-frage-banner"', 1)[1]
     banner = banner.split("</div>", 2)[0]

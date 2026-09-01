@@ -78,7 +78,7 @@ MSG_TURN_BUDGET = (
     "Die Frage konnte nicht innerhalb der zulässigen Schritte beantwortet werden."
 )
 MSG_NO_ANSWER = (
-    f"{settings.assistant_name} konnte keine Zusammenfassung erzeugen. "
+    "Ich konnte keine Zusammenfassung erzeugen. "
     "Stattdessen wird das Rohresultat gezeigt."
 )
 MSG_DUPLICATE_CALL = (
@@ -87,7 +87,7 @@ MSG_DUPLICATE_CALL = (
 )
 MSG_GENERIC_ERROR = "Die Anfrage ist fehlgeschlagen. Bitte später erneut versuchen."
 MSG_UNVERIFIED = (
-    "Die Antwort konnte nicht anhand der Daten geprüft werden. "
+    "Ich konnte die Antwort nicht anhand der Daten prüfen. "
     "Es wird nur die Tabelle gezeigt."
 )
 MSG_EMPTY_QUESTION = "Bitte eine Frage eingeben."

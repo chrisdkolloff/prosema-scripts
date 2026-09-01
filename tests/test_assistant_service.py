@@ -621,7 +621,12 @@ def test_hard_rules_forbid_column_to_column_comparison(db_session, snapshot):
     assert "Verkaufspreis kleiner als Einkaufspreis" in prompt
     assert "erfinde keinen Wert" in prompt
     assert "höchstens einmal" in prompt
+    assert "Nenne bei einer Trefferliste die Anzahl der Treffer" in prompt
     assert "höchstens zwei bis drei Beispiele" in prompt
+    assert "nennst du" not in prompt
+    assert "Schreibe in der ersten Person" in prompt
+    assert "Ich habe 47 Artikel gefunden" in prompt
+    assert "Ich kann «VPE 1» nicht numerisch vergleichen" in prompt
     assert "Sortierung, keinen Filter" in prompt
     assert "Preis grösser als 0" in prompt
     assert "Profile die mehr als 2 kg wiegen" in prompt

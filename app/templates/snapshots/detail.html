@@ -78,50 +78,17 @@
         </div>
         <p id="snapshot-frage-status" class="alert alert-info mt-3 mb-0" hidden role="status"></p>
       </form>
-    </div>
-  </div>
-  <div class="alert alert-info mb-4" id="snapshot-frage-running-banner" role="status">
-    Suchanfrage läuft...
-  </div>
-  {% endif %}
-
-  {% if assistant_query_id %}
-  {% set assistant_alert_class = {
-    "answered": "alert-info",
-    "answered_unverified": "alert-warning",
-    "no_answer": "alert-warning",
-    "no_result": "alert-info",
-    "refused": "alert-secondary",
-    "invalid_input": "alert-secondary",
-    "error": "alert-danger",
-    "unavailable": "alert-danger",
-  }.get(assistant_outcome, "alert-secondary") %}
-  <div class="alert {{ assistant_alert_class }} mb-4" id="snapshot-frage-banner" role="status">
-    <div class="d-flex align-items-start justify-content-between gap-3 flex-wrap">
-      <div>
-        <p class="mb-1">Auswahl aus der Frage vom {{ format_timestamp(assistant_asked_at) }}: «{{ assistant_question }}»</p>
-        {% if assistant_truncated %}
-        <p class="mb-1">
-          Das Ergebnis ist zu gross, um es als Auswahl zu setzen{% if assistant_selection_count is not none %} ({{ format_swiss_number(assistant_selection_count) }} Artikel){% endif %}.
-          Es ist keine Auswahl aktiv. Stell eine engere Frage.
-        </p>
-        {% else %}
-        {% if assistant_selection_count is not none %}
-        <p class="mb-1">{{ assistant_name }} hat {{ format_swiss_number(assistant_selection_count) }} Artikel gefunden.</p>
-        {% endif %}
-        {% if assistant_answer %}
-        <p class="mb-1">{{ assistant_answer }}</p>
-        {% endif %}
-        {% endif %}
-        {% if assistant_hinweis %}
-        <p class="mb-0 small text-body-secondary">{{ assistant_hinweis }}</p>
-        {% endif %}
+      <div class="alert alert-info mt-3 mb-0" id="snapshot-frage-running-banner" role="status">
+        Suchanfrage läuft...
       </div>
-      <a
-        class="alert-link"
-        href="/artikel-uebersicht/{{ snapshot.id }}{% if keep_qs %}?{{ keep_qs }}{% endif %}"
-      >Auswahl aufheben</a>
+      {% if assistant_query_id %}
+      {% include "snapshots/partials/frage_banner.html" %}
+      {% endif %}
     </div>
+  </div>
+  {% elif assistant_query_id %}
+  <div class="mb-4">
+    {% include "snapshots/partials/frage_banner.html" %}
   </div>
   {% endif %}
 

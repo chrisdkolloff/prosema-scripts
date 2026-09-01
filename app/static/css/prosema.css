@@ -4,6 +4,8 @@
 [data-coreui-theme="light"] {
   --prosema-tools-blue: #1183c5;
   --prosema-tools-blue-rgb: 17, 131, 197;
+  --prosema-logo-orange: #fc6f07;
+  --prosema-logo-orange-rgb: 252, 111, 7;
   --queued: #57534e;
   --running: var(--prosema-tools-blue);
   --succeeded: #166534;
@@ -83,6 +85,36 @@ body:not(.is-frage-busy) #snapshot-frage-running-banner {
 
 body.is-frage-busy #snapshot-frage-banner {
   display: none;
+}
+
+#snapshot-frage-card > .card-header {
+  background: var(--prosema-logo-orange);
+  color: #fff;
+  border-bottom-color: var(--prosema-logo-orange);
+  font-weight: 650;
+}
+
+#snapshot-frage-submit {
+  --cui-btn-color: #fff;
+  --cui-btn-bg: var(--prosema-logo-orange);
+  --cui-btn-border-color: var(--prosema-logo-orange);
+  --cui-btn-hover-color: #fff;
+  --cui-btn-hover-bg: #e06306;
+  --cui-btn-hover-border-color: #d95c05;
+  --cui-btn-focus-shadow-rgb: var(--prosema-logo-orange-rgb);
+  --cui-btn-active-color: #fff;
+  --cui-btn-active-bg: #d95c05;
+  --cui-btn-active-border-color: #c45205;
+  --cui-btn-disabled-color: #fff;
+  --cui-btn-disabled-bg: var(--prosema-logo-orange);
+  --cui-btn-disabled-border-color: var(--prosema-logo-orange);
+}
+
+#snapshot-frage-card .alert-info {
+  --cui-alert-color: #8a3a04;
+  --cui-alert-bg: rgba(var(--prosema-logo-orange-rgb), 0.14);
+  --cui-alert-border-color: rgba(var(--prosema-logo-orange-rgb), 0.4);
+  --cui-alert-link-color: #c45205;
 }
 
 /* Status colours */
@@ -240,6 +272,42 @@ body.is-frage-busy #snapshot-frage-banner {
   margin: 0;
   border-radius: 0;
   box-shadow: none;
+}
+
+/* Selected cell: vendor default is 5% grey and a 1px black border that
+   .prosema-grid td { border-color } washes out. Keep this stronger than
+   zebra / hover / freeze fills so the clicked cell stays obvious. */
+.jss_worksheet tbody td.highlight,
+.jss_worksheet tbody td.highlight-selected {
+  background-color: rgba(var(--prosema-tools-blue-rgb), 0.22) !important;
+}
+
+.jss_worksheet tbody td.highlight-selected {
+  background-color: rgba(var(--prosema-tools-blue-rgb), 0.32) !important;
+}
+
+.jss_worksheet td.highlight-top {
+  border-top: 2px solid var(--prosema-tools-blue) !important;
+  box-shadow: none;
+}
+
+.jss_worksheet td.highlight-left {
+  border-left: 2px solid var(--prosema-tools-blue) !important;
+  box-shadow: none;
+}
+
+.jss_worksheet td.highlight-right {
+  border-right: 2px solid var(--prosema-tools-blue) !important;
+}
+
+.jss_worksheet td.highlight-bottom {
+  border-bottom: 2px solid var(--prosema-tools-blue) !important;
+}
+
+.jss_worksheet > thead > tr > td.selected,
+.jss_worksheet > tbody > tr.selected > td:first-child {
+  background-color: rgba(var(--prosema-tools-blue-rgb), 0.28) !important;
+  color: #0c5f8f;
 }
 
 /* Branding — dark sidebar uses the inverted lockup; light chrome uses charcoal. */

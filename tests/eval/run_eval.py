@@ -539,7 +539,7 @@ def _scripted_responses(question: Question, *, provider: str) -> list[LLMRespons
     expect = question.expect
     if expect.kind == "refusal":
         answer = (
-            "«VPE 1» kann nicht numerisch verglichen werden, weil Komma- und "
+            "Ich kann «VPE 1» nicht numerisch vergleichen, weil Komma- und "
             "Punkt-Schreibweisen gemischt vorkommen (1,00 und 1.000)."
         )
         if provider == "openai_compatible":
@@ -553,7 +553,7 @@ def _scripted_responses(question: Question, *, provider: str) -> list[LLMRespons
 
     args = _scripted_tool_args(expect)
     name = expect.tools[0] if expect.tools else "artikel_zaehlen"
-    answer = "Die Treffer stehen in der Tabelle."
+    answer = "Ich habe die Treffer gefunden. Sie stehen in der Tabelle."
     if provider == "openai_compatible":
         return [
             LLMResponse(

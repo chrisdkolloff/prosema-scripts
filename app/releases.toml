@@ -1,7 +1,20 @@
 # PROSEMA release history — edit this file to bump the version and document changes.
 # The top-level `version` is shown in the site header; `[[releases]]` entries appear on /changelog.
 
-version = "1.1.6"
+version = "1.1.7"
+
+[[releases]]
+version = "1.1.7"
+date = "2026-09-01"
+summary = "Update CSS selector for alert styles in snapshot Frage card to improve specificity and maintainability. Adjusted class targeting for better styling application. (+4 more)"
+changes = [
+  "Refactor assistant responses to use first-person language for improved user engagement. Update prompts and messages to enhance clarity and consistency in communication, including adjustments to numeric comparison messages and response structures. Modify tests to validate the new phrasing and ensure accurate representation of assistant interactions.",
+  "Add new CSS variables for logo colors and update snapshot detail template for improved UI. Enhance button styles with new branding colors and streamline the display logic for the snapshot query status. Update tests to validate the presence of new styles and ensure correct rendering of UI elements.",
+  "Enhance CSS for grid cell highlighting and update template links for article registration and overview. Remove redundant assistant selection count display from the Frage banner and adjust related tests to reflect these changes.",
+  "Add alert styles for snapshot Frage banner to enhance UI feedback. Introduce new CSS variables for alert colors, improving visual distinction for information alerts.",
+  "Update CSS selector for alert styles in snapshot Frage card to improve specificity and maintainability. Adjusted class targeting for better styling application.",
+]
+
 
 [[releases]]
 version = "1.1.6"
