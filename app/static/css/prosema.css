@@ -286,6 +286,10 @@ body.is-frage-busy #snapshot-frage-banner {
   background-color: rgba(var(--prosema-tools-blue-rgb), 0.32) !important;
 }
 
+.jss_worksheet tbody tr.ss-row-unmatched td {
+  background-color: #f8d7da !important;
+}
+
 .jss_worksheet td.highlight-top {
   border-top: 2px solid var(--prosema-tools-blue) !important;
   box-shadow: none;

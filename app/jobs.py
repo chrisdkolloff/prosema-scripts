@@ -58,6 +58,7 @@ JOB_TYPE_LABELS = {
     "weclapp_article_snapshot": "Artikelabfrage",
     "weclapp_supply_source_export": "Bezugsquellenabfrage",
     "weclapp_supply_source_index": "Bezugsquellen-Index",
+    "supply_source_resolve": "Bezugsquellen abgleichen",
     "article_batch_submit": "Artikelregistrierung senden",
     "article_transform_preview": "Artikel-Transformation Vorschau",
     "article_transform_apply": "Artikel-Transformation anwenden",
@@ -149,6 +150,30 @@ def handle_weclapp_supply_source_index(
         return pull_supply_source_index(db, oid=oid, supplier_id=supplier_id)
     except Exception:
         db.rollback()
+        raise
+
+
+@job_handler("supply_source_resolve")
+def handle_supply_source_resolve(
+    db: Session,
+    payload: dict,
+    oid: str,
+) -> dict:
+    from app.models import SupplySourceRun
+    from app.supply_source_resolve import fail_run, run_resolve
+
+    run_id = int(payload["run_id"])
+    run = db.get(SupplySourceRun, run_id)
+    if run is None:
+        raise ValueError("Abgleich nicht gefunden")
+    try:
+        return run_resolve(db, run, oid=oid)
+    except Exception as exc:
+        db.rollback()
+        run = db.get(SupplySourceRun, run_id)
+        if run is not None:
+            message = job_error_message(exc) or "Abgleich fehlgeschlagen"
+            fail_run(db, run, message)
         raise
 
 

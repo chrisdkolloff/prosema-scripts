@@ -31,6 +31,7 @@ from app.routes import jobs as jobs_routes
 from app.routes import pages as pages_routes
 from app.routes import snapshots as snapshots_routes
 from app.routes import supply_exports as supply_exports_routes
+from app.routes import supply_source_runs as supply_source_runs_routes
 from app.routes import tools as tools_routes
 from app.routes import transform as transform_routes
 from app.version_info import load_version_info
@@ -124,6 +125,7 @@ app.include_router(tools_routes.router)
 app.include_router(batches_routes.router)
 app.include_router(snapshots_routes.router)
 app.include_router(transform_routes.router)
+app.include_router(supply_source_runs_routes.router)
 app.include_router(supply_exports_routes.router)
 app.add_api_route("/auth/login", login, methods=["GET"])
 app.add_api_route("/auth/callback", callback, methods=["GET"])

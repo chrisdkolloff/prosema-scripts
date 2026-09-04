@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+{% block title %}Bezugsquellen abgleichen — PROSEMA{% endblock %}
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/">Home</a></li>
+<li class="breadcrumb-item"><a href="/bezugsquellen/neu">Bezugsquellen abgleichen</a></li>
+<li class="breadcrumb-item active"><span>Lauf {{ run.id }}</span></li>
+{% endblock %}
+{% block extra_head %}
+  <link rel="stylesheet" href="/static/jsuites.css">
+  <link rel="stylesheet" href="/static/jspreadsheet.css">
+{% endblock %}
+{% block content %}
+  <p class="mb-2"><a href="/bezugsquellen/neu">Zur Übersicht</a></p>
+  <h1 class="mb-2">Bezugsquellen abgleichen</h1>
+  <p class="text-body-secondary mb-3">
+    {{ run.supplier.supplier_number if run.supplier else "" }}
+    · Status: {{ status_labels.get(run.status, run.status) }}
+    {% if run.datenstand %}· Datenstand {{ run.datenstand.strftime("%d.%m.%Y %H:%M") }} (Beginn der Abfrage){% endif %}
+  </p>
+
+  {% if error %}
+  <div class="alert alert-danger" role="alert">{{ error }}</div>
+  {% endif %}
+  {% if notice %}
+  <div class="alert alert-success" role="alert">{{ notice }}</div>
+  {% endif %}
+  {% if run.status == "failed" and run.error %}
+  <div class="alert alert-danger" role="alert">{{ run.error }}</div>
+  {% endif %}
+
+  {% if run.status == "running" %}
+  <p class="text-body-secondary" id="ss-run-poll" data-status-url="/bezugsquellen/neu/{{ run.id }}/status">
+    Die Abfrage kann einige Minuten dauern. Diese Seite aktualisiert sich automatisch.
+  </p>
+  {% endif %}
+
+  {% if run.status == "preview" %}
+  <p class="fw-semibold mb-3" id="ss-summary">
+    {{ summary.update }} zu aktualisieren
+    · {{ summary.price_only }} nur Preisänderung
+    · {{ summary.create }} neu anzulegen
+    · {{ summary.renumber }} mit neuer Lieferantennummer
+    · {{ summary.unmatched }} ohne Zuordnung
+    · {{ summary.discount_unset }} ohne Rabattsatz
+  </p>
+
+  <form class="row g-3 align-items-end mb-4" method="post" action="/bezugsquellen/neu/{{ run.id }}/einstellungen">
+    <div class="col-auto">
+      <label class="form-label" for="ss-ek-whg">Einkaufswährung</label>
+      <select class="form-select" id="ss-ek-whg" name="einkaufswaehrung">
+        <option value="EUR" {% if run.einkaufswaehrung == "EUR" %}selected{% endif %}>EUR</option>
+        <option value="CHF" {% if run.einkaufswaehrung == "CHF" %}selected{% endif %}>CHF</option>
+      </select>
+    </div>
+    <div class="col-auto">
+      <label class="form-label" for="ss-kurs">Kurs</label>
+      <input class="form-control" id="ss-kurs" name="kurs" value="{{ run.kurs }}">
+    </div>
+    <div class="col-auto">
+      <label class="form-label" for="ss-vk-whg">Verkaufswährung</label>
+      <select class="form-select" id="ss-vk-whg" name="verkaufswaehrung">
+        <option value="CHF" {% if run.verkaufswaehrung == "CHF" %}selected{% endif %}>CHF</option>
+        <option value="EUR" {% if run.verkaufswaehrung == "EUR" %}selected{% endif %}>EUR</option>
+      </select>
+    </div>
+    <div class="col-auto">
+      <label class="form-label" for="ss-aufschlag">Aufschlag (z.&nbsp;B. 0.50)</label>
+      <input class="form-control" id="ss-aufschlag" name="aufschlag" value="{{ run.aufschlag }}">
+    </div>
+    <div class="col-auto">
+      <label class="form-label" for="ss-eintritt">Preis-Eintritt</label>
+      <input class="form-control" id="ss-eintritt" name="preis_eintritt" type="datetime-local" value="{{ run.preis_eintritt.strftime('%Y-%m-%dT%H:%M') if run.preis_eintritt else '' }}">
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-outline-primary">Einstellungen übernehmen</button>
+    </div>
+  </form>
+
+  <div class="card mb-3">
+    <div class="card-body">
+      <h2 class="h5">Rabattsätze setzen</h2>
+      <p class="text-body-secondary">Filtern, sichtbare Zeilen auswählen, Sätze eintragen, übernehmen. Leere Sätze gelten nicht als 0&nbsp;%.</p>
+      <div class="row g-3 align-items-end">
+        <div class="col-auto">
+          <label class="form-label" for="ss-filter-code">Rabattcode</label>
+          <select class="form-select" id="ss-filter-code">
+            <option value="">(alle)</option>
+            {% for code in grid_config.rabattcodes %}
+            <option value="{{ code }}">{{ code }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-auto">
+          <label class="form-label" for="ss-filter-prefix">Nummer beginnt mit</label>
+          <input class="form-control" id="ss-filter-prefix" type="search">
+        </div>
+        <div class="col-auto">
+          <label class="form-label" for="ss-filter-name">Bezeichnung enthält</label>
+          <input class="form-control" id="ss-filter-name" type="search">
+        </div>
+        <div class="col-auto">
+          <label class="form-label" for="ss-filter-match">Zuordnung</label>
+          <select class="form-select" id="ss-filter-match">
+            <option value="">(alle)</option>
+            <option value="matched">zugeordnet</option>
+            <option value="unmatched">ohne Zuordnung</option>
+          </select>
+        </div>
+        <div class="col-auto">
+          <label class="form-label" for="ss-filter-intent">Vorgang</label>
+          <select class="form-select" id="ss-filter-intent">
+            <option value="">(alle)</option>
+            <option value="update">aktualisieren</option>
+            <option value="price_only">nur Preisänderung</option>
+            <option value="create">neu anlegen</option>
+            <option value="attach">zuordnen</option>
+            <option value="renumber">neue Lieferantennummer</option>
+            <option value="skip">auslassen</option>
+          </select>
+        </div>
+        <div class="col-auto">
+          <button type="button" class="btn btn-outline-secondary" id="ss-select-visible">Alle sichtbaren Zeilen auswählen</button>
+        </div>
+      </div>
+      <div class="row g-3 align-items-end mt-1">
+        <div class="col-auto">
+          <label class="form-label" for="ss-bulk-r1">Rabatt 1 (%)</label>
+          <input class="form-control" id="ss-bulk-r1">
+        </div>
+        <div class="col-auto">
+          <label class="form-label" for="ss-bulk-r2">Rabatt 2 (%)</label>
+          <input class="form-control" id="ss-bulk-r2">
+        </div>
+        <div class="col-auto">
+          <button type="button" class="btn btn-primary" id="ss-bulk-apply">Auf Auswahl anwenden</button>
+        </div>
+        <div class="col-auto">
+          <button type="button" class="btn btn-outline-primary" id="ss-bulk-zero">Kein Rabatt</button>
+        </div>
+        <div class="col-auto">
+          <p class="mb-0" id="ss-bulk-result" role="status"></p>
+        </div>
+      </div>
+      <p class="mt-3 mb-0">Noch ohne Rabattsatz: <strong id="ss-discount-unset">{{ summary.discount_unset }}</strong></p>
+    </div>
+  </div>
+
+  <form class="row g-3 align-items-end mb-3" method="post" action="/bezugsquellen/neu/{{ run.id }}/zuordnen">
+    <div class="col-auto">
+      <label class="form-label" for="ss-alias-row">Zeilen-ID ohne Zuordnung</label>
+      <input class="form-control" id="ss-alias-row" name="row_id" inputmode="numeric">
+    </div>
+    <div class="col-auto">
+      <label class="form-label" for="ss-alias-article">PROSEMA-Artikelnummer</label>
+      <input class="form-control" id="ss-alias-article" name="article_number">
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-outline-primary">Artikel zuordnen</button>
+    </div>
+  </form>
+
+  <p id="ss-save-status" class="batch-save-status mb-2" role="status">Gespeichert</p>
+  <div class="prosema-grid mb-4">
+    <div id="ss-spreadsheet" class="batch-spreadsheet"></div>
+  </div>
+  <script type="application/json" id="ss-grid-config">{{ grid_config | tojson }}</script>
+
+  <form method="post" action="/bezugsquellen/neu/{{ run.id }}/freigeben" class="mb-4">
+    <button type="submit" class="btn btn-primary" {% if not can_approve %}disabled{% endif %} id="ss-approve">
+      Lauf freigeben
+    </button>
+    {% if not can_approve %}
+    <span class="text-body-secondary ms-2">Freigabe gesperrt, solange Zuordnungen oder Rabattsätze fehlen.</span>
+    {% endif %}
+  </form>
+  {% endif %}
+{% endblock %}
+{% block extra_scripts %}
+  {% if run.status == "running" %}
+  <script>
+    (function () {
+      var el = document.getElementById("ss-run-poll");
+      if (!el) return;
+      var url = el.getAttribute("data-status-url");
+      setInterval(function () {
+        fetch(url, { credentials: "same-origin" })
+          .then(function (r) { return r.json(); })
+          .then(function (body) {
+            if (body.status && body.status !== "running") window.location.reload();
+          });
+      }, 2000);
+    })();
+  </script>
+  {% endif %}
+  {% if run.status == "preview" %}
+  <script src="/static/jsuites.js"></script>
+  <script src="/static/jspreadsheet.js"></script>
+  <script src="/static/supply_source_grid.js?v={{ app_version }}"></script>
+  {% endif %}
+{% endblock %}

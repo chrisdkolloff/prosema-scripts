@@ -12,7 +12,6 @@ from sqlalchemy import func, select, text
 from app.db import SessionLocal
 from app.models import (
     Supplier,
-    SupplierDiscountCategory,
     WeclappArticle,
     WeclappSupplySource,
     WeclappSupplySourceLink,
@@ -49,9 +48,6 @@ def main(argv: list[str] | None = None) -> int:
 
     counts = {
         "suppliers": db.scalar(select(func.count()).select_from(Supplier)),
-        "discount_categories": db.scalar(
-            select(func.count()).select_from(SupplierDiscountCategory)
-        ),
         "articles": db.scalar(select(func.count()).select_from(WeclappArticle)),
         "supply_sources": db.scalar(
             select(func.count()).select_from(WeclappSupplySource)

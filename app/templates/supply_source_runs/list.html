@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Bezugsquellen abgleichen — PROSEMA{% endblock %}
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/">Home</a></li>
+<li class="breadcrumb-item active"><span>Bezugsquellen abgleichen</span></li>
+{% endblock %}
+{% block content %}
+  <h1 class="mb-2">Bezugsquellen abgleichen</h1>
+  <p class="text-body-secondary mb-4">
+    Vorlage aus weclapp erzeugen, Zuordnungen prüfen und Rabattsätze setzen.
+    Es wird noch nichts nach weclapp geschrieben.
+  </p>
+
+  {% if request.query_params.get("error") %}
+  <div class="alert alert-danger" role="alert">{{ request.query_params.get("error") }}</div>
+  {% endif %}
+
+  {% if busy %}
+  <div class="alert alert-warning" role="alert">Für diesen Lieferanten läuft bereits ein Abgleich.</div>
+  {% endif %}
+
+  <form method="post" action="/bezugsquellen/neu/abfragen" class="row g-3 align-items-end mb-4">
+    <div class="col-auto">
+      <label class="form-label" for="ss-supplier">Lieferant</label>
+      <select class="form-select" id="ss-supplier" name="supplier_id">
+        {% for supplier in suppliers %}
+        <option value="{{ supplier.id }}" {% if supplier.id == default_supplier_id %}selected{% endif %}>
+          {{ supplier.supplier_number }} · {{ supplier.name }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-primary" {% if busy %}disabled{% endif %}>
+        Vorlage aus weclapp erzeugen
+      </button>
+    </div>
+  </form>
+
+  {% if runs %}
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead>
+        <tr>
+          <th>Stand</th>
+          <th>Lieferant</th>
+          <th>Status</th>
+          <th>Gestartet von</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in runs %}
+        <tr>
+          <td><a href="/bezugsquellen/neu/{{ item.id }}">{{ item.created_at.strftime("%d.%m.%Y %H:%M") }}</a></td>
+          <td>{% if item.supplier %}{{ item.supplier.supplier_number }} · {{ item.supplier.name }}{% else %}—{% endif %}</td>
+          <td>{{ status_labels.get(item.status, item.status) }}</td>
+          <td>{{ item.created_by_name }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-body-secondary">Noch kein Abgleich vorhanden.</p>
+  {% endif %}
+{% endblock %}
