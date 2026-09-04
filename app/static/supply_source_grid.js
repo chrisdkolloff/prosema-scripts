@@ -259,7 +259,14 @@
           if (out) out.textContent = (res.body && res.body.error) || "Übernehmen fehlgeschlagen";
           return;
         }
-        if (out) out.textContent = res.body.applied + " Zeilen gesetzt";
+        if (out) {
+          var msg = res.body.applied + " Zeilen gesetzt";
+          var eks = res.body.ek_preview || [];
+          if (eks.length) {
+            msg += " — EK " + eks.join("; ");
+          }
+          out.textContent = msg;
+        }
         if (res.body.grid) replaceGrid(res.body.grid);
       })
       .catch(function () {

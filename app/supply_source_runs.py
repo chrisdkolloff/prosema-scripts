@@ -47,7 +47,11 @@ def _d(value: Decimal | None) -> Decimal | None:
 
 
 def parse_rate(raw: object) -> Decimal | None:
-    """Percent points; always divide by 100. Blank is None, not zero."""
+    """Percent input → stored fraction. Blank is None, not zero.
+
+    Values in (0, 1) are rejected: that band is a fraction typed into a
+    percent field, not a real 0.5 % discount.
+    """
     if raw is None:
         return None
     text = str(raw).strip().replace("%", "").replace(" ", "").replace("'", "")
@@ -66,8 +70,12 @@ def parse_rate(raw: object) -> Decimal | None:
         raise SupplySourceRunError("Rabattsatz ist keine Zahl.") from extra
     if points < 0:
         raise SupplySourceRunError("Rabattsatz darf nicht negativ sein.")
-    if points >= 100:
-        raise SupplySourceRunError("Rabattsatz muss unter 100 % liegen.")
+    if points > 100:
+        raise SupplySourceRunError("Rabattsatz darf nicht über 100 % liegen.")
+    if points > 0 and points < 1:
+        raise SupplySourceRunError(
+            "Bitte in Prozent eingeben, z. B. 50 für 50 %."
+        )
     return points / Decimal(100)
 
 
@@ -172,9 +180,44 @@ def format_swiss_number(value: Decimal | int | None, *, places: int = 2) -> str:
 
 
 def format_pct(value: Decimal | None) -> str:
+    """Fraction in storage → percent points for display. Not for input parsing."""
     if value is None:
         return ""
-    return format_swiss_number(value * Decimal(100), places=2)
+    points = Decimal(value) * Decimal(100)
+    text = format_swiss_number(points, places=2)
+    if text.endswith(".00"):
+        return text[:-3]
+    if "." in text:
+        return text.rstrip("0").rstrip(".")
+    return text
+
+
+def preview_ek_after_rates(
+    run: SupplySourceRun,
+    rows: list[SupplySourceRow],
+    *,
+    row_ids: list[int] | None = None,
+    rabattcode: str | None = None,
+) -> list[str]:
+    """One EK line per SAN touched by a rate apply — shown at the moment of entry."""
+    wanted: set[str] = set()
+    idset = set(row_ids or [])
+    for row in rows:
+        if idset and row.id in idset:
+            wanted.add(row.supplier_article_number)
+        elif not idset and rabattcode is not None and row.rabattcode == rabattcode:
+            wanted.add(row.supplier_article_number)
+    lines: list[str] = []
+    seen: set[str] = set()
+    for row in rows:
+        san = row.supplier_article_number
+        if san not in wanted or san in seen:
+            continue
+        seen.add(san)
+        ek = derived_prices(row, run)["ek"]
+        shown = format_swiss_number(ek) if ek is not None else "—"
+        lines.append(f"{san}: {shown}")
+    return lines
 
 
 def running_for_supplier(db: Session, supplier_id: int) -> SupplySourceRun | None:

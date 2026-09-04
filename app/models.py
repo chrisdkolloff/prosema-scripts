@@ -1382,11 +1382,11 @@ class SupplySourceRow(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "rabatt_1 IS NULL OR (rabatt_1 >= 0 AND rabatt_1 < 1)",
+            "rabatt_1 IS NULL OR (rabatt_1 >= 0 AND rabatt_1 <= 1)",
             name="ck_supply_source_row_rabatt_1",
         ),
         CheckConstraint(
-            "rabatt_2 IS NULL OR (rabatt_2 >= 0 AND rabatt_2 < 1)",
+            "rabatt_2 IS NULL OR (rabatt_2 >= 0 AND rabatt_2 <= 1)",
             name="ck_supply_source_row_rabatt_2",
         ),
         CheckConstraint(

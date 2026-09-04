@@ -25,14 +25,19 @@ from app.models import (
     WeclappSupplySourceLink,
     WeclappSupplySourcePrice,
 )
-from app.supply_source_resolve import run_resolve
+from app.supply_source_resolve import SAN_FIELDS, run_resolve
 from app.supply_source_runs import (
+    SupplySourceRunError,
     apply_bulk_rates,
     apply_edits,
     approval_blockers,
     approve_run,
+    build_grid_config,
     can_approve,
+    derived_prices,
+    format_pct,
     parse_aufschlag_percent,
+    parse_rate,
     set_rates,
 )
 
@@ -207,6 +212,7 @@ def test_shared_ss_one_row_two_articles(db_session):
     assert all(r.unit_id == "3566" for r in rows)
     assert all(r.row_intent == "price_only" for r in rows)
     assert all(r.match_status == "matched" for r in rows)
+    _assert_san_fields_aligned(rows)
 
 
 def test_orphan_ss_resolves_attach_via_ean(db_session):
@@ -250,6 +256,70 @@ def test_parse_aufschlag_percent():
     assert parse_aufschlag_percent("50.00") == Decimal("0.50")
     assert parse_aufschlag_percent("50,5") == Decimal("0.505")
     assert parse_aufschlag_percent("50%") == Decimal("0.50")
+
+
+def test_parse_rate_percent_not_fraction():
+    assert parse_rate("50") == Decimal("0.5")
+    assert parse_rate("0") == Decimal("0")
+    assert parse_rate("100") == Decimal("1")
+    assert parse_rate("12,5") == Decimal("0.125")
+    assert parse_rate("12.5") == Decimal("0.125")
+    assert format_pct(parse_rate("50")) == "50"
+    with pytest.raises(SupplySourceRunError, match="Bitte in Prozent"):
+        parse_rate("0.5")
+    with pytest.raises(SupplySourceRunError, match="über 100"):
+        parse_rate("101")
+    with pytest.raises(SupplySourceRunError, match="negativ"):
+        parse_rate("-1")
+
+
+def test_grid_cell_rate_uses_parse_rate(db_session):
+    supplier = _supplier(db_session)
+    run = _run(db_session, supplier)
+    run.status = "preview"
+    row = SupplySourceRow(
+        run_id=run.id,
+        supplier_article_number="CELL-RATE",
+        listenpreis=Decimal("100"),
+        match_status="unmatched",
+    )
+    db_session.add(row)
+    db_session.flush()
+    with pytest.raises(SupplySourceRunError, match="Bitte in Prozent"):
+        apply_edits(
+            db_session, run, [{"row_id": row.id, "field": "rabatt_1", "value": "0.5"}]
+        )
+    apply_edits(db_session, run, [{"row_id": row.id, "field": "rabatt_1", "value": "50"}])
+    db_session.refresh(row)
+    assert row.rabatt_1 == Decimal("0.50")
+    assert row.discount_set is True
+    grid = build_grid_config(run, [row])
+    r1_x = grid["fields"].index("rabatt_1")
+    assert grid["data"][0][r1_x] == "50"
+    apply_edits(db_session, run, [{"row_id": row.id, "field": "rabatt_2", "value": "0"}])
+    db_session.refresh(row)
+    assert row.rabatt_2 == Decimal("0")
+    apply_edits(
+        db_session, run, [{"row_id": row.id, "field": "rabatt_1", "value": "100"}]
+    )
+    db_session.refresh(row)
+    assert derived_prices(row, run)["ek"] == Decimal("0")
+
+
+def _assert_san_fields_aligned(rows: list[SupplySourceRow]) -> None:
+    groups: dict[str, list[SupplySourceRow]] = {}
+    for row in rows:
+        groups.setdefault(row.supplier_article_number, []).append(row)
+    for members in groups.values():
+        lead = members[0]
+        for other in members[1:]:
+            for field in SAN_FIELDS:
+                left = getattr(lead, field)
+                right = getattr(other, field)
+                if field == "field_overrides":
+                    assert dict(left or {}) == dict(right or {})
+                else:
+                    assert left == right, field
 
 
 def test_create_without_unit_blocks_approval(db_session):
@@ -399,6 +469,35 @@ def test_rate_edit_applies_to_whole_san_group(db_session):
     )
     assert all(r.discount_set for r in refreshed)
     assert all(r.rabatt_1 == Decimal("0.10") for r in refreshed)
+    _assert_san_fields_aligned(refreshed)
+
+
+def test_san_group_invariant_catches_skipped_sync(db_session):
+    supplier = _supplier(db_session)
+    run = _run(db_session, supplier)
+    run.status = "preview"
+    a = SupplySourceRow(
+        run_id=run.id,
+        supplier_article_number="DRIFT",
+        listenpreis=Decimal("10"),
+        article_number="999.111.0001",
+    )
+    b = SupplySourceRow(
+        run_id=run.id,
+        supplier_article_number="DRIFT",
+        listenpreis=Decimal("10"),
+        article_number="999.111.0002",
+    )
+    db_session.add_all([a, b])
+    db_session.flush()
+    set_rates(a, rabatt_1=Decimal("0.50"), rabatt_2=Decimal("0"))
+    db_session.flush()
+    with pytest.raises(AssertionError):
+        _assert_san_fields_aligned([a, b])
+    from app.supply_source_runs import sync_san_group
+
+    sync_san_group(db_session, a)
+    _assert_san_fields_aligned([a, b])
 
 
 def test_renumber_when_alias_points_at_existing_supplier_link(db_session):
@@ -440,7 +539,7 @@ def test_list_and_legacy_export_pages(user_client):
     assert js.status_code == 200
     assert b"kein_rabatt" in js.content
     assert b"filters: true" in js.content
-    assert b"ss-filter-code" not in js.content
+    assert b"ek_preview" in js.content
 
 
 def test_preview_grid_and_bulk_http(user_client, db_session):
@@ -461,7 +560,7 @@ def test_preview_grid_and_bulk_http(user_client, db_session):
     assert "Aufschlag (%)" in page.text
     assert 'id="ss-aufschlag"' in page.text
     assert "0.5000" not in page.text
-    assert "50.00" in page.text
+    assert 'id="ss-aufschlag"' in page.text
     assert "supply_source_grid.js" in page.text
     blocked = user_client.post(f"/bezugsquellen/neu/{run.id}/freigeben")
     assert blocked.status_code in {303, 200}
@@ -472,6 +571,8 @@ def test_preview_grid_and_bulk_http(user_client, db_session):
     assert bulk.status_code == 200
     body = bulk.json()
     assert body["applied"] == 1
+    assert body["ek_preview"]
+    assert "TST-HTTP" in body["ek_preview"][0]
     with patch("app.jobs.enqueue") as enqueue:
         import uuid
 

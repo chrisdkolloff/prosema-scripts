@@ -36,6 +36,7 @@ from app.supply_source_runs import (
     load_rows,
     parse_aufschlag_percent,
     parse_rate,
+    preview_ek_after_rates,
     running_for_supplier,
     summary_counts,
 )
@@ -407,6 +408,9 @@ def bulk_rates(
             "applied": applied,
             "discount_unset": summary_counts(rows)["discount_unset"],
             "can_approve": can_approve(rows),
+            "ek_preview": preview_ek_after_rates(
+                run, rows, row_ids=payload.row_ids, rabattcode=payload.rabattcode
+            ),
             "grid": build_grid_config(run, rows),
         }
     )
