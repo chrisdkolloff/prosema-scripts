@@ -21,6 +21,7 @@ from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.supply_source_index import DuplicateSupplySourceError
 from app.models import UserWeclappToken
 from scripts.weclapp.client import WeclappClient, WeclappError
 from scripts.weclapp.config import WeclappConfig
@@ -297,6 +298,8 @@ def job_error_message(exc: BaseException) -> str | None:
         exc,
         (NoWeclappToken, WeclappTokenInvalid, WeclappLicenceMissing, WeclappTokenUnreadable),
     ):
+        return str(exc)
+    if isinstance(exc, DuplicateSupplySourceError):
         return str(exc)
     if isinstance(exc, WeclappError):
         mapped = map_weclapp_error(exc)

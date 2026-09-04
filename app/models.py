@@ -760,6 +760,12 @@ class ExportRun(Base):
             name="ck_export_run_status",
         ),
         Index("ix_export_run_supplier_created", "supplier_id", "created_at"),
+        Index(
+            "uq_export_run_supplier_running",
+            "supplier_id",
+            unique=True,
+            postgresql_where=text("status = 'running'"),
+        ),
     )
 
 
@@ -1080,4 +1086,296 @@ class TransformChunk(Base):
         ),
         UniqueConstraint("run_id", "chunk_index", name="uq_transform_chunks_run_index"),
         Index("ix_transform_chunks_run", "run_id"),
+    )
+
+
+class Supplier(Base):
+    __tablename__ = "suppliers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    supplier_number: Mapped[str] = mapped_column(Text, nullable=False)
+    weclapp_party_id: Mapped[str] = mapped_column(Text, nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    einkaufswaehrung: Mapped[str] = mapped_column(Text, nullable=False)
+    default_kurs: Mapped[Decimal] = mapped_column(Numeric(10, 6), nullable=False)
+    # MARKUP (0.50 → × 1.50), not a margin.
+    default_aufschlag: Mapped[Decimal] = mapped_column(Numeric(6, 4), nullable=False)
+    default_verkaufswaehrung: Mapped[str] = mapped_column(
+        Text, nullable=False, default="CHF", server_default="CHF"
+    )
+    default_unit_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    template_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("article_templates.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+
+    __table_args__ = (
+        UniqueConstraint("supplier_number", name="uq_suppliers_supplier_number"),
+        UniqueConstraint("weclapp_party_id", name="uq_suppliers_weclapp_party_id"),
+        CheckConstraint(
+            "einkaufswaehrung IN ('EUR', 'CHF')",
+            name="ck_suppliers_einkaufswaehrung",
+        ),
+        CheckConstraint(
+            "default_verkaufswaehrung IN ('EUR', 'CHF')",
+            name="ck_suppliers_default_verkaufswaehrung",
+        ),
+        CheckConstraint("default_kurs > 0", name="ck_suppliers_default_kurs_positive"),
+        CheckConstraint(
+            "default_aufschlag >= 0",
+            name="ck_suppliers_default_aufschlag_nonnegative",
+        ),
+        CheckConstraint(
+            "einkaufswaehrung <> 'CHF' OR default_kurs = 1.0",
+            name="ck_suppliers_chf_kurs_unity",
+        ),
+    )
+
+
+class SuppliersAudit(Base):
+    __tablename__ = "suppliers_audit"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    entity: Mapped[str] = mapped_column(Text, nullable=False)
+    entity_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    action: Mapped[str] = mapped_column(Text, nullable=False)
+    before: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    after: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    actor_oid: Mapped[str] = mapped_column(Text, nullable=False)
+    actor_name: Mapped[str] = mapped_column(Text, nullable=False)
+    at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+    __table_args__ = (
+        CheckConstraint("entity IN ('supplier')", name="ck_suppliers_audit_entity"),
+        CheckConstraint(
+            "action IN ('created', 'renamed', 'updated', 'deleted', 'restored')",
+            name="ck_suppliers_audit_action",
+        ),
+    )
+
+
+class SupplierDiscountCategory(Base):
+    __tablename__ = "supplier_discount_categories"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    supplier_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("suppliers.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    code: Mapped[str] = mapped_column(Text, nullable=False)
+    label: Mapped[str] = mapped_column(Text, nullable=False)
+    rabatt_1: Mapped[Decimal] = mapped_column(Numeric(6, 4), nullable=False)
+    rabatt_2: Mapped[Decimal] = mapped_column(Numeric(6, 4), nullable=False)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "rabatt_1 >= 0 AND rabatt_1 < 1",
+            name="ck_supplier_discount_categories_rabatt_1",
+        ),
+        CheckConstraint(
+            "rabatt_2 >= 0 AND rabatt_2 < 1",
+            name="ck_supplier_discount_categories_rabatt_2",
+        ),
+        Index(
+            "uq_supplier_discount_categories_supplier_code_live",
+            "supplier_id",
+            "code",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+    )
+
+
+class SupplierDiscountCategoriesAudit(Base):
+    __tablename__ = "supplier_discount_categories_audit"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    entity: Mapped[str] = mapped_column(Text, nullable=False)
+    entity_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    action: Mapped[str] = mapped_column(Text, nullable=False)
+    before: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    after: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    actor_oid: Mapped[str] = mapped_column(Text, nullable=False)
+    actor_name: Mapped[str] = mapped_column(Text, nullable=False)
+    at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "entity IN ('discount_category')",
+            name="ck_supplier_discount_categories_audit_entity",
+        ),
+        CheckConstraint(
+            "action IN ('created', 'renamed', 'updated', 'deleted', 'restored')",
+            name="ck_supplier_discount_categories_audit_action",
+        ),
+    )
+
+
+class SupplierArticleAlias(Base):
+    __tablename__ = "supplier_article_aliases"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    supplier_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("suppliers.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    supplier_article_number: Mapped[str] = mapped_column(Text, nullable=False)
+    article_number: Mapped[str] = mapped_column(Text, nullable=False)
+    weclapp_article_id: Mapped[str] = mapped_column(Text, nullable=False)
+    source: Mapped[str] = mapped_column(Text, nullable=False)
+    confirmed_by: Mapped[str | None] = mapped_column(Text, nullable=True)
+    confirmed_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "source IN ('supply_source', 'manual', 'ean', 'import')",
+            name="ck_supplier_article_aliases_source",
+        ),
+        UniqueConstraint(
+            "supplier_id",
+            "supplier_article_number",
+            "article_number",
+            name="uq_supplier_article_aliases_triple",
+        ),
+    )
+
+
+class WeclappArticle(Base):
+    __tablename__ = "weclapp_articles"
+
+    weclapp_article_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    article_number: Mapped[str] = mapped_column(Text, nullable=False)
+    name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ean: Mapped[str | None] = mapped_column(Text, nullable=True)
+    rabattcode: Mapped[str | None] = mapped_column(Text, nullable=True)
+    weclapp_version: Mapped[str] = mapped_column(Text, nullable=False)
+    last_seen_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False
+    )
+    missing_since: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+
+    __table_args__ = (
+        Index("ix_weclapp_articles_article_number", "article_number"),
+        Index("ix_weclapp_articles_ean", "ean"),
+    )
+
+
+class WeclappSupplySource(Base):
+    __tablename__ = "weclapp_supply_sources"
+
+    weclapp_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    supplier_party_id: Mapped[str] = mapped_column(Text, nullable=False)
+    supplier_number: Mapped[str] = mapped_column(Text, nullable=False)
+    # SS.articleNumber — supplier's part number, not the PROSEMA article number.
+    supplier_article_number: Mapped[str] = mapped_column(Text, nullable=False)
+    name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    unit_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tax_rate_type: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ean: Mapped[str | None] = mapped_column(Text, nullable=True)
+    min_purchase_qty: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)
+    fixed_purchase_qty: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)
+    procurement_lead_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    weclapp_version: Mapped[str] = mapped_column(Text, nullable=False)
+    last_seen_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False
+    )
+    missing_since: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "supplier_party_id",
+            "supplier_article_number",
+            name="uq_weclapp_supply_sources_party_san",
+        ),
+    )
+
+
+class WeclappSupplySourcePrice(Base):
+    __tablename__ = "weclapp_supply_source_prices"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    supply_source_weclapp_id: Mapped[str] = mapped_column(
+        Text,
+        ForeignKey("weclapp_supply_sources.weclapp_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    weclapp_price_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    price: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
+    currency_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    currency_code: Mapped[str | None] = mapped_column(Text, nullable=True)
+    start_date: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    end_date: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    reduction_additions: Mapped[Any | None] = mapped_column(JSONB, nullable=True)
+
+
+class WeclappSupplySourceLink(Base):
+    __tablename__ = "weclapp_supply_source_links"
+
+    supply_source_weclapp_id: Mapped[str] = mapped_column(
+        Text,
+        ForeignKey("weclapp_supply_sources.weclapp_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    weclapp_article_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    article_number: Mapped[str] = mapped_column(Text, nullable=False)
+    supplier_party_id: Mapped[str] = mapped_column(Text, nullable=False)
+    position_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    is_primary: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "weclapp_article_id",
+            "supplier_party_id",
+            name="uq_weclapp_ss_links_article_supplier",
+        ),
     )

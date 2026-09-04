@@ -57,6 +57,7 @@ JOB_TYPE_LABELS = {
     "noop": "Testlauf",
     "weclapp_article_snapshot": "Artikelabfrage",
     "weclapp_supply_source_export": "Bezugsquellenabfrage",
+    "weclapp_supply_source_index": "Bezugsquellen-Index",
     "article_batch_submit": "Artikelregistrierung senden",
     "article_transform_preview": "Artikel-Transformation Vorschau",
     "article_transform_apply": "Artikel-Transformation anwenden",
@@ -131,6 +132,23 @@ def handle_weclapp_supply_source_export(
         if run is not None:
             message = job_error_message(exc) or "Abfrage fehlgeschlagen"
             fail_export(db, run, message)
+        raise
+
+
+@job_handler("weclapp_supply_source_index")
+def handle_weclapp_supply_source_index(
+    db: Session,
+    payload: dict,
+    oid: str,
+) -> dict:
+    from app.supply_source_index import pull_supply_source_index
+
+    supplier_raw = payload.get("supplier_id")
+    supplier_id = int(supplier_raw) if supplier_raw not in (None, "") else None
+    try:
+        return pull_supply_source_index(db, oid=oid, supplier_id=supplier_id)
+    except Exception:
+        db.rollback()
         raise
 
 
