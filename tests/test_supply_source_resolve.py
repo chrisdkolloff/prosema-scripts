@@ -139,6 +139,7 @@ def _ss(
         ean=ean,
         weclapp_version="3",
         last_seen_at=now,
+        unit_id="3566",
     )
     db.add(row)
     db.add(
@@ -161,6 +162,7 @@ def _article(db: Session, *, aid: str, number: str, ean: str | None = None, code
             name="Artikel",
             ean=ean,
             rabattcode=code,
+            unit_id="3566",
             weclapp_version="1",
             last_seen_at=_now(),
         )
@@ -197,6 +199,7 @@ def test_shared_ss_one_row_two_articles(db_session):
     assert result["row_count"] == 1
     assert len(rows) == 1
     assert sorted(rows[0].resolved_article_numbers) == ["999.030.0040", "999.030.0070"]
+    assert rows[0].unit_id == "3566"
     assert rows[0].match_tier == 1
     assert rows[0].row_intent == "price_only"
     assert rows[0].match_status == "matched"
@@ -235,6 +238,29 @@ def test_unknown_san_unmatched_blocks_approval(db_session):
     assert can_approve([row]) is False
     with pytest.raises(Exception, match="Freigabe"):
         approve_run(db_session, run, {"oid": "x", "name": "Dennis"})
+
+
+def test_create_without_unit_blocks_approval(db_session):
+    supplier = _supplier(db_session)
+    run = _run(db_session, supplier)
+    run.status = "preview"
+    row = SupplySourceRow(
+        run_id=run.id,
+        supplier_article_number="NEW-PART",
+        match_status="matched",
+        row_intent="create",
+        weclapp_article_ids=["a1"],
+        resolved_article_numbers=["999.010.1010"],
+        unit_id=None,
+    )
+    set_rates(row, rabatt_1=Decimal(0), rabatt_2=Decimal(0), kein_rabatt=True)
+    db_session.add(row)
+    db_session.flush()
+    assert approval_blockers([row])["create_no_unit"] == 1
+    assert can_approve([row]) is False
+    row.unit_id = "3566"
+    db_session.flush()
+    assert can_approve([row]) is True
 
 
 def test_blank_rates_block_kein_rabatt_does_not(db_session):

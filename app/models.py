@@ -1294,6 +1294,7 @@ class SupplySourceRow(Base):
     current_ek: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     current_ek_currency: Mapped[str | None] = mapped_column(Text, nullable=True)
     vk_override: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
+    unit_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_supply_source_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     apply_outcome: Mapped[str | None] = mapped_column(Text, nullable=True)
     apply_detail: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
@@ -1417,6 +1418,19 @@ class SupplierArticleAliasesAudit(Base):
     )
 
 
+class WeclappUnit(Base):
+    """Catalogue from GET /unit, rebuilt on each supply-source index."""
+
+    __tablename__ = "weclapp_units"
+
+    weclapp_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_seen_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False
+    )
+
+
 class WeclappArticle(Base):
     __tablename__ = "weclapp_articles"
 
@@ -1424,6 +1438,7 @@ class WeclappArticle(Base):
     article_number: Mapped[str] = mapped_column(Text, nullable=False)
     name: Mapped[str | None] = mapped_column(Text, nullable=True)
     ean: Mapped[str | None] = mapped_column(Text, nullable=True)
+    unit_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     rabattcode: Mapped[str | None] = mapped_column(Text, nullable=True)
     weclapp_version: Mapped[str] = mapped_column(Text, nullable=False)
     last_seen_at: Mapped[datetime] = mapped_column(

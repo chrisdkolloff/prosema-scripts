@@ -21,6 +21,7 @@ from app.supply_source_payload import (
 )
 from app.supply_source_runs import can_approve, derived_prices, load_rows
 from app.weclapp import WeclappLicenceMissing, WeclappTokenInvalid, map_weclapp_error
+from app.weclapp_units import UNIT_ID_PUT_WRITABLE
 from scripts.weclapp.client import WeclappError
 
 # Live Dural history uses a 1 ms seam (end …799000, next start …800000).
@@ -382,6 +383,13 @@ def _non_price_updates(row: SupplySourceRow, live: Mapping[str, Any]) -> dict[st
         updates["name"] = row.name
     if row.ean and str(live.get("ean") or "") != row.ean:
         updates["ean"] = row.ean
+    # Switch: UNIT_ID_PUT_WRITABLE is False (live 400 "unit cannot be changed").
+    if (
+        UNIT_ID_PUT_WRITABLE
+        and row.unit_id
+        and str(live.get("unitId") or "") != str(row.unit_id)
+    ):
+        updates["unit_id"] = row.unit_id
     return updates
 
 
@@ -437,6 +445,7 @@ def _apply_price_or_update(ctx: _ApplyCtx, *, intent: str) -> str:
             live_get=live,
             name=extra.get("name"),
             ean=extra.get("ean"),
+            unit_id=extra.get("unit_id"),
         )
     except SupplySourcePayloadError as exc:
         return _finish(ctx, "REJECTED", message=str(exc))
@@ -590,7 +599,7 @@ def _apply_create(ctx: _ApplyCtx) -> str:
     supplier = ctx.db.get(Supplier, ctx.run.supplier_id)
     if supplier is None:
         return _finish(ctx, "REJECTED", message="Lieferant nicht gefunden.")
-    unit_id = supplier.default_unit_id
+    unit_id = row.unit_id
     if not unit_id:
         return _finish(ctx, "REJECTED", message=MSG_NO_UNIT)
     ss_id = row.created_supply_source_id
@@ -693,7 +702,7 @@ def apply_chunk(
 ) -> dict[str, Any]:
     if not can_approve(load_rows(db, run.id)):
         raise ValueError(
-            "Freigabe nicht möglich: offene Zuordnungen oder fehlende Rabattsätze."
+            "Freigabe nicht möglich: offene Zuordnungen, fehlende Rabattsätze oder fehlende Einheit."
         )
     rows = next_chunk(db, run)
     if not rows:
@@ -750,7 +759,7 @@ def enqueue_apply_chunk(
 
     if not can_approve(load_rows(db, run.id)):
         raise ValueError(
-            "Freigabe nicht möglich: offene Zuordnungen oder fehlende Rabattsätze."
+            "Freigabe nicht möglich: offene Zuordnungen, fehlende Rabattsätze oder fehlende Einheit."
         )
     chunk = next_chunk(db, run)
     if not chunk:

@@ -59,6 +59,7 @@ class _FakeClient:
         self.supply_sources = supply_sources
         self.parties = parties
         self.currencies = currencies or [{"id": "261", "name": "EUR"}]
+        self.units = [{"id": "3566", "name": "Stk.", "description": "Stück"}]
         self.attrs = attrs or [{"id": "1", "label": "Rabattcode"}]
 
     def get(self, path, *, params=None):
@@ -71,6 +72,8 @@ class _FakeClient:
             return {"result": self.supply_sources}
         if path == "/currency":
             return {"result": self.currencies}
+        if path == "/unit":
+            return {"result": self.units}
         if path == "/customAttributeDefinition":
             return {"result": self.attrs}
         raise AssertionError(path)
@@ -91,6 +94,7 @@ def _client_two_articles_one_ss():
             "version": "1",
             "articleNumber": "060.030.0040",
             "name": "one",
+            "unitId": "3566",
             "primarySupplySourceId": "162262",
             "supplySources": [{"articleSupplySourceId": "162262", "positionNumber": 1}],
             "customAttributes": [],
@@ -100,6 +104,7 @@ def _client_two_articles_one_ss():
             "version": "1",
             "articleNumber": "060.030.0070",
             "name": "two",
+            "unitId": "4259",
             "primarySupplySourceId": "162262",
             "supplySources": [{"articleSupplySourceId": "162262", "positionNumber": 1}],
             "customAttributes": [],
@@ -121,7 +126,13 @@ def test_index_build_shared_ss_two_links(db_session):
     assert result["supply_source_count"] == 1
     assert result["link_count"] == 2
     assert result["duplicate_groups"] == 0
-    links = list(db_session.scalars(select(WeclappSupplySourceLink)))
+    links = list(
+        db_session.scalars(
+            select(WeclappSupplySourceLink).where(
+                WeclappSupplySourceLink.supply_source_weclapp_id == "162262"
+            )
+        )
+    )
     assert {row.article_number for row in links} == {"060.030.0040", "060.030.0070"}
     aliases = list(db_session.scalars(select(SupplierArticleAlias)))
     sans = {(a.supplier_article_number, a.article_number) for a in aliases}
@@ -140,7 +151,8 @@ def test_duplicate_ss_fails_before_insert(db_session):
     )
     with pytest.raises(DuplicateSupplySourceError, match="Lieferant 10000"):
         pull_supply_source_index(db_session, oid="unused", client=client)
-    assert db_session.scalar(select(WeclappSupplySource).limit(1)) is None
+    assert db_session.get(WeclappSupplySource, "1") is None
+    assert db_session.get(WeclappSupplySource, "2") is None
 
 
 def test_filtered_pull_does_not_mark_other_supplier_missing(db_session):
@@ -201,3 +213,5 @@ def test_articles_table_exists_after_pull(db_session):
         db_session, oid="u", client=_client_two_articles_one_ss()
     )
     assert db_session.get(WeclappArticle, "a1") is not None
+    assert db_session.get(WeclappArticle, "a1").unit_id == "3566"
+    assert db_session.get(WeclappArticle, "a2").unit_id == "4259"

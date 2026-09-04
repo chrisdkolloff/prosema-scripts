@@ -84,6 +84,7 @@ def _run_row(db: Session, *, intent: str, san: str = "SAN-1", **kwargs) -> tuple
         weclapp_version=kwargs.get("version", "3"),
         weclapp_article_ids=kwargs.get("article_ids", ["art-1"]),
         resolved_article_numbers=kwargs.get("numbers", ["999.999.001"]),
+        unit_id=kwargs.get("unit_id", "3566"),
     )
     set_rates(row, rabatt_1=Decimal("0"), rabatt_2=Decimal("0"), kein_rabatt=True)
     db.add(row)

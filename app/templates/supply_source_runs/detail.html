@@ -8,6 +8,9 @@
 {% block extra_head %}
   <link rel="stylesheet" href="/static/jsuites.css">
   <link rel="stylesheet" href="/static/jspreadsheet.css">
+  <style>
+    .ss-unit-locked { background: #f4f4f5 !important; color: #6c757d; }
+  </style>
 {% endblock %}
 {% block content %}
   <p class="mb-2"><a href="/bezugsquellen/neu">Zur Übersicht</a></p>
@@ -72,6 +75,7 @@
     · {{ summary.renumber }} mit neuer Lieferantennummer
     · {{ summary.unmatched }} ohne Zuordnung
     · {{ summary.discount_unset }} ohne Rabattsatz
+    · {{ summary.create_no_unit }} neue Bezugsquellen ohne Einheit
   </p>
 
   <form class="row g-3 align-items-end mb-4" method="post" action="/bezugsquellen/neu/{{ run.id }}/einstellungen">
@@ -190,6 +194,10 @@
   </form>
 
   <p id="ss-save-status" class="batch-save-status mb-2" role="status">Gespeichert</p>
+  <p class="text-body-secondary small mb-2">
+    Einheit einer bestehenden Bezugsquelle lässt sich nicht ändern — weclapp lehnt das ab.
+    Nur bei «neu anlegen» und «zuordnen» ist die Einheit editierbar.
+  </p>
   <div class="prosema-grid mb-4">
     <div id="ss-spreadsheet" class="batch-spreadsheet"></div>
   </div>
@@ -211,7 +219,7 @@
       {% if run.approved_at %}Nächsten Abschnitt schreiben{% else %}Lauf freigeben und schreiben{% endif %}
     </button>
     {% if not can_approve %}
-    <span class="text-body-secondary ms-2">Freigabe gesperrt, solange Zuordnungen oder Rabattsätze fehlen.</span>
+    <span class="text-body-secondary ms-2">Freigabe gesperrt, solange Zuordnungen, Rabattsätze oder die Einheit bei neuen Bezugsquellen fehlen.</span>
     {% endif %}
   </form>
   {% endif %}

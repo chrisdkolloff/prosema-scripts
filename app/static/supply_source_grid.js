@@ -52,6 +52,16 @@
     }, config.idleMs || 400);
   }
 
+  function onBeforeChange(el, cell, x, y) {
+    if (!config) return true;
+    var field = fieldAt(Number(x));
+    if (field === "unit_id") {
+      var locked = (config.unitLockedRows || []).indexOf(Number(y)) >= 0;
+      if (locked) return false;
+    }
+    return true;
+  }
+
   function onEvent(event) {
     if (event !== "onchange") return;
     queueChange(Number(arguments[3]), Number(arguments[4]), arguments[5]);
@@ -84,12 +94,12 @@
     for (var y = 0; y < last; y++) {
       var row = config.data[y];
       var show = true;
-      if (code && String(row[3] || "") !== code) show = false;
+      if (code && String(row[4] || "") !== code) show = false;
       if (prefix && String(row[0] || "").toLowerCase().indexOf(prefix) !== 0) show = false;
       if (name && String(row[1] || "").toLowerCase().indexOf(name) < 0) show = false;
-      if (match === "matched" && String(row[13] || "").indexOf("ohne Zuordnung") >= 0) show = false;
-      if (match === "unmatched" && String(row[13] || "").indexOf("ohne Zuordnung") < 0) show = false;
-      if (intent && String(row[14] || "") !== intent) show = false;
+      if (match === "matched" && String(row[14] || "").indexOf("ohne Zuordnung") >= 0) show = false;
+      if (match === "unmatched" && String(row[14] || "").indexOf("ohne Zuordnung") < 0) show = false;
+      if (intent && String(row[15] || "") !== intent) show = false;
       var el = worksheet.rows && worksheet.rows[y] && worksheet.rows[y].element;
       if (el) el.style.display = show ? "" : "none";
     }
@@ -116,6 +126,34 @@
     });
   }
 
+  function markUnitLocked() {
+    if (!worksheet || !config) return;
+    var x = (config.fields || []).indexOf("unit_id");
+    if (x < 0) return;
+    var hint = config.unitLockedHint || "";
+    var descById = {};
+    (config.units || []).forEach(function (u) {
+      descById[u.id] = u.description || "";
+    });
+    for (var y = 0; y < (config.rowIds || []).length; y++) {
+      var cell = null;
+      try {
+        cell = worksheet.getCell(x, y);
+      } catch (err) {
+        cell = null;
+      }
+      if (!cell) continue;
+      var uid = String((config.data[y] && config.data[y][x]) || "");
+      var parts = [];
+      if (descById[uid]) parts.push(descById[uid]);
+      if ((config.unitLockedRows || []).indexOf(y) >= 0) {
+        cell.classList.add("ss-unit-locked");
+        parts.push(hint);
+      }
+      if (parts.length) cell.title = parts.join(" — ");
+    }
+  }
+
   function replaceGrid(next) {
     config = next;
     var el = $("ss-spreadsheet");
@@ -137,6 +175,7 @@
           allowInsertColumn: false,
           allowDeleteColumn: false,
           columnSorting: false,
+          onbeforechange: onBeforeChange,
           onchange: onEvent,
         }],
       });
@@ -145,6 +184,7 @@
       applying = false;
     }
     markUnmatched();
+    markUnitLocked();
     applyFilters();
     var unset = $("ss-discount-unset");
     if (unset && typeof config.discountUnset === "number") {
@@ -152,7 +192,9 @@
     }
     var approve = $("ss-approve");
     if (approve && config.editable) {
-      var blocked = (config.discountUnset || 0) > 0 || (config.unmatchedRows || []).length > 0;
+      var blocked = (config.discountUnset || 0) > 0
+        || (config.unmatchedRows || []).length > 0
+        || (config.createNoUnit || 0) > 0;
       approve.disabled = blocked;
     }
   }

@@ -229,6 +229,11 @@ def summary_counts(rows: list[SupplySourceRow]) -> dict[str, int]:
             for r in rows
             if not r.discount_set and r.row_intent != "skip"
         ),
+        "create_no_unit": sum(
+            1
+            for r in rows
+            if r.row_intent == "create" and not str(r.unit_id or "").strip()
+        ),
         "skip": sum(1 for r in rows if r.row_intent == "skip"),
         "total": len(rows),
         "attach": sum(1 for r in rows if r.row_intent == "attach"),
@@ -238,6 +243,7 @@ def summary_counts(rows: list[SupplySourceRow]) -> dict[str, int]:
 def approval_blockers(rows: list[SupplySourceRow]) -> dict[str, int]:
     unmatched = 0
     unset = 0
+    create_no_unit = 0
     for row in rows:
         if row.row_intent == "skip":
             continue
@@ -245,12 +251,22 @@ def approval_blockers(rows: list[SupplySourceRow]) -> dict[str, int]:
             unmatched += 1
         if not row.discount_set:
             unset += 1
-    return {"unmatched": unmatched, "discount_unset": unset}
+        if row.row_intent == "create" and not str(row.unit_id or "").strip():
+            create_no_unit += 1
+    return {
+        "unmatched": unmatched,
+        "discount_unset": unset,
+        "create_no_unit": create_no_unit,
+    }
 
 
 def can_approve(rows: list[SupplySourceRow]) -> bool:
     blocks = approval_blockers(rows)
-    return blocks["unmatched"] == 0 and blocks["discount_unset"] == 0
+    return (
+        blocks["unmatched"] == 0
+        and blocks["discount_unset"] == 0
+        and blocks["create_no_unit"] == 0
+    )
 
 
 def load_rows(db: Session, run_id: int) -> list[SupplySourceRow]:
@@ -359,6 +375,13 @@ def apply_edits(
                 row.row_intent = "skip"
             elif intent in INTENT_LABELS and intent != "skip":
                 row.row_intent = intent
+        elif field == "unit_id":
+            if row.row_intent not in {"create", "attach"}:
+                raise SupplySourceRunError(
+                    "Einheit einer bestehenden Bezugsquelle lässt sich nicht ändern."
+                )
+            uid = str(value or "").strip()
+            row.unit_id = uid or None
         else:
             continue
         touched.append(row)
@@ -486,7 +509,7 @@ def approve_run(db: Session, run: SupplySourceRun, user: Mapping[str, Any]) -> N
     rows = load_rows(db, run.id)
     if not can_approve(rows):
         raise SupplySourceRunError(
-            "Freigabe nicht möglich: offene Zuordnungen oder fehlende Rabattsätze."
+            "Freigabe nicht möglich: offene Zuordnungen, fehlende Rabattsätze oder fehlende Einheit."
         )
     from app.supply_source_apply import enqueue_apply_chunk
 
@@ -519,15 +542,22 @@ def row_payload(row: SupplySourceRow, run: SupplySourceRun) -> dict[str, Any]:
         "match_tier": row.match_tier,
         "row_intent": row.row_intent or "",
         "intent_label": INTENT_LABELS.get(row.row_intent or "", ""),
+        "unit_id": row.unit_id or "",
     }
 
 
 def build_grid_config(run: SupplySourceRun, rows: list[SupplySourceRow]) -> dict[str, Any]:
+    from app.weclapp_units import UNIT_LOCKED_HINT, units_for_dropdown
+
+    session = Session.object_session(run)
+    units = units_for_dropdown(session) if session is not None else []
+    unit_source = [[u["id"], u["name"]] for u in units]
     payloads = [row_payload(row, run) for row in rows]
     fields = [
         "supplier_article_number",
         "name",
         "article_numbers_label",
+        "unit_id",
         "rabattcode",
         "listenpreis",
         "rabatt_1",
@@ -545,6 +575,13 @@ def build_grid_config(run: SupplySourceRun, rows: list[SupplySourceRow]) -> dict
         {"title": "Lieferantenartikelnummer", "width": 160, "readOnly": True},
         {"title": "Bezeichnung", "width": 280, "readOnly": True},
         {"title": "PROSEMA-Artikelnummer(n)", "width": 180, "readOnly": True},
+        {
+            "title": "Einheit",
+            "width": 110,
+            "type": "dropdown",
+            "source": unit_source,
+            "autocomplete": True,
+        },
         {"title": "Rabattcode", "width": 110, "readOnly": True},
         {"title": "Listenpreis", "width": 110, "readOnly": True},
         {"title": "Rabatt 1", "width": 90},
@@ -572,6 +609,7 @@ def build_grid_config(run: SupplySourceRun, rows: list[SupplySourceRow]) -> dict
     ]
     data = []
     unmatched_rows: list[int] = []
+    unit_locked_rows: list[int] = []
     for i, payload in enumerate(payloads):
         r1 = (
             format_pct(payload["rabatt_1"])
@@ -593,6 +631,7 @@ def build_grid_config(run: SupplySourceRun, rows: list[SupplySourceRow]) -> dict
                 payload["supplier_article_number"],
                 payload["name"],
                 payload["article_numbers_label"],
+                payload["unit_id"],
                 payload["rabattcode"],
                 format_swiss_number(payload["listenpreis"]),
                 r1,
@@ -609,19 +648,26 @@ def build_grid_config(run: SupplySourceRun, rows: list[SupplySourceRow]) -> dict
         )
         if payload["match_status"] == "unmatched":
             unmatched_rows.append(i)
+        if payload["row_intent"] not in {"create", "attach"}:
+            unit_locked_rows.append(i)
     codes = sorted({p["rabattcode"] for p in payloads if p["rabattcode"]})
+    counts = summary_counts(rows)
     return {
         "runId": run.id,
         "editable": run.status in EDITABLE_STATUSES and run.approved_at is None,
-        "editableFields": ["rabatt_1", "rabatt_2", "vk_chf", "row_intent"],
+        "editableFields": ["rabatt_1", "rabatt_2", "vk_chf", "row_intent", "unit_id"],
         "fields": fields,
         "columns": columns,
         "data": data,
         "rowIds": [p["id"] for p in payloads],
         "unmatchedRows": unmatched_rows,
+        "unitLockedRows": unit_locked_rows,
+        "unitLockedHint": UNIT_LOCKED_HINT,
+        "units": units,
         "rabattcodes": codes,
         "editsUrl": f"/bezugsquellen/neu/{run.id}/edits",
         "bulkUrl": f"/bezugsquellen/neu/{run.id}/rabatte",
         "idleMs": 400,
-        "discountUnset": summary_counts(rows)["discount_unset"],
+        "discountUnset": counts["discount_unset"],
+        "createNoUnit": counts["create_no_unit"],
     }

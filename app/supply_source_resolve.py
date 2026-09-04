@@ -185,7 +185,36 @@ def _existing_ss_for_articles(
     ).first()
 
 
+def _assign_unit(db: Session, row: SupplySourceRow) -> None:
+    """Pre-fill Einheit: article unit if resolved, else SS unit on update-like intents."""
+    if row.weclapp_article_ids:
+        article = db.get(WeclappArticle, row.weclapp_article_ids[0])
+        if article is not None and article.unit_id:
+            row.unit_id = article.unit_id
+            return
+    if row.row_intent in {"update", "price_only", "renumber"} and row.weclapp_supply_source_id:
+        ss = db.get(WeclappSupplySource, row.weclapp_supply_source_id)
+        if ss is not None:
+            row.unit_id = ss.unit_id
+            return
+    if row.row_intent in {"create", "attach"} and not row.weclapp_article_ids:
+        row.unit_id = None
+
+
 def resolve_row(
+    db: Session,
+    run: SupplySourceRun,
+    row: SupplySourceRow,
+    *,
+    supplier: Supplier,
+) -> None:
+    try:
+        _resolve_row_body(db, run, row, supplier=supplier)
+    finally:
+        _assign_unit(db, row)
+
+
+def _resolve_row_body(
     db: Session,
     run: SupplySourceRun,
     row: SupplySourceRow,

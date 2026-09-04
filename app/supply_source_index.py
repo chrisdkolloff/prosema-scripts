@@ -19,6 +19,7 @@ from app.models import (
     WeclappSupplySource,
     WeclappSupplySourceLink,
     WeclappSupplySourcePrice,
+    WeclappUnit,
 )
 from scripts.weclapp.master_columns import _custom_attributes_by_label
 
@@ -143,6 +144,25 @@ def _attribute_labels(client: RequestCountingClient) -> dict[str, str]:
     return labels
 
 
+def _fetch_units(client: RequestCountingClient) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for row in client.iter_pages("unit"):
+        if not isinstance(row, dict):
+            continue
+        uid = _text(row.get("id"))
+        name = _text(row.get("name"))
+        if not uid or not name:
+            continue
+        rows.append(
+            {
+                "weclapp_id": uid,
+                "name": name,
+                "description": _text(row.get("description")),
+            }
+        )
+    return rows
+
+
 def _currency_codes(client: RequestCountingClient) -> dict[str, str]:
     codes: dict[str, str] = {}
     for row in client.iter_pages("currency"):
@@ -243,6 +263,7 @@ def pull_supply_source_index(
         counted.iter_pages("articleSupplySource", params=ss_params)
     )
     currency_codes = _currency_codes(counted)
+    unit_rows = _fetch_units(counted)
 
     party_ids = {
         str(row.get("supplierId") or "").strip()
@@ -273,6 +294,7 @@ def pull_supply_source_index(
                 "article_number": str(article.get("articleNumber") or "").strip(),
                 "name": _text(article.get("name")),
                 "ean": _text(article.get("ean")),
+                "unit_id": _text(article.get("unitId")),
                 "rabattcode": _text(attrs.get("Rabattcode")),
                 "weclapp_version": str(article.get("version") or ""),
                 "last_seen_at": datenstand,
@@ -382,6 +404,7 @@ def pull_supply_source_index(
             "article_number",
             "name",
             "ean",
+            "unit_id",
             "rabattcode",
             "weclapp_version",
             "last_seen_at",
@@ -427,6 +450,12 @@ def pull_supply_source_index(
     elif filter_party_id is None:
         db.execute(delete(WeclappSupplySourcePrice))
         db.execute(delete(WeclappSupplySourceLink))
+
+    if unit_rows:
+        for row in unit_rows:
+            row["last_seen_at"] = datenstand
+        db.execute(delete(WeclappUnit))
+        _insert_chunks(db, WeclappUnit, unit_rows)
 
     _insert_chunks(db, WeclappSupplySourcePrice, price_rows)
     _insert_chunks(db, WeclappSupplySourceLink, link_rows)
@@ -500,6 +529,7 @@ def pull_supply_source_index(
         "link_count": len(link_rows),
         "primary_link_count": primary_links,
         "price_count": len(price_rows),
+        "unit_count": len(unit_rows),
         "duplicate_groups": 0,
         "get_requests": counted.get_requests,
         "elapsed_seconds": round(elapsed, 3),
