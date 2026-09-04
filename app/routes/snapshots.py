@@ -11,6 +11,12 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
+from app.assistant.catalog import reset_pinned_snapshot, set_pinned_snapshot
+from app.assistant.empty_filter import (
+    empty_result_can_be_explained,
+    explain_empty_filter,
+    extract_explainable_filter,
+)
 from app.assistant.examples import EXAMPLE_QUESTIONS
 from app.assistant.service import MSG_DISABLED, MSG_NO_ANSWER, MSG_NO_SNAPSHOT, MSG_UNVERIFIED, ask
 from app.auth import SessionUser, require_user
@@ -55,6 +61,7 @@ MSG_SELECTION_TRUNCATED = (
     "Die Treffermenge ist zu groß für eine Auswahl (mehr als 5000 Artikel). "
     "Die Übersicht wird ungefiltert gezeigt."
 )
+MSG_EXPLAIN_EMPTY = "Warum keine Treffer?"
 
 
 def _is_fresh_pull(request: Request) -> bool:
@@ -190,6 +197,9 @@ def _assistant_viewer_fields(
             "assistant_query_id": None,
             "proposed_spec_summary": None,
             "proposed_spec_json": None,
+            "explain_empty_available": False,
+            "empty_filter_explanation": None,
+            "msg_explain_empty": MSG_EXPLAIN_EMPTY,
         }
     numbers = query.applied_article_numbers
     spec = proposed_spec_from_tool_calls(query.tool_calls)
@@ -206,6 +216,9 @@ def _assistant_viewer_fields(
         "proposed_spec_json": json.dumps(spec.model_dump(mode="json"), ensure_ascii=False)
         if spec is not None
         else None,
+        "explain_empty_available": empty_result_can_be_explained(query),
+        "empty_filter_explanation": None,
+        "msg_explain_empty": MSG_EXPLAIN_EMPTY,
     }
 
 
@@ -238,6 +251,22 @@ def _viewer_context(
         "msg_write_prompt": MSG_WRITE_PROMPT.format(name=settings.assistant_name),
         **_assistant_viewer_fields(query, hinweis),
     }
+    if (
+        query is not None
+        and str(request.query_params.get("warum") or "") == "1"
+        and ctx.get("explain_empty_available")
+    ):
+        parsed = extract_explainable_filter(query)
+        if parsed is not None:
+            pin = set_pinned_snapshot(snapshot)
+            try:
+                ctx["empty_filter_explanation"] = explain_empty_filter(
+                    db, snapshot, parsed
+                )
+            except (ValueError, TypeError):
+                ctx["empty_filter_explanation"] = None
+            finally:
+                reset_pinned_snapshot(pin)
     ctx["assistant_available"] = bool(
         settings.assistant_enabled and snapshot.status == "complete"
     )

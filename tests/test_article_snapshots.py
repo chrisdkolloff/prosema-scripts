@@ -28,6 +28,7 @@ from app.routes.snapshots import (
     MSG_FRAGE_OTHER_SNAPSHOT,
     MSG_FRAGE_OTHER_USER,
     MSG_SELECTION_TRUNCATED,
+    MSG_EXPLAIN_EMPTY,
     _viewer_context,
 )
 from app.snapshots import (
@@ -1299,6 +1300,44 @@ def test_frage_banner_shows_question_timestamp_and_answer(db_session, user_clien
     match = re.search(r'id="snapshot-frage"[^>]*value="([^"]*)"', response.text)
     assert match is not None
     assert match.group(1) == "Welche Artikel von Dural?"
+
+
+@patch("app.config.settings.weclapp_tenant", TENANT)
+@patch("app.assistant.tools.settings.weclapp_tenant", TENANT)
+def test_frage_banner_empty_result_offers_why_button(db_session, user_client):
+    snapshot = _make_complete_snapshot(db_session)
+    query = _make_assistant_query(
+        db_session,
+        snapshot,
+        numbers=[],
+        question="Edelstahlprofile mit natur hochglanzpoliert",
+        outcome="no_result",
+        answer_de="Ich habe keine Artikel gefunden.",
+    )
+    query.total_count = 0
+    query.applied_filter = {
+        "conditions": [
+            {"column": "article_number", "operator": "starts_with", "value": "999."}
+        ]
+    }
+    db_session.commit()
+
+    with patch("app.config.settings.assistant_enabled", True):
+        response = user_client.get(f"/artikel-uebersicht/{snapshot.id}?frage={query.id}")
+    assert response.status_code == 200
+    assert MSG_EXPLAIN_EMPTY in response.text
+    assert "warum=1" in response.text
+    assert "Gleichheit trifft nur den kompletten" not in response.text
+
+    with patch("app.config.settings.assistant_enabled", True):
+        explained = user_client.get(
+            f"/artikel-uebersicht/{snapshot.id}?frage={query.id}&warum=1"
+        )
+    assert explained.status_code == 200
+    assert "einzeln geprüft" in explained.text
+    assert "0 Treffer" in explained.text
+    assert f'>{MSG_EXPLAIN_EMPTY}<' not in explained.text
+
 
 
 @patch("app.config.settings.weclapp_tenant", TENANT)
