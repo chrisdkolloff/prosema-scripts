@@ -31,6 +31,7 @@ from app.supply_source_runs import (
     approval_blockers,
     approve_run,
     can_approve,
+    parse_aufschlag_percent,
     set_rates,
 )
 
@@ -240,6 +241,13 @@ def test_unknown_san_unmatched_blocks_approval(db_session):
         approve_run(db_session, run, {"oid": "x", "name": "Dennis"})
 
 
+def test_parse_aufschlag_percent():
+    assert parse_aufschlag_percent("50") == Decimal("0.50")
+    assert parse_aufschlag_percent("50.00") == Decimal("0.50")
+    assert parse_aufschlag_percent("50,5") == Decimal("0.505")
+    assert parse_aufschlag_percent("50%") == Decimal("0.50")
+
+
 def test_create_without_unit_blocks_approval(db_session):
     supplier = _supplier(db_session)
     run = _run(db_session, supplier)
@@ -410,6 +418,10 @@ def test_preview_grid_and_bulk_http(user_client, db_session):
     page = user_client.get(f"/bezugsquellen/neu/{run.id}")
     assert page.status_code == 200
     assert "ohne Rabattsatz" in page.text
+    assert "Aufschlag (%)" in page.text
+    assert 'id="ss-aufschlag"' in page.text
+    assert "0.5000" not in page.text
+    assert "50.00" in page.text
     assert "supply_source_grid.js" in page.text
     blocked = user_client.post(f"/bezugsquellen/neu/{run.id}/freigeben")
     assert blocked.status_code in {303, 200}

@@ -122,8 +122,8 @@
       </select>
     </div>
     <div class="col-auto">
-      <label class="form-label" for="ss-aufschlag">Aufschlag (z.&nbsp;B. 0.50)</label>
-      <input class="form-control" id="ss-aufschlag" name="aufschlag" value="{{ run.aufschlag }}">
+      <label class="form-label" for="ss-aufschlag">Aufschlag (%)</label>
+      <input class="form-control" id="ss-aufschlag" name="aufschlag" value="{{ format_pct(run.aufschlag) }}" inputmode="decimal">
     </div>
     <div class="col-auto">
       <label class="form-label" for="ss-eintritt">Preis-Eintritt</label>

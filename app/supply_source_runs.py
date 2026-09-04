@@ -64,6 +64,29 @@ def parse_rate(raw: object) -> Decimal | None:
     return value
 
 
+def parse_aufschlag_percent(raw: object) -> Decimal:
+    """UI is percent points (50 → 0.50 stored). Stored value stays a markup fraction."""
+    if raw is None:
+        raise SupplySourceRunError("Aufschlag fehlt.")
+    text = str(raw).strip().replace("%", "").replace(" ", "").replace("'", "")
+    if text == "":
+        raise SupplySourceRunError("Aufschlag fehlt.")
+    if "," in text and "." in text:
+        if text.rindex(",") > text.rindex("."):
+            text = text.replace(".", "").replace(",", ".")
+        else:
+            text = text.replace(",", "")
+    elif "," in text:
+        text = text.replace(".", "").replace(",", ".")
+    try:
+        points = Decimal(text)
+    except InvalidOperation as extra:
+        raise SupplySourceRunError("Aufschlag ist keine Zahl.") from extra
+    if points < 0:
+        raise SupplySourceRunError("Aufschlag darf nicht negativ sein.")
+    return points / Decimal(100)
+
+
 def parse_money(raw: object) -> Decimal | None:
     if raw is None:
         return None

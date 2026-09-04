@@ -34,6 +34,7 @@ from app.supply_source_runs import (
     list_runs,
     list_suppliers,
     load_rows,
+    parse_aufschlag_percent,
     parse_rate,
     running_for_supplier,
     summary_counts,
@@ -467,7 +468,7 @@ def save_settings(
             einkaufswaehrung=einkaufswaehrung.strip(),
             kurs=_parse_decimal(kurs, field="Kurs"),
             verkaufswaehrung=verkaufswaehrung.strip(),
-            aufschlag=_parse_decimal(aufschlag, field="Aufschlag"),
+            aufschlag=parse_aufschlag_percent(aufschlag),
             preis_eintritt=_parse_eintritt(preis_eintritt),
         )
     except SupplySourceRunError as exc:
