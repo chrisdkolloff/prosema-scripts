@@ -59,6 +59,7 @@ JOB_TYPE_LABELS = {
     "weclapp_supply_source_export": "Bezugsquellenabfrage",
     "weclapp_supply_source_index": "Bezugsquellen-Index",
     "supply_source_resolve": "Bezugsquellen abgleichen",
+    "supply_source_apply": "Bezugsquellen schreiben",
     "article_batch_submit": "Artikelregistrierung senden",
     "article_transform_preview": "Artikel-Transformation Vorschau",
     "article_transform_apply": "Artikel-Transformation anwenden",
@@ -174,6 +175,43 @@ def handle_supply_source_resolve(
         if run is not None:
             message = job_error_message(exc) or "Abgleich fehlgeschlagen"
             fail_run(db, run, message)
+        raise
+
+
+@job_handler("supply_source_apply")
+def handle_supply_source_apply(
+    db: Session,
+    payload: dict,
+    oid: str,
+) -> dict:
+    from app.models import SupplySourceRun
+    from app.supply_source_apply import apply_chunk
+    from app.weclapp import weclapp_client_for
+
+    run_id = int(payload["run_id"])
+    chunk_index = int(payload.get("chunk_index") or 0)
+    run = db.get(SupplySourceRun, run_id)
+    if run is None:
+        raise ValueError("Abgleich nicht gefunden")
+    actor_name = str(payload.get("actor_name") or "")
+    try:
+        client = weclapp_client_for(db, oid)
+        return apply_chunk(
+            db,
+            run,
+            oid=oid,
+            actor_name=actor_name or oid,
+            client=client,
+            chunk_index=chunk_index,
+        )
+    except Exception as exc:
+        db.rollback()
+        run = db.get(SupplySourceRun, run_id)
+        if run is not None:
+            message = job_error_message(exc) or "Schreiben fehlgeschlagen"
+            run.status = "failed"
+            run.error = message
+            db.commit()
         raise
 
 

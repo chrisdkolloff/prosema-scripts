@@ -1203,6 +1203,16 @@ class SupplySourceRun(Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by: Mapped[str] = mapped_column(Text, nullable=False)
     created_by_name: Mapped[str] = mapped_column(Text, nullable=False)
+    approved_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    approved_by: Mapped[str | None] = mapped_column(Text, nullable=True)
+    applied_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    chunk_size: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=50, server_default="50"
+    )
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
     )
@@ -1284,6 +1294,13 @@ class SupplySourceRow(Base):
     current_ek: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     current_ek_currency: Mapped[str | None] = mapped_column(Text, nullable=True)
     vk_override: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
+    created_supply_source_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    apply_outcome: Mapped[str | None] = mapped_column(Text, nullable=True)
+    apply_detail: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    applied_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    chunk_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
     )
@@ -1318,6 +1335,13 @@ class SupplySourceRow(Base):
             "row_intent IS NULL OR row_intent IN "
             "('update','price_only','create','attach','renumber','skip')",
             name="ck_supply_source_row_row_intent",
+        ),
+        CheckConstraint(
+            "apply_outcome IS NULL OR apply_outcome IN ("
+            "'UPDATED','PRICE_UPDATED','UNCHANGED','CREATED','ATTACHED',"
+            "'RENUMBERED','CONFLICT','REJECTED','GONE','AUTH','UNKNOWN'"
+            ")",
+            name="ck_supply_source_row_apply_outcome",
         ),
         UniqueConstraint(
             "run_id",
@@ -1360,6 +1384,35 @@ class SupplierArticleAlias(Base):
             "supplier_article_number",
             "article_number",
             name="uq_supplier_article_aliases_triple",
+        ),
+    )
+
+
+class SupplierArticleAliasesAudit(Base):
+    __tablename__ = "supplier_article_aliases_audit"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    entity: Mapped[str] = mapped_column(Text, nullable=False)
+    entity_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    action: Mapped[str] = mapped_column(Text, nullable=False)
+    before: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    after: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    actor_oid: Mapped[str] = mapped_column(Text, nullable=False)
+    actor_name: Mapped[str] = mapped_column(Text, nullable=False)
+    at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "entity IN ('alias')",
+            name="ck_supplier_article_aliases_audit_entity",
+        ),
+        CheckConstraint(
+            "action IN ('created', 'updated')",
+            name="ck_supplier_article_aliases_audit_action",
         ),
     )
 

@@ -51,6 +51,20 @@ STATUS_LABELS = {
     "failed": "Fehlgeschlagen",
 }
 
+OUTCOME_LABELS = {
+    "UPDATED": "Aktualisiert",
+    "PRICE_UPDATED": "Preis aktualisiert",
+    "UNCHANGED": "Unverändert",
+    "CREATED": "Neu angelegt",
+    "ATTACHED": "Zugeordnet",
+    "RENUMBERED": "Umnummeriert",
+    "CONFLICT": "Konflikt",
+    "REJECTED": "Abgelehnt",
+    "GONE": "Nicht mehr vorhanden",
+    "AUTH": "Zugang fehlgeschlagen",
+    "UNKNOWN": "Unklar — prüfen",
+}
+
 
 class CellEditIn(BaseModel):
     row_id: int
@@ -151,10 +165,24 @@ def run_detail(
     db: Session = Depends(get_db),
     user: SessionUser = Depends(require_user),
 ):
+    from app.supply_source_apply import apply_summary, pending_rows
+
     run = _get_run(db, run_id)
     rows = load_rows(db, run.id) if run.status != "running" else []
     summary = summary_counts(rows)
     blockers = approval_blockers(rows)
+    pending = pending_rows(db, run) if rows else []
+    write_summary = apply_summary(pending) if pending else apply_summary(rows)
+    outcomes: dict[str, list] = {}
+    for row in rows:
+        if not row.apply_outcome:
+            continue
+        outcomes.setdefault(row.apply_outcome, []).append(row)
+    can_write = (
+        can_approve(rows)
+        and run.status in {"preview", "approved"}
+        and bool(pending)
+    )
     return request.app.state.templates.TemplateResponse(
         request,
         "supply_source_runs/detail.html",
@@ -164,7 +192,11 @@ def run_detail(
             "rows": rows,
             "summary": summary,
             "blockers": blockers,
-            "can_approve": can_approve(rows) and run.status == "preview",
+            "can_approve": can_write,
+            "write_summary": write_summary,
+            "pending_count": len(pending),
+            "outcomes": outcomes,
+            "outcome_labels": OUTCOME_LABELS,
             "grid_config": build_grid_config(run, rows) if rows else None,
             "status_labels": STATUS_LABELS,
             "format_swiss_number": format_swiss_number,
@@ -325,14 +357,13 @@ def approve(
 ):
     run = _get_run(db, run_id)
     try:
-        assert_editable(run)
-        approve_run(db, run)
+        approve_run(db, run, user)
     except SupplySourceRunError as exc:
         return RedirectResponse(
             url=f"/bezugsquellen/neu/{run.id}?error={quote(str(exc))}",
             status_code=303,
         )
     return RedirectResponse(
-        url=f"/bezugsquellen/neu/{run.id}?notice={quote('Lauf freigegeben. Schreiben folgt in einem nächsten Schritt.')}",
+        url=f"/bezugsquellen/neu/{run.id}?notice={quote('Abschnitt wird nach weclapp geschrieben.')}",
         status_code=303,
     )

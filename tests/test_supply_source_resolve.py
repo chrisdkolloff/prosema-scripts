@@ -234,7 +234,7 @@ def test_unknown_san_unmatched_blocks_approval(db_session):
     db_session.flush()
     assert can_approve([row]) is False
     with pytest.raises(Exception, match="Freigabe"):
-        approve_run(db_session, run)
+        approve_run(db_session, run, {"oid": "x", "name": "Dennis"})
 
 
 def test_blank_rates_block_kein_rabatt_does_not(db_session):
@@ -256,9 +256,26 @@ def test_blank_rates_block_kein_rabatt_does_not(db_session):
     assert row.discount_set is True
     assert row.rabatt_1 == Decimal(0)
     assert approval_blockers([row])["discount_unset"] == 0
-    approve_run(db_session, run)
+    with patch("app.jobs.enqueue") as enqueue:
+        import uuid
+
+        from app.models import Job
+
+        job = Job(
+            id=uuid.uuid4(),
+            job_type="supply_source_apply",
+            payload={"run_id": run.id, "chunk_index": 0},
+            status="queued",
+            created_by_oid="x",
+            created_by_name="x",
+        )
+        db_session.add(job)
+        db_session.flush()
+        enqueue.return_value = job
+        approve_run(db_session, run, {"oid": "x", "name": "Dennis"})
     db_session.refresh(run)
-    assert run.status == "approved"
+    assert run.status == "applying"
+    assert run.approved_at is not None
 
 
 def test_bulk_rates_by_rabattcode(db_session):
@@ -356,10 +373,29 @@ def test_preview_grid_and_bulk_http(user_client, db_session):
     assert bulk.status_code == 200
     body = bulk.json()
     assert body["applied"] == 1
-    approve = user_client.post(f"/bezugsquellen/neu/{run.id}/freigeben", follow_redirects=False)
+    with patch("app.jobs.enqueue") as enqueue:
+        import uuid
+
+        from app.models import Job
+
+        job = Job(
+            id=uuid.uuid4(),
+            job_type="supply_source_apply",
+            payload={"run_id": run.id, "chunk_index": 0},
+            status="queued",
+            created_by_oid="x",
+            created_by_name="x",
+        )
+        db_session.add(job)
+        db_session.flush()
+        enqueue.return_value = job
+        approve = user_client.post(
+            f"/bezugsquellen/neu/{run.id}/freigeben", follow_redirects=False
+        )
     assert approve.status_code == 303
     db_session.refresh(run)
-    assert run.status == "approved"
+    assert run.status == "applying"
+    assert run.approved_at is not None
 
 
 def test_create_pull_enqueues_without_touching_export_tables(user_client, db_session):

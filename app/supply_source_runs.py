@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.models import (
     Supplier,
     SupplierArticleAlias,
+    SupplierArticleAliasesAudit,
     SupplySourceRow,
     SupplySourceRun,
     WeclappArticle,
@@ -263,7 +264,7 @@ def load_rows(db: Session, run_id: int) -> list[SupplySourceRow]:
 
 
 def assert_editable(run: SupplySourceRun) -> None:
-    if run.status not in EDITABLE_STATUSES:
+    if run.status not in EDITABLE_STATUSES or run.approved_at is not None:
         raise SupplySourceRunError("Dieser Lauf lässt sich nicht mehr ändern.")
 
 
@@ -430,10 +431,47 @@ def attach_manual_alias(
             confirmed_at=datetime.now(UTC),
         )
         db.add(existing)
+        db.flush()
+        db.add(
+            SupplierArticleAliasesAudit(
+                entity="alias",
+                entity_id=existing.id,
+                action="created",
+                before=None,
+                after={
+                    "supplier_article_number": existing.supplier_article_number,
+                    "article_number": existing.article_number,
+                    "weclapp_article_id": existing.weclapp_article_id,
+                    "source": existing.source,
+                },
+                actor_oid=oid,
+                actor_name=name or oid,
+            )
+        )
     else:
+        before = {
+            "article_number": existing.article_number,
+            "weclapp_article_id": existing.weclapp_article_id,
+            "source": existing.source,
+        }
         existing.source = "manual"
         existing.confirmed_by = oid
         existing.confirmed_at = datetime.now(UTC)
+        db.add(
+            SupplierArticleAliasesAudit(
+                entity="alias",
+                entity_id=existing.id,
+                action="updated",
+                before=before,
+                after={
+                    "article_number": existing.article_number,
+                    "weclapp_article_id": existing.weclapp_article_id,
+                    "source": existing.source,
+                },
+                actor_oid=oid,
+                actor_name=name or oid,
+            )
+        )
     supplier = db.get(Supplier, run.supplier_id)
     if supplier is None:
         raise SupplySourceRunError("Lieferant nicht gefunden.")
@@ -442,15 +480,17 @@ def attach_manual_alias(
     return existing
 
 
-def approve_run(db: Session, run: SupplySourceRun) -> None:
-    assert_editable(run)
+def approve_run(db: Session, run: SupplySourceRun, user: Mapping[str, Any]) -> None:
+    if run.status not in {"preview", "approved"}:
+        raise SupplySourceRunError("Dieser Lauf kann jetzt nicht geschrieben werden.")
     rows = load_rows(db, run.id)
     if not can_approve(rows):
         raise SupplySourceRunError(
             "Freigabe nicht möglich: offene Zuordnungen oder fehlende Rabattsätze."
         )
-    run.status = "approved"
-    db.commit()
+    from app.supply_source_apply import enqueue_apply_chunk
+
+    enqueue_apply_chunk(db, run, user)
 
 
 def row_payload(row: SupplySourceRow, run: SupplySourceRun) -> dict[str, Any]:
@@ -572,7 +612,7 @@ def build_grid_config(run: SupplySourceRun, rows: list[SupplySourceRow]) -> dict
     codes = sorted({p["rabattcode"] for p in payloads if p["rabattcode"]})
     return {
         "runId": run.id,
-        "editable": run.status in EDITABLE_STATUSES,
+        "editable": run.status in EDITABLE_STATUSES and run.approved_at is None,
         "editableFields": ["rabatt_1", "rabatt_2", "vk_chf", "row_intent"],
         "fields": fields,
         "columns": columns,
