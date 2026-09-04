@@ -82,8 +82,9 @@ def _run_row(db: Session, *, intent: str, san: str = "SAN-1", **kwargs) -> tuple
         row_intent=intent,
         weclapp_supply_source_id=kwargs.get("ss_id", "ss-1"),
         weclapp_version=kwargs.get("version", "3"),
-        weclapp_article_ids=kwargs.get("article_ids", ["art-1"]),
-        resolved_article_numbers=kwargs.get("numbers", ["999.999.001"]),
+        weclapp_article_id=kwargs.get("article_ids", ["art-1"])[0] if kwargs.get("article_ids", ["art-1"]) else None,
+        article_number=kwargs.get("numbers", ["999.999.001"])[0] if kwargs.get("numbers", ["999.999.001"]) else None,
+        included=kwargs.get("included", True),
         unit_id=kwargs.get("unit_id", "3566"),
     )
     set_rates(row, rabatt_1=Decimal("0"), rabatt_2=Decimal("0"), kein_rabatt=True)
@@ -110,6 +111,14 @@ class FakeClient:
             if isinstance(value, Exception):
                 raise value
             return value
+        if path.startswith("/article/id/"):
+            aid = path.rsplit("/", 1)[-1]
+            return {
+                "id": aid,
+                "version": "1",
+                "supplySources": [],
+                "primarySupplySourceId": None,
+            }
         raise WeclappError("missing", status_code=404)
 
     def put(self, path, *, params=None, json=None):
@@ -156,9 +165,13 @@ def test_unchanged_makes_zero_puts(db_session):
     apply_chunk(
         db_session, run, oid=PLAIN["oid"], actor_name="Dennis", client=client, chunk_index=0
     )
-    assert client.put_calls == []
+    article_puts = [c for c in client.put_calls if c["path"].startswith("/article/id/")]
+    ss_puts = [c for c in client.put_calls if "/articleSupplySource/" in c["path"]]
+    assert ss_puts == []
+    assert len(article_puts) == 1
     db_session.refresh(row)
-    assert row.apply_outcome == "UNCHANGED"
+    assert row.apply_outcome == "ATTACHED"
+    assert (row.apply_detail or {}).get("group_outcome") == "UNCHANGED"
 
 
 def test_conflict_does_not_put(db_session):
@@ -182,8 +195,8 @@ def test_auth_aborts_chunk_and_leaves_later_rows(db_session):
         row_intent="price_only",
         weclapp_supply_source_id="ss-2",
         weclapp_version="1",
-        weclapp_article_ids=["art-2"],
-        resolved_article_numbers=["999.999.002"],
+        weclapp_article_id="art-2",
+        article_number="999.999.002",
     )
     set_rates(second, rabatt_1=Decimal("0"), rabatt_2=Decimal("0"), kein_rabatt=True)
     db_session.add(second)
@@ -277,8 +290,10 @@ def test_price_only_put_keeps_history_and_ignore_missing(db_session):
     apply_chunk(
         db_session, run, oid=PLAIN["oid"], actor_name="Dennis", client=client, chunk_index=0
     )
-    assert len(client.put_calls) == 1
-    put = client.put_calls[0]
+    ss_puts = [c for c in client.put_calls if "/articleSupplySource/" in c["path"]]
+    article_puts = [c for c in client.put_calls if c["path"].startswith("/article/id/")]
+    assert len(ss_puts) == 1
+    put = ss_puts[0]
     assert put["params"] == {"ignoreMissingProperties": "true"}
     prices = put["json"]["articlePrices"]
     assert len(prices) == 3
@@ -287,8 +302,10 @@ def test_price_only_put_keeps_history_and_ignore_missing(db_session):
     new_rows = [p for p in prices if "id" not in p]
     assert new_rows
     assert Decimal(str(new_rows[0]["price"])) == Decimal("100")
+    assert len(article_puts) == 1
     db_session.refresh(row)
-    assert row.apply_outcome == "PRICE_UPDATED"
+    assert row.apply_outcome == "ATTACHED"
+    assert (row.apply_detail or {}).get("group_outcome") == "PRICE_UPDATED"
 
 
 def test_overlap_is_rejected_without_retry(db_session):
@@ -329,10 +346,14 @@ def test_renumber_puts_and_never_posts(db_session):
         db_session, run, oid=PLAIN["oid"], actor_name="Dennis", client=client, chunk_index=0
     )
     assert client.post_calls == []
-    assert len(client.put_calls) == 1
-    assert client.put_calls[0]["json"]["articleNumber"] == "NEW-SAN"
+    ss_puts = [c for c in client.put_calls if "/articleSupplySource/" in c["path"]]
+    article_puts = [c for c in client.put_calls if c["path"].startswith("/article/id/")]
+    assert len(ss_puts) == 1
+    assert ss_puts[0]["json"]["articleNumber"] == "NEW-SAN"
+    assert len(article_puts) == 1
     db_session.refresh(row)
-    assert row.apply_outcome == "RENUMBERED"
+    assert row.apply_outcome == "ATTACHED"
+    assert (row.apply_detail or {}).get("group_outcome") == "RENUMBERED"
 
 
 def test_gone_on_404(db_session):
@@ -362,3 +383,95 @@ def test_non_price_updates_honour_field_overrides():
     )
     assert "name" not in extra
     assert extra["ean"] == "222"
+
+
+def test_shared_ss_one_put_two_article_puts(db_session):
+    run, first = _run_row(
+        db_session,
+        intent="price_only",
+        article_ids=["art-a"],
+        numbers=["999.030.0040"],
+    )
+    second = SupplySourceRow(
+        run_id=run.id,
+        supplier_article_number=first.supplier_article_number,
+        name="Teil",
+        listenpreis=Decimal("100"),
+        match_status="matched",
+        row_intent="price_only",
+        weclapp_supply_source_id="ss-1",
+        weclapp_version="3",
+        weclapp_article_id="art-b",
+        article_number="999.030.0070",
+        unit_id="3566",
+        included=True,
+    )
+    set_rates(second, rabatt_1=Decimal("0"), rabatt_2=Decimal("0"), kein_rabatt=True)
+    db_session.add(second)
+    db_session.flush()
+    live = _live_ss(price="40.00")
+    client = FakeClient(get_map={"/articleSupplySource/id/ss-1": live})
+    apply_chunk(
+        db_session, run, oid=PLAIN["oid"], actor_name="Dennis", client=client, chunk_index=0
+    )
+    ss_puts = [c for c in client.put_calls if "/articleSupplySource/" in c["path"]]
+    article_puts = [c for c in client.put_calls if c["path"].startswith("/article/id/")]
+    assert len(ss_puts) == 1
+    assert {c["path"] for c in article_puts} == {"/article/id/art-a", "/article/id/art-b"}
+    db_session.refresh(first)
+    db_session.refresh(second)
+    assert first.apply_outcome == "ATTACHED"
+    assert second.apply_outcome == "ATTACHED"
+    assert (first.apply_detail or {}).get("group_outcome") == "PRICE_UPDATED"
+
+
+def test_ss_write_failure_skips_article_puts(db_session):
+    run, first = _run_row(
+        db_session,
+        intent="price_only",
+        article_ids=["art-a"],
+        numbers=["999.030.0040"],
+        version="9",
+    )
+    second = SupplySourceRow(
+        run_id=run.id,
+        supplier_article_number=first.supplier_article_number,
+        listenpreis=Decimal("100"),
+        match_status="matched",
+        row_intent="price_only",
+        weclapp_supply_source_id="ss-1",
+        weclapp_version="9",
+        weclapp_article_id="art-b",
+        article_number="999.030.0070",
+        unit_id="3566",
+        included=True,
+    )
+    set_rates(second, rabatt_1=Decimal("0"), rabatt_2=Decimal("0"), kein_rabatt=True)
+    db_session.add(second)
+    db_session.flush()
+    client = FakeClient(get_map={"/articleSupplySource/id/ss-1": _live_ss(version="3")})
+    apply_chunk(
+        db_session, run, oid=PLAIN["oid"], actor_name="Dennis", client=client, chunk_index=0
+    )
+    assert client.put_calls == []
+    db_session.refresh(first)
+    db_session.refresh(second)
+    assert first.apply_outcome == "CONFLICT"
+    assert second.apply_outcome == "CONFLICT"
+
+
+def test_excluded_ean_row_is_not_applied(db_session):
+    run, row = _run_row(
+        db_session,
+        intent="attach",
+        included=False,
+    )
+    client = FakeClient(get_map={"/articleSupplySource/id/ss-1": _live_ss()})
+    result = apply_chunk(
+        db_session, run, oid=PLAIN["oid"], actor_name="Dennis", client=client, chunk_index=0
+    )
+    assert result["applied"] == 0
+    assert client.put_calls == []
+    db_session.refresh(row)
+    assert row.apply_outcome is None
+

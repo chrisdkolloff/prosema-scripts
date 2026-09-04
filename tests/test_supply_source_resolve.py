@@ -28,6 +28,7 @@ from app.models import (
 from app.supply_source_resolve import run_resolve
 from app.supply_source_runs import (
     apply_bulk_rates,
+    apply_edits,
     approval_blockers,
     approve_run,
     can_approve,
@@ -197,13 +198,15 @@ def test_shared_ss_one_row_two_articles(db_session):
     run = _run(db_session, supplier)
     result = run_resolve(db_session, run, oid="x", skip_index=True)
     rows = list(db_session.scalars(select(SupplySourceRow).where(SupplySourceRow.run_id == run.id)))
-    assert result["row_count"] == 1
-    assert len(rows) == 1
-    assert sorted(rows[0].resolved_article_numbers) == ["999.030.0040", "999.030.0070"]
-    assert rows[0].unit_id == "3566"
-    assert rows[0].match_tier == 1
-    assert rows[0].row_intent == "price_only"
-    assert rows[0].match_status == "matched"
+    assert result["row_count"] == 2
+    assert len(rows) == 2
+    assert sorted(r.article_number for r in rows) == ["999.030.0040", "999.030.0070"]
+    assert {r.supplier_article_number for r in rows} == {"TST-SHARED"}
+    assert all(r.included is True for r in rows)
+    assert all(r.match_tier == 1 for r in rows)
+    assert all(r.unit_id == "3566" for r in rows)
+    assert all(r.row_intent == "price_only" for r in rows)
+    assert all(r.match_status == "matched" for r in rows)
 
 
 def test_orphan_ss_resolves_attach_via_ean(db_session):
@@ -218,7 +221,8 @@ def test_orphan_ss_resolves_attach_via_ean(db_session):
     assert row.row_intent == "attach"
     assert row.match_status == "matched"
     assert row.match_tier == 3
-    assert row.resolved_article_numbers == ["999.010.0010"]
+    assert row.article_number == "999.010.0010"
+    assert row.included is False
 
 
 def test_unknown_san_unmatched_blocks_approval(db_session):
@@ -257,8 +261,8 @@ def test_create_without_unit_blocks_approval(db_session):
         supplier_article_number="NEW-PART",
         match_status="matched",
         row_intent="create",
-        weclapp_article_ids=["a1"],
-        resolved_article_numbers=["999.010.1010"],
+        weclapp_article_id="a1",
+        article_number="999.010.1010",
         unit_id=None,
     )
     set_rates(row, rabatt_1=Decimal(0), rabatt_2=Decimal(0), kein_rabatt=True)
@@ -280,8 +284,8 @@ def test_attach_without_unit_blocks_approval(db_session):
         supplier_article_number="ATTACH-PART",
         match_status="matched",
         row_intent="attach",
-        weclapp_article_ids=["a1"],
-        resolved_article_numbers=["999.010.1010"],
+        weclapp_article_id="a1",
+        article_number="999.010.1010",
         unit_id=None,
     )
     set_rates(row, rabatt_1=Decimal(0), rabatt_2=Decimal(0), kein_rabatt=True)
@@ -366,6 +370,37 @@ def test_bulk_rates_by_rabattcode(db_session):
     assert rows["B-1"].discount_set is False
 
 
+def test_rate_edit_applies_to_whole_san_group(db_session):
+    supplier = _supplier(db_session)
+    _ss(db_session, ss_id="tst-ss-shared-rate", san="TST-RATE")
+    _article(db_session, aid="tst-r1", number="999.030.0040")
+    _article(db_session, aid="tst-r2", number="999.030.0070")
+    _link(db_session, ss_id="tst-ss-shared-rate", aid="tst-r1", number="999.030.0040")
+    _link(db_session, ss_id="tst-ss-shared-rate", aid="tst-r2", number="999.030.0070")
+    run = _run(db_session, supplier)
+    run_resolve(db_session, run, oid="x", skip_index=True)
+    run.status = "preview"
+    db_session.flush()
+    rows = list(
+        db_session.scalars(
+            select(SupplySourceRow).where(SupplySourceRow.run_id == run.id)
+        )
+    )
+    assert len(rows) == 2
+    apply_edits(
+        db_session,
+        run,
+        [{"row_id": rows[0].id, "field": "rabatt_1", "value": "10"}],
+    )
+    refreshed = list(
+        db_session.scalars(
+            select(SupplySourceRow).where(SupplySourceRow.run_id == run.id)
+        )
+    )
+    assert all(r.discount_set for r in refreshed)
+    assert all(r.rabatt_1 == Decimal("0.10") for r in refreshed)
+
+
 def test_renumber_when_alias_points_at_existing_supplier_link(db_session):
     supplier = _supplier(db_session)
     _ss(db_session, ss_id="tst-ss-old", san="OLD-SAN")
@@ -403,7 +438,9 @@ def test_list_and_legacy_export_pages(user_client):
     assert "Bezugsquellenexport" in legacy.text
     js = user_client.get("/static/supply_source_grid.js")
     assert js.status_code == 200
-    assert b"Kein Rabatt" in js.content or b"kein_rabatt" in js.content
+    assert b"kein_rabatt" in js.content
+    assert b"filters: true" in js.content
+    assert b"ss-filter-code" not in js.content
 
 
 def test_preview_grid_and_bulk_http(user_client, db_session):
@@ -418,6 +455,9 @@ def test_preview_grid_and_bulk_http(user_client, db_session):
     page = user_client.get(f"/bezugsquellen/neu/{run.id}")
     assert page.status_code == 200
     assert "ohne Rabattsatz" in page.text
+    assert ("Zuordnung übernehmen" in page.text) or ("Zuordnung \\u00fcbernehmen" in page.text)
+    assert "Alle sichtbaren Zeilen" not in page.text
+    assert "ss-filter-code" not in page.text
     assert "Aufschlag (%)" in page.text
     assert 'id="ss-aufschlag"' in page.text
     assert "0.5000" not in page.text

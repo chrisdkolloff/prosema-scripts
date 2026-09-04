@@ -408,8 +408,7 @@ def test_generate_then_upload_roundtrip(db_session):
 
 
 def test_get_or_create_template_versions(db_session):
-    supplier = _supplier(db_session, "19993")
-    t1 = get_or_create_active_template(db_session, supplier.id, user=PLAIN_USER)
-    t2 = get_or_create_active_template(db_session, supplier.id, user=PLAIN_USER)
+    t1 = get_or_create_active_template(db_session, user=PLAIN_USER)
+    t2 = get_or_create_active_template(db_session, user=PLAIN_USER)
     assert t1.id == t2.id
     assert t1.version == 1

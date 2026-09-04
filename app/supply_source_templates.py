@@ -1,4 +1,4 @@
-"""Per-supplier versioned Bezugsquellen upload templates.
+"""Global versioned Bezugsquellen upload templates.
 
 Shape follows article_templates (version, is_active, columns jsonb, partial
 unique on the active row) with serial PK and no stored xlsx — see module
@@ -76,74 +76,49 @@ def column_spec_from_keys(keys: Sequence[str]) -> list[dict[str, Any]]:
     return [dict(col) for col in DEFAULT_COLUMNS if col["key"] in chosen]
 
 
-def get_active_template(db: Session, supplier_id: int) -> SupplySourceTemplate | None:
+def get_active_template(db: Session) -> SupplySourceTemplate | None:
     return db.scalars(
-        select(SupplySourceTemplate).where(
-            SupplySourceTemplate.supplier_id == supplier_id,
-            SupplySourceTemplate.is_active.is_(True),
-        )
+        select(SupplySourceTemplate).where(SupplySourceTemplate.is_active.is_(True))
     ).first()
 
 
-def list_templates(db: Session, supplier_id: int) -> list[SupplySourceTemplate]:
+def list_templates(db: Session) -> list[SupplySourceTemplate]:
     return list(
         db.scalars(
-            select(SupplySourceTemplate)
-            .where(SupplySourceTemplate.supplier_id == supplier_id)
-            .order_by(SupplySourceTemplate.version.desc())
+            select(SupplySourceTemplate).order_by(SupplySourceTemplate.version.desc())
         ).all()
     )
 
 
 def get_or_create_active_template(
     db: Session,
-    supplier_id: int,
     *,
     user: Mapping[str, Any],
 ) -> SupplySourceTemplate:
-    existing = get_active_template(db, supplier_id)
+    existing = get_active_template(db)
     if existing is not None:
         return existing
-    return create_template_version(
-        db,
-        supplier_id,
-        keys=ALL_KEYS,
-        user=user,
-        activate=True,
-    )
+    return create_template_version(db, keys=ALL_KEYS, user=user, activate=True)
 
 
 def create_template_version(
     db: Session,
-    supplier_id: int,
     *,
     keys: Sequence[str],
     user: Mapping[str, Any],
     activate: bool = True,
 ) -> SupplySourceTemplate:
-    supplier = db.get(Supplier, supplier_id)
-    if supplier is None or supplier.deleted_at is not None:
-        raise SupplySourceTemplateError("Lieferant nicht gefunden.")
     columns = column_spec_from_keys(keys)
     next_version = (
-        db.scalar(
-            select(func.coalesce(func.max(SupplySourceTemplate.version), 0)).where(
-                SupplySourceTemplate.supplier_id == supplier_id
-            )
-        )
-        or 0
+        db.scalar(select(func.coalesce(func.max(SupplySourceTemplate.version), 0))) or 0
     ) + 1
     if activate:
         db.execute(
             update(SupplySourceTemplate)
-            .where(
-                SupplySourceTemplate.supplier_id == supplier_id,
-                SupplySourceTemplate.is_active.is_(True),
-            )
+            .where(SupplySourceTemplate.is_active.is_(True))
             .values(is_active=False)
         )
     row = SupplySourceTemplate(
-        supplier_id=supplier_id,
         version=next_version,
         is_active=activate,
         columns=columns,
@@ -159,10 +134,7 @@ def create_template_version(
 def activate_template(db: Session, template: SupplySourceTemplate) -> None:
     db.execute(
         update(SupplySourceTemplate)
-        .where(
-            SupplySourceTemplate.supplier_id == template.supplier_id,
-            SupplySourceTemplate.is_active.is_(True),
-        )
+        .where(SupplySourceTemplate.is_active.is_(True))
         .values(is_active=False)
     )
     template.is_active = True
@@ -204,7 +176,7 @@ def generate_template_xlsx_for_user(
     *,
     user: Mapping[str, Any],
 ) -> tuple[SupplySourceTemplate, bytes]:
-    template = get_or_create_active_template(db, supplier.id, user=user)
+    template = get_or_create_active_template(db, user=user)
     columns = template.columns if isinstance(template.columns, list) else DEFAULT_COLUMNS
     headers = [str(col.get("label") or "") for col in columns]
     keys = [str(col.get("key") or "") for col in columns]

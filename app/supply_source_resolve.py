@@ -54,40 +54,90 @@ def current_price_row(
     return chosen[0]
 
 
-def _rabattcodes_for_articles(
-    db: Session, article_ids: list[str]
-) -> str | None:
-    if not article_ids:
-        return None
-    codes: list[str] = []
-    seen: set[str] = set()
-    rows = db.scalars(
-        select(WeclappArticle).where(WeclappArticle.weclapp_article_id.in_(article_ids))
-    ).all()
-    by_id = {r.weclapp_article_id: r for r in rows}
-    for aid in article_ids:
-        article = by_id.get(aid)
-        code = (article.rabattcode or "").strip() if article else ""
-        if code and code not in seen:
-            seen.add(code)
-            codes.append(code)
-    if not codes:
-        return None
-    return codes[0] if len(codes) == 1 else ", ".join(codes)
+SAN_FIELDS = (
+    "name",
+    "ean",
+    "listenpreis",
+    "rabatt_1",
+    "rabatt_2",
+    "discount_set",
+    "discount_source",
+    "unit_id",
+    "template_name",
+    "template_ean",
+    "template_min_qty",
+    "template_lead_days",
+    "field_overrides",
+    "current_ek",
+    "current_ek_currency",
+    "weclapp_supply_source_id",
+    "weclapp_version",
+    "created_supply_source_id",
+    "vk_override",
+)
 
 
-def _set_articles(row: SupplySourceRow, pairs: list[tuple[str, str]]) -> None:
-    numbers: list[str] = []
-    ids: list[str] = []
-    seen: set[str] = set()
+def _rabattcode_for_article(db: Session, article_id: str | None) -> str | None:
+    if not article_id:
+        return None
+    article = db.get(WeclappArticle, article_id)
+    if article is None:
+        return None
+    code = (article.rabattcode or "").strip()
+    return code or None
+
+
+def _clone_san_row(src: SupplySourceRow) -> SupplySourceRow:
+    copy = SupplySourceRow(
+        run_id=src.run_id,
+        supplier_article_number=src.supplier_article_number,
+    )
+    for field in SAN_FIELDS:
+        value = getattr(src, field)
+        if field == "field_overrides":
+            value = dict(value or {})
+        setattr(copy, field, value)
+    return copy
+
+
+def _bind_article(row: SupplySourceRow, number: str | None, article_id: str | None) -> None:
+    row.article_number = number
+    row.weclapp_article_id = article_id
+
+
+def _expand_links(
+    db: Session,
+    row: SupplySourceRow,
+    pairs: list[tuple[str, str]],
+    *,
+    included: bool,
+    match_tier: int | None,
+    match_status: str,
+    intent: str | None,
+) -> None:
+    if not pairs:
+        _bind_article(row, None, None)
+        row.match_tier = None
+        row.match_status = "unmatched"
+        row.included = True
+        if row.row_intent != "skip":
+            row.row_intent = intent
+        return
+    first = True
     for number, aid in pairs:
-        if aid in seen:
-            continue
-        seen.add(aid)
-        numbers.append(number)
-        ids.append(aid)
-    row.resolved_article_numbers = numbers
-    row.weclapp_article_ids = ids
+        target = row if first else _clone_san_row(row)
+        if not first:
+            db.add(target)
+        _bind_article(target, number, aid)
+        target.match_tier = match_tier
+        target.match_status = match_status
+        target.included = included if target.row_intent != "skip" else target.included
+        if target.row_intent != "skip":
+            target.row_intent = intent
+        if not target.rabattcode:
+            target.rabattcode = _rabattcode_for_article(db, aid)
+        first = False
+    db.flush()
 
 
 def _links_for_ss(
@@ -227,31 +277,26 @@ def _resolve_articles_tier2_3(
     return None, []
 
 
-def _existing_ss_for_articles(
+def _existing_ss_for_article(
     db: Session,
     *,
     party_id: str,
-    article_ids: list[str],
+    article_id: str | None,
 ) -> WeclappSupplySourceLink | None:
-    if not article_ids:
+    if not article_id:
         return None
     return db.scalars(
         select(WeclappSupplySourceLink).where(
-            WeclappSupplySourceLink.weclapp_article_id.in_(article_ids),
+            WeclappSupplySourceLink.weclapp_article_id == article_id,
             WeclappSupplySourceLink.supplier_party_id == party_id,
         )
     ).first()
 
 
 def _assign_unit(db: Session, row: SupplySourceRow) -> None:
-    """Pre-fill Einheit: article unit if resolved, else SS unit on update-like intents.
-
-    An upload may already have set unit_id from a recognised Einheit name. Keep
-    that when there is no article (create without a match uses the file, or
-    stays NULL and blocks).
-    """
-    if row.weclapp_article_ids:
-        article = db.get(WeclappArticle, row.weclapp_article_ids[0])
+    """Pre-fill Einheit: article unit if resolved, else SS unit on update-like intents."""
+    if row.weclapp_article_id:
+        article = db.get(WeclappArticle, row.weclapp_article_id)
         if article is not None and article.unit_id:
             row.unit_id = article.unit_id
             return
@@ -272,7 +317,18 @@ def resolve_row(
     try:
         _resolve_row_body(db, run, row, supplier=supplier)
     finally:
-        _assign_unit(db, row)
+        siblings = list(
+            db.scalars(
+                select(SupplySourceRow).where(
+                    SupplySourceRow.run_id == run.id,
+                    SupplySourceRow.supplier_article_number == row.supplier_article_number,
+                )
+            ).all()
+        )
+        lead = siblings[0] if siblings else row
+        _assign_unit(db, lead)
+        for sibling in siblings:
+            sibling.unit_id = lead.unit_id
 
 
 def _resolve_row_body(
@@ -297,16 +353,17 @@ def _resolve_row_body(
         _apply_current_ek(row, ss.weclapp_id, db)
         links = _links_for_ss(db, ss.weclapp_id)
         if links:
-            row.match_tier = 1
-            row.match_status = "matched"
-            _set_articles(
+            pairs = [(lnk.article_number, lnk.weclapp_article_id) for lnk in links]
+            intent = None if row.row_intent == "skip" else _intent_for_linked_ss(row, ss)
+            _expand_links(
+                db,
                 row,
-                [(lnk.article_number, lnk.weclapp_article_id) for lnk in links],
+                pairs,
+                included=True,
+                match_tier=1,
+                match_status="matched",
+                intent=intent,
             )
-            if row.row_intent != "skip":
-                row.row_intent = _intent_for_linked_ss(row, ss)
-            if not row.rabattcode:
-                row.rabattcode = _rabattcodes_for_articles(db, row.weclapp_article_ids)
             return
         if row.row_intent != "skip":
             row.row_intent = "attach"
@@ -314,15 +371,25 @@ def _resolve_row_body(
             db, supplier_id=supplier.id, san=san, ean=row.ean or ss.ean
         )
         if pairs:
-            row.match_tier = tier
-            row.match_status = "matched"
-            _set_articles(row, pairs)
-            if not row.rabattcode:
-                row.rabattcode = _rabattcodes_for_articles(db, row.weclapp_article_ids)
+            _expand_links(
+                db,
+                row,
+                pairs,
+                included=tier == 2,
+                match_tier=tier,
+                match_status="matched",
+                intent="attach",
+            )
         else:
-            row.match_tier = None
-            row.match_status = "unmatched"
-            _set_articles(row, [])
+            _expand_links(
+                db,
+                row,
+                [],
+                included=True,
+                match_tier=None,
+                match_status="unmatched",
+                intent="attach",
+            )
         return
 
     row.weclapp_supply_source_id = None
@@ -333,32 +400,50 @@ def _resolve_row_body(
         db, supplier_id=supplier.id, san=san, ean=row.ean
     )
     if not pairs:
-        row.match_tier = None
-        row.match_status = "unmatched"
-        _set_articles(row, [])
-        if row.row_intent != "skip":
-            row.row_intent = None
+        _expand_links(
+            db,
+            row,
+            [],
+            included=True,
+            match_tier=None,
+            match_status="unmatched",
+            intent=None,
+        )
         return
 
-    row.match_tier = tier
-    row.match_status = "matched"
-    _set_articles(row, pairs)
-    if not row.rabattcode:
-        row.rabattcode = _rabattcodes_for_articles(db, row.weclapp_article_ids)
-    existing = _existing_ss_for_articles(
-        db, party_id=party_id, article_ids=row.weclapp_article_ids
+    _expand_links(
+        db,
+        row,
+        pairs,
+        included=tier == 2,
+        match_tier=tier,
+        match_status="matched",
+        intent="create",
     )
-    if row.row_intent == "skip":
-        return
-    if existing is not None:
-        row.row_intent = "renumber"
-        row.weclapp_supply_source_id = existing.supply_source_weclapp_id
-        parent = db.get(WeclappSupplySource, existing.supply_source_weclapp_id)
-        if parent is not None:
-            row.weclapp_version = parent.weclapp_version
-            _apply_current_ek(row, parent.weclapp_id, db)
-    else:
-        row.row_intent = "create"
+    party_id = supplier.weclapp_party_id
+    siblings = list(
+        db.scalars(
+            select(SupplySourceRow).where(
+                SupplySourceRow.run_id == run.id,
+                SupplySourceRow.supplier_article_number == san,
+            )
+        ).all()
+    )
+    for sibling in siblings:
+        existing = _existing_ss_for_article(
+            db, party_id=party_id, article_id=sibling.weclapp_article_id
+        )
+        if sibling.row_intent == "skip":
+            continue
+        if existing is not None:
+            sibling.row_intent = "renumber"
+            sibling.weclapp_supply_source_id = existing.supply_source_weclapp_id
+            parent = db.get(WeclappSupplySource, existing.supply_source_weclapp_id)
+            if parent is not None:
+                sibling.weclapp_version = parent.weclapp_version
+                _apply_current_ek(sibling, parent.weclapp_id, db)
+        else:
+            sibling.row_intent = "create"
 
 
 def _seed_rows_from_mirror(
@@ -447,7 +532,13 @@ def run_resolve(
         if row.row_intent == "skip":
             continue
         resolve_row(db, run, row, supplier=supplier)
-        if run.source == "upload":
+    if run.source == "upload":
+        expanded = list(
+            db.scalars(
+                select(SupplySourceRow).where(SupplySourceRow.run_id == run.id)
+            ).all()
+        )
+        for row in expanded:
             _apply_upload_divergences(db, row)
 
     run.status = "preview"

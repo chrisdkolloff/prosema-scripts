@@ -20,7 +20,7 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TIMESTAMP, UUID
+from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -1104,11 +1104,6 @@ class Supplier(Base):
         Text, nullable=False, default="CHF", server_default="CHF"
     )
     default_unit_id: Mapped[str | None] = mapped_column(Text, nullable=True)
-    template_version_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("article_templates.id", ondelete="SET NULL"),
-        nullable=True,
-    )
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=text("true")
     )
@@ -1172,22 +1167,12 @@ class SuppliersAudit(Base):
 
 
 class SupplySourceTemplate(Base):
-    """Per-supplier versioned column spec for Bezugsquellen uploads.
-
-    Serial PK and created_by (not UUID / created_by_oid) match supply_source_run.
-    Unlike article_templates there is no xlsx_bytes: the file is generated from
-    ``columns`` plus the mirror.
-    """
+    """Global versioned column spec for Bezugsquellen uploads."""
 
     __tablename__ = "supply_source_templates"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    supplier_id: Mapped[int] = mapped_column(
-        Integer,
-        ForeignKey("suppliers.id", ondelete="RESTRICT"),
-        nullable=False,
-    )
-    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, unique=True)
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")
     )
@@ -1199,14 +1184,9 @@ class SupplySourceTemplate(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint(
-            "supplier_id",
-            "version",
-            name="uq_supply_source_templates_supplier_version",
-        ),
         Index(
             "uq_supply_source_templates_active",
-            "supplier_id",
+            "is_active",
             unique=True,
             postgresql_where=text("is_active"),
         ),
@@ -1366,11 +1346,10 @@ class SupplySourceRow(Base):
         Text, nullable=False, default="unmatched", server_default="unmatched"
     )
     row_intent: Mapped[str | None] = mapped_column(Text, nullable=True)
-    resolved_article_numbers: Mapped[list[str]] = mapped_column(
-        ARRAY(Text), nullable=False, default=list, server_default=text("'{}'")
-    )
-    weclapp_article_ids: Mapped[list[str]] = mapped_column(
-        ARRAY(Text), nullable=False, default=list, server_default=text("'{}'")
+    article_number: Mapped[str | None] = mapped_column(Text, nullable=True)
+    weclapp_article_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    included: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
     )
     weclapp_supply_source_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     weclapp_version: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -1437,7 +1416,15 @@ class SupplySourceRow(Base):
         UniqueConstraint(
             "run_id",
             "supplier_article_number",
-            name="uq_supply_source_row_run_san",
+            "article_number",
+            name="uq_supply_source_row_run_san_article",
+        ),
+        Index(
+            "uq_supply_source_row_run_san_unmatched",
+            "run_id",
+            "supplier_article_number",
+            unique=True,
+            postgresql_where=text("article_number IS NULL"),
         ),
         Index("ix_supply_source_row_run_id", "run_id"),
         Index("ix_supply_source_row_run_rabattcode", "run_id", "rabattcode"),

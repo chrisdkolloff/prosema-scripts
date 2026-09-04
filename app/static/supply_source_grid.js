@@ -88,44 +88,31 @@
     return config.fields.indexOf(name);
   }
 
-  function applyFilters() {
+  function markSanGroups() {
     if (!worksheet || !config) return;
-    var code = ($("ss-filter-code") && $("ss-filter-code").value) || "";
-    var prefix = (($("ss-filter-prefix") && $("ss-filter-prefix").value) || "").toLowerCase();
-    var name = (($("ss-filter-name") && $("ss-filter-name").value) || "").toLowerCase();
-    var match = ($("ss-filter-match") && $("ss-filter-match").value) || "";
-    var intent = ($("ss-filter-intent") && $("ss-filter-intent").value) || "";
-    var iSan = fieldIndex("supplier_article_number");
-    var iName = fieldIndex("name");
-    var iCode = fieldIndex("rabattcode");
-    var iMatch = fieldIndex("match_status");
-    var iIntent = fieldIndex("row_intent");
-    var last = config.data.length;
-    for (var y = 0; y < last; y++) {
-      var row = config.data[y];
-      var show = true;
-      if (code && String(row[iCode] || "") !== code) show = false;
-      if (prefix && String(row[iSan] || "").toLowerCase().indexOf(prefix) !== 0) show = false;
-      if (name && String(row[iName] || "").toLowerCase().indexOf(name) < 0) show = false;
-      if (match === "matched" && String(row[iMatch] || "").indexOf("ohne Zuordnung") >= 0) show = false;
-      if (match === "unmatched" && String(row[iMatch] || "").indexOf("ohne Zuordnung") < 0) show = false;
-      if (intent && String(row[iIntent] || "") !== intent) show = false;
+    (config.sanGroups || []).forEach(function (alt, y) {
+      if (!alt) return;
       var el = worksheet.rows && worksheet.rows[y] && worksheet.rows[y].element;
-      if (el) el.style.display = show ? "" : "none";
-    }
+      if (el) el.classList.add("ss-san-alt");
+    });
+    var hint = config.rateHint || "";
+    ["rabatt_1", "rabatt_2"].forEach(function (name) {
+      var x = fieldIndex(name);
+      if (x < 0) return;
+      for (var y = 0; y < (config.rowIds || []).length; y++) {
+        var cell = null;
+        try { cell = worksheet.getCell(x, y); } catch (err) { cell = null; }
+        if (cell && hint) cell.title = hint;
+      }
+    });
   }
 
-  function selectVisible() {
+  function markExcluded() {
     if (!worksheet || !config) return;
-    var first = -1;
-    var last = -1;
-    for (var y = 0; y < config.rowIds.length; y++) {
-      if (rowIsHidden(y)) continue;
-      if (first < 0) first = y;
-      last = y;
-    }
-    if (first < 0) return;
-    worksheet.updateSelectionFromCoords(0, first, 0, last);
+    (config.excludedRows || []).forEach(function (y) {
+      var el = worksheet.rows && worksheet.rows[y] && worksheet.rows[y].element;
+      if (el) el.classList.add("ss-row-excluded");
+    });
   }
 
   function markUnmatched() {
@@ -203,6 +190,7 @@
           allowInsertColumn: false,
           allowDeleteColumn: false,
           columnSorting: false,
+          filters: true,
           onbeforechange: onBeforeChange,
           onchange: onEvent,
         }],
@@ -214,17 +202,15 @@
     markUnmatched();
     markUnitLocked();
     markDivergences();
-    applyFilters();
+    markSanGroups();
+    markExcluded();
     var unset = $("ss-discount-unset");
     if (unset && typeof config.discountUnset === "number") {
       unset.textContent = String(config.discountUnset);
     }
     var approve = $("ss-approve");
     if (approve && config.editable) {
-      var blocked = (config.discountUnset || 0) > 0
-        || (config.unmatchedRows || []).length > 0
-        || (config.createNoUnit || 0) > 0;
-      approve.disabled = blocked;
+      approve.disabled = !config.canApprove;
     }
   }
 
@@ -289,14 +275,6 @@
     if (!cfgEl || !el || typeof jspreadsheet !== "function") return;
     config = JSON.parse(cfgEl.textContent);
     replaceGrid(config);
-    ["ss-filter-code", "ss-filter-prefix", "ss-filter-name", "ss-filter-match", "ss-filter-intent"].forEach(function (id) {
-      var node = $(id);
-      if (!node) return;
-      node.addEventListener("input", applyFilters);
-      node.addEventListener("change", applyFilters);
-    });
-    var selectBtn = $("ss-select-visible");
-    if (selectBtn) selectBtn.addEventListener("click", selectVisible);
     var applyBtn = $("ss-bulk-apply");
     if (applyBtn) {
       applyBtn.addEventListener("click", function () {

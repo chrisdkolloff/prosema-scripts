@@ -224,11 +224,9 @@ async def start_upload(
 @router.get("/bezugsquellen/neu/vorlagen", response_class=HTMLResponse)
 def template_admin(
     request: Request,
-    supplier_id: int | None = None,
     db: Session = Depends(get_db),
     user: SessionUser = Depends(require_admin),
 ):
-    from app.models import Supplier
     from app.supply_source_templates import (
         ALL_KEYS,
         DEFAULT_COLUMNS,
@@ -236,11 +234,8 @@ def template_admin(
         list_templates,
     )
 
-    suppliers = list_suppliers(db)
-    chosen = supplier_id or (suppliers[0].id if suppliers else None)
-    supplier = db.get(Supplier, chosen) if chosen else None
-    active = get_active_template(db, chosen) if chosen else None
-    versions = list_templates(db, chosen) if chosen else []
+    active = get_active_template(db)
+    versions = list_templates(db)
     active_keys = (
         [str(c.get("key")) for c in (active.columns or [])]
         if active is not None
@@ -251,8 +246,6 @@ def template_admin(
         "supply_source_runs/templates.html",
         {
             "user": user,
-            "suppliers": suppliers,
-            "supplier": supplier,
             "active": active,
             "versions": versions,
             "columns": DEFAULT_COLUMNS,
@@ -265,7 +258,6 @@ def template_admin(
 
 @router.post("/bezugsquellen/neu/vorlagen")
 def save_template(
-    supplier_id: int = Form(...),
     keys: list[str] = Form(default=[]),
     db: Session = Depends(get_db),
     user: SessionUser = Depends(require_admin),
@@ -278,17 +270,14 @@ def save_template(
 
     selected = list(dict.fromkeys([*REQUIRED_KEYS, *keys]))
     try:
-        create_template_version(db, supplier_id, keys=selected, user=user, activate=True)
+        create_template_version(db, keys=selected, user=user, activate=True)
     except SupplySourceTemplateError as exc:
         return RedirectResponse(
-            url=f"/bezugsquellen/neu/vorlagen?supplier_id={supplier_id}&error={quote(str(exc))}",
+            url=f"/bezugsquellen/neu/vorlagen?error={quote(str(exc))}",
             status_code=303,
         )
     return RedirectResponse(
-        url=(
-            f"/bezugsquellen/neu/vorlagen?supplier_id={supplier_id}"
-            "&notice=" + quote("Neue Vorlagenversion ist aktiv.")
-        ),
+        url="/bezugsquellen/neu/vorlagen?notice=" + quote("Neue Vorlagenversion ist aktiv."),
         status_code=303,
     )
 

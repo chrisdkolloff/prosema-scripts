@@ -7,9 +7,9 @@
 {% endblock %}
 {% block content %}
   <p class="mb-2"><a href="/bezugsquellen/neu">Zur Übersicht</a></p>
-  <h1 class="mb-2">Spalten der Lieferanten-Vorlage</h1>
+  <h1 class="mb-2">Spalten der Bezugsquellen-Vorlage</h1>
   <p class="text-body-secondary mb-4">
-    Seltene strukturelle Änderung: welche Spalten ein Lieferantenfile hat.
+    Eine Vorlage für alle Lieferanten. Optionale Spalten dürfen im File leer bleiben.
     Rabatt 1 und Rabatt 2 gehören nicht in die Vorlage.
   </p>
 
@@ -20,25 +20,10 @@
   <div class="alert alert-success" role="alert">{{ notice }}</div>
   {% endif %}
 
-  <form method="get" action="/bezugsquellen/neu/vorlagen" class="row g-3 align-items-end mb-4">
-    <div class="col-auto">
-      <label class="form-label" for="tpl-supplier">Lieferant</label>
-      <select class="form-select" id="tpl-supplier" name="supplier_id" onchange="this.form.submit()">
-        {% for s in suppliers %}
-        <option value="{{ s.id }}" {% if supplier and s.id == supplier.id %}selected{% endif %}>
-          {{ s.supplier_number }} · {{ s.name }}
-        </option>
-        {% endfor %}
-      </select>
-    </div>
-  </form>
-
-  {% if supplier %}
   <p class="text-body-secondary">
     {% if active %}Aktive Version {{ active.version }}{% else %}Noch keine Vorlage — Standardspalten.{% endif %}
   </p>
   <form method="post" action="/bezugsquellen/neu/vorlagen" class="mb-4">
-    <input type="hidden" name="supplier_id" value="{{ supplier.id }}">
     {% for col in columns %}
     <div class="form-check">
       <input class="form-check-input" type="checkbox" name="keys" value="{{ col.key }}"
@@ -62,6 +47,5 @@
     <li>v{{ v.version }}{% if v.is_active %} · aktiv{% endif %} · {{ v.created_by_name }} · {{ v.created_at.strftime("%d.%m.%Y %H:%M") }}</li>
     {% endfor %}
   </ul>
-  {% endif %}
   {% endif %}
 {% endblock %}

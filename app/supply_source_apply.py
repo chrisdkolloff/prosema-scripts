@@ -186,13 +186,37 @@ def pending_rows(db: Session, run: SupplySourceRun) -> list[SupplySourceRow]:
     return [
         row
         for row in rows
-        if row.applied_at is None and row.apply_outcome is None
+        if row.included
+        and row.row_intent != "skip"
+        and row.applied_at is None
+        and row.apply_outcome is None
     ]
 
 
 def next_chunk(db: Session, run: SupplySourceRun) -> list[SupplySourceRow]:
     pending = pending_rows(db, run)
-    return pending[: max(int(run.chunk_size or 50), 1)]
+    limit = max(int(run.chunk_size or 50), 1)
+    out: list[SupplySourceRow] = []
+    current_san = None
+    group: list[SupplySourceRow] = []
+    groups: list[list[SupplySourceRow]] = []
+    for row in pending:
+        if current_san is None or row.supplier_article_number == current_san:
+            group.append(row)
+            current_san = row.supplier_article_number
+            continue
+        groups.append(group)
+        group = [row]
+        current_san = row.supplier_article_number
+    if group:
+        groups.append(group)
+    for members in groups:
+        if out and len(out) + len(members) > limit:
+            break
+        out.extend(members)
+        if len(out) >= limit:
+            break
+    return out
 
 
 def apply_summary(rows: list[SupplySourceRow]) -> dict[str, int]:
@@ -227,6 +251,7 @@ class _ApplyCtx:
         self.http_writes = 0
         self.after_create_hook = None
         self.intended_after: Any = None
+        self.group: list[SupplySourceRow] = []
 
 
 def _finish(
@@ -241,7 +266,8 @@ def _finish(
     if message:
         payload["message"] = message
     payload["intent"] = row.row_intent
-    payload["articles"] = list(row.resolved_article_numbers or [])
+    payload["articles"] = [row.article_number] if row.article_number else []
+    payload["group_outcome"] = payload.get("group_outcome", outcome)
     row.apply_outcome = outcome
     row.apply_detail = payload
     row.applied_at = datetime.now(UTC)
@@ -533,71 +559,65 @@ def _apply_renumber(ctx: _ApplyCtx) -> str:
 
 
 def _attach_articles(ctx: _ApplyCtx, ss_id: str) -> list[dict[str, Any]]:
-    results: list[dict[str, Any]] = []
-    ids = list(ctx.row.weclapp_article_ids or [])
-    numbers = list(ctx.row.resolved_article_numbers or [])
-    for index, article_id in enumerate(ids):
-        number = numbers[index] if index < len(numbers) else article_id
-        try:
-            article = ctx.client.get(f"/article/id/{article_id}")
-        except WeclappError as exc:
-            mapped = map_weclapp_error(exc)
-            if isinstance(mapped, (WeclappTokenInvalid, WeclappLicenceMissing)):
-                raise SupplySourceAuthAbort() from exc
-            results.append(
-                {
-                    "article_id": article_id,
-                    "article_number": number,
-                    "outcome": "GONE" if exc.status_code == 404 else "REJECTED",
-                    "error": exc.detail,
-                }
-            )
-            continue
-        if not isinstance(article, dict):
-            results.append({"article_id": article_id, "outcome": "UNKNOWN"})
-            continue
-        existing = [
-            ref
-            for ref in (article.get("supplySources") or [])
-            if isinstance(ref, dict)
-        ]
-        already = any(
-            str(ref.get("articleSupplySourceId") or "") == ss_id for ref in existing
-        )
-        sources = list(existing)
-        if not already:
-            sources.append({"articleSupplySourceId": ss_id})
-        primary = str(article.get("primarySupplySourceId") or "").strip() or ss_id
-        version = str(article.get("version") or "")
-        body, params = build_article_attach_put(
-            article_id=str(article.get("id") or article_id),
-            version=version,
-            supply_sources=sources,
-            primary_supply_source_id=primary,
-        )
-        try:
-            ctx.http_writes += 1
-            ctx.client.put(f"/article/id/{article_id}", params=params, json=body)
-            results.append(
-                {
-                    "article_id": article_id,
-                    "article_number": number,
-                    "outcome": "ATTACHED",
-                }
-            )
-        except WeclappError as exc:
-            mapped = map_weclapp_error(exc)
-            if isinstance(mapped, (WeclappTokenInvalid, WeclappLicenceMissing)):
-                raise SupplySourceAuthAbort() from exc
-            results.append(
-                {
-                    "article_id": article_id,
-                    "article_number": number,
-                    "outcome": "CONFLICT" if exc.status_code == 409 else "REJECTED",
-                    "error": exc.detail,
-                }
-            )
-    return results
+    row = ctx.row
+    if not row.weclapp_article_id:
+        return []
+    return [_attach_one_article(ctx, ss_id, row.weclapp_article_id, row.article_number or "")]
+
+
+def _attach_one_article(
+    ctx: _ApplyCtx,
+    ss_id: str,
+    article_id: str,
+    number: str,
+) -> dict[str, Any]:
+    try:
+        article = ctx.client.get(f"/article/id/{article_id}")
+    except WeclappError as extra:
+        mapped = map_weclapp_error(extra)
+        if isinstance(mapped, (WeclappTokenInvalid, WeclappLicenceMissing)):
+            raise SupplySourceAuthAbort() from extra
+        return {
+            "article_id": article_id,
+            "article_number": number,
+            "outcome": "GONE" if extra.status_code == 404 else "REJECTED",
+            "error": extra.detail,
+        }
+    if not isinstance(article, dict):
+        return {"article_id": article_id, "article_number": number, "outcome": "UNKNOWN"}
+    existing = [
+        ref for ref in (article.get("supplySources") or []) if isinstance(ref, dict)
+    ]
+    already = any(str(ref.get("articleSupplySourceId") or "") == ss_id for ref in existing)
+    sources = list(existing)
+    if not already:
+        sources.append({"articleSupplySourceId": ss_id})
+    primary = str(article.get("primarySupplySourceId") or "").strip() or ss_id
+    version = str(article.get("version") or "")
+    body, params = build_article_attach_put(
+        article_id=str(article.get("id") or article_id),
+        version=version,
+        supply_sources=sources,
+        primary_supply_source_id=primary,
+    )
+    try:
+        ctx.http_writes += 1
+        ctx.client.put(f"/article/id/{article_id}", params=params, json=body)
+        return {
+            "article_id": article_id,
+            "article_number": number,
+            "outcome": "ATTACHED",
+        }
+    except WeclappError as extra:
+        mapped = map_weclapp_error(extra)
+        if isinstance(mapped, (WeclappTokenInvalid, WeclappLicenceMissing)):
+            raise SupplySourceAuthAbort() from extra
+        return {
+            "article_id": article_id,
+            "article_number": number,
+            "outcome": "CONFLICT" if extra.status_code == 409 else "REJECTED",
+            "error": extra.detail,
+        }
 
 
 def _maybe_write_prices(ctx: _ApplyCtx, ss_id: str, live: Mapping[str, Any]) -> None:
@@ -652,32 +672,24 @@ def _apply_create(ctx: _ApplyCtx) -> str:
         ss_id = str(created["id"])
         row.created_supply_source_id = ss_id
         row.weclapp_supply_source_id = ss_id
+        for sibling in ctx.group or []:
+            sibling.created_supply_source_id = ss_id
+            sibling.weclapp_supply_source_id = ss_id
         ctx.db.commit()
         created_now = True
         if ctx.after_create_hook is not None:
             ctx.after_create_hook(ctx)
-    article_results = _attach_articles(ctx, ss_id)
     try:
         live = ctx.client.get(f"/articleSupplySource/id/{ss_id}")
         if isinstance(live, dict):
             _maybe_write_prices(ctx, ss_id, live)
             row.weclapp_version = str(live.get("version") or "")
-    except WeclappError as exc:
-        return _handle_error(ctx, exc)
-    failed = [r for r in article_results if r.get("outcome") not in {"ATTACHED"}]
-    if failed and any(r.get("outcome") == "ATTACHED" for r in article_results):
-        return _finish(
-            ctx,
-            "UNKNOWN",
-            detail={"articles": article_results, "partial": True},
-            message="Nur ein Teil der Artikel wurde zugeordnet. Bitte prüfen.",
-        )
-    if failed:
-        return _finish(ctx, "REJECTED", detail={"articles": article_results})
+    except WeclappError as extra:
+        return _handle_error(ctx, extra)
     return _finish(
         ctx,
-        "CREATED" if created_now else "ATTACHED",
-        detail={"articles": article_results, "supply_source_id": ss_id},
+        "CREATED" if created_now else "UNCHANGED",
+        detail={"supply_source_id": ss_id},
     )
 
 
@@ -692,18 +704,12 @@ def _apply_attach(ctx: _ApplyCtx) -> str:
     live_version = str(live.get("version") or "")
     if row.weclapp_version and str(row.weclapp_version) != live_version:
         return _finish(ctx, "CONFLICT", message=MSG_CONFLICT)
-    article_results = _attach_articles(ctx, ss_id)
     try:
-        live = ctx.client.get(f"/articleSupplySource/id/{ss_id}")
         if isinstance(live, dict):
             _maybe_write_prices(ctx, ss_id, live)
-    except WeclappError as exc:
-        return _handle_error(ctx, exc)
-    failed = [r for r in article_results if r.get("outcome") != "ATTACHED"]
-    if failed:
-        outcome = "UNKNOWN" if any(r.get("outcome") == "ATTACHED" for r in article_results) else "REJECTED"
-        return _finish(ctx, outcome, detail={"articles": article_results})
-    return _finish(ctx, "ATTACHED", detail={"articles": article_results})
+    except WeclappError as extra:
+        return _handle_error(ctx, extra)
+    return _finish(ctx, "UNCHANGED", detail={"supply_source_id": ss_id})
 
 
 def apply_row(ctx: _ApplyCtx) -> str:
@@ -719,6 +725,95 @@ def apply_row(ctx: _ApplyCtx) -> str:
     if intent == "attach":
         return _apply_attach(ctx)
     return _finish(ctx, "REJECTED", message="Unbekannter Vorgang.")
+
+
+_SS_OK = frozenset(
+    {"UPDATED", "PRICE_UPDATED", "UNCHANGED", "CREATED", "ATTACHED", "RENUMBERED"}
+)
+
+
+def _group_intent(rows: list[SupplySourceRow]) -> str | None:
+    intents = [r.row_intent for r in rows]
+    for key in ("create", "renumber", "update", "price_only", "attach"):
+        if key in intents:
+            return key
+    return intents[0] if intents else None
+
+
+def apply_san_group(
+    db: Session,
+    run: SupplySourceRun,
+    group: list[SupplySourceRow],
+    *,
+    client: Any,
+    actor: Mapping[str, Any],
+    chunk_index: int,
+    after_create_hook: Any = None,
+) -> tuple[dict[str, int], int, bool]:
+    included = [
+        r for r in group if r.included and r.row_intent != "skip"
+    ]
+    counts: dict[str, int] = {}
+    if not included:
+        return counts, 0, False
+    lead = included[0]
+    ctx = _ApplyCtx(db, run, lead, client, actor, chunk_index)
+    ctx.after_create_hook = after_create_hook
+    ctx.group = included
+
+    def copy_created() -> None:
+        ss_id = lead.created_supply_source_id or lead.weclapp_supply_source_id
+        if not ss_id:
+            return
+        for row in included:
+            row.created_supply_source_id = lead.created_supply_source_id or row.created_supply_source_id
+            row.weclapp_supply_source_id = ss_id
+            row.weclapp_version = lead.weclapp_version
+
+    try:
+        group_outcome = apply_row(ctx)
+    except SupplySourceAuthAbort:
+        for row in included[1:]:
+            ctx.row = row
+            _finish(ctx, "AUTH", message=MSG_AUTH)
+        return {"AUTH": len(included)}, ctx.http_writes, True
+
+    copy_created()
+    group_detail = dict(lead.apply_detail or {})
+    group_detail["group_outcome"] = group_outcome
+
+    if group_outcome not in _SS_OK:
+        for row in included[1:]:
+            ctx.row = row
+            _finish(
+                ctx,
+                group_outcome,
+                detail=group_detail,
+                message=(group_detail.get("message") if isinstance(group_detail, dict) else None),
+            )
+        counts[group_outcome] = len(included)
+        return counts, ctx.http_writes, False
+
+    ss_id = lead.weclapp_supply_source_id or lead.created_supply_source_id
+    for row in included:
+        ctx.row = row
+        article_result = None
+        if ss_id and row.weclapp_article_id:
+            article_result = _attach_one_article(
+                ctx, ss_id, row.weclapp_article_id, row.article_number or ""
+            )
+        if article_result:
+            row_outcome = str(article_result.get("outcome") or group_outcome)
+            detail = dict(group_detail)
+            detail["article"] = article_result
+            detail["group_outcome"] = group_outcome
+            _finish(ctx, row_outcome, detail=detail)
+            counts[row_outcome] = counts.get(row_outcome, 0) + 1
+        else:
+            counts[group_outcome] = counts.get(group_outcome, 0) + 1
+            if row is not lead:
+                _finish(ctx, group_outcome, detail=group_detail)
+    return counts, ctx.http_writes, False
 
 
 def apply_chunk(
@@ -748,18 +843,35 @@ def apply_chunk(
     counts: dict[str, int] = {}
     aborted = False
     writes = 0
+    groups: list[list[SupplySourceRow]] = []
+    bucket: list[SupplySourceRow] = []
+    current = None
     for row in rows:
-        ctx = _ApplyCtx(db, run, row, client, actor, index)
-        ctx.after_create_hook = after_create_hook
-        try:
-            outcome = apply_row(ctx)
-        except SupplySourceAuthAbort:
+        if current is None or row.supplier_article_number == current:
+            bucket.append(row)
+            current = row.supplier_article_number
+            continue
+        groups.append(bucket)
+        bucket = [row]
+        current = row.supplier_article_number
+    if bucket:
+        groups.append(bucket)
+    for group in groups:
+        part, http_writes, abort = apply_san_group(
+            db,
+            run,
+            group,
+            client=client,
+            actor=actor,
+            chunk_index=index,
+            after_create_hook=after_create_hook,
+        )
+        writes += http_writes
+        for key, n in part.items():
+            counts[key] = counts.get(key, 0) + n
+        if abort:
             aborted = True
-            db.refresh(row)
-            counts["AUTH"] = counts.get("AUTH", 0) + 1
             break
-        counts[outcome] = counts.get(outcome, 0) + 1
-        writes += ctx.http_writes
     remaining = pending_rows(db, run)
     if aborted:
         run.status = "failed"

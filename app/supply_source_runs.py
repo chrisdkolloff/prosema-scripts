@@ -47,21 +47,28 @@ def _d(value: Decimal | None) -> Decimal | None:
 
 
 def parse_rate(raw: object) -> Decimal | None:
-    """Accept a fraction (< 1) or percent points (>= 1). Blank is None, not zero."""
+    """Percent points; always divide by 100. Blank is None, not zero."""
     if raw is None:
         return None
-    text = str(raw).strip().replace("%", "").replace(" ", "").replace(",", ".")
+    text = str(raw).strip().replace("%", "").replace(" ", "").replace("'", "")
     if text == "":
         return None
+    if "," in text and "." in text:
+        if text.rindex(",") > text.rindex("."):
+            text = text.replace(".", "").replace(",", ".")
+        else:
+            text = text.replace(",", "")
+    elif "," in text:
+        text = text.replace(".", "").replace(",", ".")
     try:
-        value = Decimal(text)
-    except InvalidOperation as exc:
-        raise SupplySourceRunError("Rabattsatz ist keine Zahl.") from exc
-    if value >= 1:
-        value = value / Decimal(100)
-    if value < 0 or value >= 1:
-        raise SupplySourceRunError("Rabattsatz muss zwischen 0 % und 100 % liegen.")
-    return value
+        points = Decimal(text)
+    except InvalidOperation as extra:
+        raise SupplySourceRunError("Rabattsatz ist keine Zahl.") from extra
+    if points < 0:
+        raise SupplySourceRunError("Rabattsatz darf nicht negativ sein.")
+    if points >= 100:
+        raise SupplySourceRunError("Rabattsatz muss unter 100 % liegen.")
+    return points / Decimal(100)
 
 
 def parse_aufschlag_percent(raw: object) -> Decimal:
@@ -254,7 +261,7 @@ def create_upload_run(
         raise SupplySourceRunError("Lieferant nicht gefunden.")
     if running_for_supplier(db, supplier.id) is not None:
         raise SupplySourceRunError("Für diesen Lieferanten läuft bereits ein Abgleich.")
-    template = get_or_create_active_template(db, supplier.id, user=user)
+    template = get_or_create_active_template(db, user=user)
     columns = template.columns if isinstance(template.columns, list) else []
     try:
         parsed = parse_upload_bytes(
@@ -331,49 +338,57 @@ def create_upload_run(
 
 
 def summary_counts(rows: list[SupplySourceRow]) -> dict[str, int]:
+    sans_unset: set[str] = set()
+    for row in rows:
+        if row.row_intent == "skip":
+            continue
+        if not row.discount_set:
+            sans_unset.add(row.supplier_article_number)
     return {
-        "update": sum(1 for r in rows if r.row_intent == "update"),
-        "price_only": sum(1 for r in rows if r.row_intent == "price_only"),
-        "create": sum(1 for r in rows if r.row_intent == "create"),
-        "renumber": sum(1 for r in rows if r.row_intent == "renumber"),
+        "update": sum(1 for r in rows if r.included and r.row_intent == "update"),
+        "price_only": sum(1 for r in rows if r.included and r.row_intent == "price_only"),
+        "create": sum(1 for r in rows if r.included and r.row_intent == "create"),
+        "renumber": sum(1 for r in rows if r.included and r.row_intent == "renumber"),
         "unmatched": sum(
             1
             for r in rows
-            if r.match_status == "unmatched" and r.row_intent != "skip"
+            if r.included and r.match_status == "unmatched" and r.row_intent != "skip"
         ),
-        "discount_unset": sum(
-            1
-            for r in rows
-            if not r.discount_set and r.row_intent != "skip"
-        ),
+        "discount_unset": len(sans_unset),
         "create_no_unit": sum(
             1
             for r in rows
-            if r.row_intent == "create" and not str(r.unit_id or "").strip()
+            if r.included
+            and r.row_intent == "create"
+            and not str(r.unit_id or "").strip()
         ),
         "attach_no_unit": sum(
             1
             for r in rows
-            if r.row_intent == "attach" and not str(r.unit_id or "").strip()
+            if r.included
+            and r.row_intent == "attach"
+            and not str(r.unit_id or "").strip()
         ),
-        "skip": sum(1 for r in rows if r.row_intent == "skip"),
+        "skip": sum(1 for r in rows if r.row_intent == "skip" or not r.included),
         "total": len(rows),
-        "attach": sum(1 for r in rows if r.row_intent == "attach"),
+        "attach": sum(1 for r in rows if r.included and r.row_intent == "attach"),
     }
 
 
 def approval_blockers(rows: list[SupplySourceRow]) -> dict[str, int]:
     unmatched = 0
-    unset = 0
     create_no_unit = 0
     attach_no_unit = 0
+    sans_unset: set[str] = set()
     for row in rows:
         if row.row_intent == "skip":
             continue
+        if not row.discount_set:
+            sans_unset.add(row.supplier_article_number)
+        if not row.included:
+            continue
         if row.match_status == "unmatched":
             unmatched += 1
-        if not row.discount_set:
-            unset += 1
         if row.row_intent == "create" and not str(row.unit_id or "").strip():
             create_no_unit += 1
         # Guard: attach without unit should not occur (those rows are unmatched
@@ -383,7 +398,7 @@ def approval_blockers(rows: list[SupplySourceRow]) -> dict[str, int]:
             attach_no_unit += 1
     return {
         "unmatched": unmatched,
-        "discount_unset": unset,
+        "discount_unset": len(sans_unset),
         "create_no_unit": create_no_unit,
         "attach_no_unit": attach_no_unit,
     }
@@ -404,7 +419,10 @@ def load_rows(db: Session, run_id: int) -> list[SupplySourceRow]:
         db.scalars(
             select(SupplySourceRow)
             .where(SupplySourceRow.run_id == run_id)
-            .order_by(SupplySourceRow.supplier_article_number)
+            .order_by(
+                SupplySourceRow.supplier_article_number,
+                SupplySourceRow.article_number.nulls_last(),
+            )
         ).all()
     )
 
@@ -439,6 +457,28 @@ def set_rates(
     row.discount_source = "manual"
 
 
+def sync_san_group(db: Session, source: SupplySourceRow) -> None:
+    """Copy SAN-level fields onto every row that shares this supplier part number."""
+    from app.supply_source_resolve import SAN_FIELDS
+
+    siblings = list(
+        db.scalars(
+            select(SupplySourceRow).where(
+                SupplySourceRow.run_id == source.run_id,
+                SupplySourceRow.supplier_article_number == source.supplier_article_number,
+            )
+        ).all()
+    )
+    for other in siblings:
+        if other.id == source.id:
+            continue
+        for field in SAN_FIELDS:
+            value = getattr(source, field)
+            if field == "field_overrides":
+                value = dict(value or {})
+            setattr(other, field, value)
+
+
 def apply_bulk_rates(
     db: Session,
     run: SupplySourceRun,
@@ -458,10 +498,13 @@ def apply_bulk_rates(
     elif rabattcode is not None:
         stmt = stmt.where(SupplySourceRow.rabattcode == rabattcode)
     rows = list(db.scalars(stmt).all())
+    seen: set[int] = set()
     for row in rows:
         set_rates(row, rabatt_1=rabatt_1, rabatt_2=rabatt_2, kein_rabatt=kein_rabatt)
+        sync_san_group(db, row)
+        seen.add(row.id)
     db.commit()
-    return len(rows)
+    return len(seen)
 
 
 OVERRIDE_FIELDS = ("name", "ean", "min_purchase_qty", "procurement_lead_days")
@@ -510,6 +553,7 @@ def apply_template_overrides(
         row.field_overrides = overrides
         if row.row_intent in {"update", "price_only"}:
             row.row_intent = _intent_for_upload_linked(row)
+        sync_san_group(db, row)
         count += 1
     db.commit()
     return count
@@ -563,6 +607,9 @@ def apply_edits(
                 )
             uid = str(value or "").strip()
             row.unit_id = uid or None
+        elif field == "included":
+            raw = str(value or "").strip().lower()
+            row.included = raw in {"1", "true", "yes", "on"}
         elif field in {
             "override_name",
             "override_ean",
@@ -590,6 +637,18 @@ def apply_edits(
                 row.row_intent = _intent_for_upload_linked(row)
         else:
             continue
+        if field in {
+            "rabatt_1",
+            "rabatt_2",
+            "vk_override",
+            "vk_chf",
+            "unit_id",
+            "override_name",
+            "override_ean",
+            "override_min_qty",
+            "override_lead_days",
+        }:
+            sync_san_group(db, row)
         touched.append(row)
     db.commit()
     return touched
@@ -729,7 +788,6 @@ def row_payload(
     supply_source: WeclappSupplySource | None = None,
 ) -> dict[str, Any]:
     prices = derived_prices(row, run)
-    numbers = list(row.resolved_article_numbers or [])
     overrides = dict(row.field_overrides or {})
     weclapp_name = supply_source.name if supply_source is not None else row.name
     weclapp_ean = supply_source.ean if supply_source is not None else row.ean
@@ -743,9 +801,13 @@ def row_payload(
         "id": row.id,
         "supplier_article_number": row.supplier_article_number,
         "name": row.name or "",
-        "article_numbers": numbers,
-        "article_numbers_label": ", ".join(numbers),
-        "multi_article": len(numbers) > 1,
+        "article_number": row.article_number or "",
+        "included": row.included,
+        "exclude_reason": (
+            "Vorschlag über EAN, nicht bestätigt"
+            if (not row.included and row.match_tier is not None and row.match_tier >= 3)
+            else ""
+        ),
         "rabattcode": row.rabattcode or "",
         "listenpreis": row.listenpreis,
         "rabatt_1": row.rabatt_1,
@@ -812,7 +874,8 @@ def build_grid_config(run: SupplySourceRun, rows: list[SupplySourceRow]) -> dict
     fields = [
         "supplier_article_number",
         "name",
-        "article_numbers_label",
+        "article_number",
+        "included",
         "unit_id",
         "rabattcode",
         "listenpreis",
@@ -827,10 +890,12 @@ def build_grid_config(run: SupplySourceRun, rows: list[SupplySourceRow]) -> dict
         "match_status",
         "row_intent",
     ]
+    rate_hint = "Gilt für alle Zeilen mit derselben Lieferantenartikelnummer."
     columns = [
         {"title": "Lieferantenartikelnummer", "width": 160, "readOnly": True},
         {"title": "Bezeichnung", "width": 280, "readOnly": True},
-        {"title": "PROSEMA-Artikelnummer(n)", "width": 180, "readOnly": True},
+        {"title": "PROSEMA-Artikelnummer", "width": 180, "readOnly": True},
+        {"title": "Zuordnung übernehmen", "width": 150, "type": "checkbox"},
         {
             "title": "Einheit",
             "width": 110,
@@ -848,7 +913,7 @@ def build_grid_config(run: SupplySourceRun, rows: list[SupplySourceRow]) -> dict
         {"title": "Marge %", "width": 90, "readOnly": True},
         {"title": "Aktueller EK", "width": 110, "readOnly": True},
         {"title": "Impliziter Rabatt", "width": 130, "readOnly": True},
-        {"title": "Zuordnung", "width": 120, "readOnly": True},
+        {"title": "Zuordnung", "width": 160, "readOnly": True},
         {
             "title": "Vorgang",
             "width": 180,
@@ -902,7 +967,11 @@ def build_grid_config(run: SupplySourceRun, rows: list[SupplySourceRow]) -> dict
     data = []
     unmatched_rows: list[int] = []
     unit_locked_rows: list[int] = []
+    excluded_rows: list[int] = []
     divergence_titles: list[str] = []
+    san_groups: list[int] = []
+    prev_san = None
+    group_i = 0
     for i, payload in enumerate(payloads):
         r1 = (
             format_pct(payload["rabatt_1"])
@@ -917,12 +986,18 @@ def build_grid_config(run: SupplySourceRun, rows: list[SupplySourceRow]) -> dict
         match_label = (
             "zugeordnet" if payload["match_status"] == "matched" else "ohne Zuordnung"
         )
-        if payload["multi_article"]:
-            match_label += " — alle genannten Artikel betroffen"
+        if payload["exclude_reason"]:
+            match_label = payload["exclude_reason"]
+        san = payload["supplier_article_number"]
+        if prev_san is not None and san != prev_san:
+            group_i += 1
+        prev_san = san
+        san_groups.append(group_i % 2)
         row_data = [
                 payload["supplier_article_number"],
                 payload["name"],
-                payload["article_numbers_label"],
+                payload["article_number"],
+                payload["included"],
                 payload["unit_id"],
                 payload["rabattcode"],
                 format_swiss_number(payload["listenpreis"]),
@@ -949,6 +1024,8 @@ def build_grid_config(run: SupplySourceRun, rows: list[SupplySourceRow]) -> dict
         data.append(row_data)
         if payload["match_status"] == "unmatched":
             unmatched_rows.append(i)
+        if not payload["included"]:
+            excluded_rows.append(i)
         if payload["row_intent"] not in {"create", "attach"}:
             unit_locked_rows.append(i)
         titles: list[str] = []
@@ -986,6 +1063,7 @@ def build_grid_config(run: SupplySourceRun, rows: list[SupplySourceRow]) -> dict
             "vk_chf",
             "row_intent",
             "unit_id",
+            "included",
             "override_name",
             "override_ean",
             "override_min_qty",
@@ -996,6 +1074,9 @@ def build_grid_config(run: SupplySourceRun, rows: list[SupplySourceRow]) -> dict
         "data": data,
         "rowIds": [p["id"] for p in payloads],
         "unmatchedRows": unmatched_rows,
+        "excludedRows": excluded_rows,
+        "sanGroups": san_groups,
+        "rateHint": rate_hint,
         "unitLockedRows": unit_locked_rows,
         "unitLockedHint": UNIT_LOCKED_HINT,
         "units": units,
@@ -1007,5 +1088,6 @@ def build_grid_config(run: SupplySourceRun, rows: list[SupplySourceRow]) -> dict
         "idleMs": 400,
         "discountUnset": counts["discount_unset"],
         "createNoUnit": counts["create_no_unit"] + counts["attach_no_unit"],
+        "canApprove": can_approve(rows),
         "showDivergence": show_div,
     }

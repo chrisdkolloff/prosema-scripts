@@ -11,6 +11,8 @@
   <style>
     .ss-unit-locked { background: #f4f4f5 !important; color: #6c757d; }
     .ss-divergent { background: #fff3cd !important; }
+    .ss-row-excluded { opacity: 0.55; }
+    .ss-san-alt { background: #f8fafc !important; }
   </style>
 {% endblock %}
 {% block content %}
@@ -137,50 +139,10 @@
   <div class="card mb-3">
     <div class="card-body">
       <h2 class="h5">Rabattsätze setzen</h2>
-      <p class="text-body-secondary">Filtern, sichtbare Zeilen auswählen, Sätze eintragen, übernehmen. Leere Sätze gelten nicht als 0&nbsp;%.</p>
+      <p class="text-body-secondary mb-3">
+        Sätze gelten für die ganze Lieferantenartikelnummer. Leere Sätze gelten nicht als 0&nbsp;%.
+      </p>
       <div class="row g-3 align-items-end">
-        <div class="col-auto">
-          <label class="form-label" for="ss-filter-code">Rabattcode</label>
-          <select class="form-select" id="ss-filter-code">
-            <option value="">(alle)</option>
-            {% for code in grid_config.rabattcodes %}
-            <option value="{{ code }}">{{ code }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div class="col-auto">
-          <label class="form-label" for="ss-filter-prefix">Nummer beginnt mit</label>
-          <input class="form-control" id="ss-filter-prefix" type="search">
-        </div>
-        <div class="col-auto">
-          <label class="form-label" for="ss-filter-name">Bezeichnung enthält</label>
-          <input class="form-control" id="ss-filter-name" type="search">
-        </div>
-        <div class="col-auto">
-          <label class="form-label" for="ss-filter-match">Zuordnung</label>
-          <select class="form-select" id="ss-filter-match">
-            <option value="">(alle)</option>
-            <option value="matched">zugeordnet</option>
-            <option value="unmatched">ohne Zuordnung</option>
-          </select>
-        </div>
-        <div class="col-auto">
-          <label class="form-label" for="ss-filter-intent">Vorgang</label>
-          <select class="form-select" id="ss-filter-intent">
-            <option value="">(alle)</option>
-            <option value="update">aktualisieren</option>
-            <option value="price_only">nur Preisänderung</option>
-            <option value="create">neu anlegen</option>
-            <option value="attach">zuordnen</option>
-            <option value="renumber">neue Lieferantennummer</option>
-            <option value="skip">auslassen</option>
-          </select>
-        </div>
-        <div class="col-auto">
-          <button type="button" class="btn btn-outline-secondary" id="ss-select-visible">Alle sichtbaren Zeilen auswählen</button>
-        </div>
-      </div>
-      <div class="row g-3 align-items-end mt-1">
         <div class="col-auto">
           <label class="form-label" for="ss-bulk-r1">Rabatt 1 (%)</label>
           <input class="form-control" id="ss-bulk-r1">
