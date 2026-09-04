@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="/static/jspreadsheet.css">
   <style>
     .ss-unit-locked { background: #f4f4f5 !important; color: #6c757d; }
+    .ss-divergent { background: #fff3cd !important; }
   </style>
 {% endblock %}
 {% block content %}
@@ -29,6 +30,28 @@
   {% endif %}
   {% if run.status == "failed" and run.error %}
   <div class="alert alert-danger" role="alert">{{ run.error }}</div>
+  {% endif %}
+
+  {% if parse_summary %}
+  <div class="alert alert-info" role="status">
+    <p class="mb-1">Prüft Datei: {{ parse_summary.get("accepted", 0) }} Zeilen übernommen.</p>
+    {% if parse_summary.get("rejected") %}
+    <p class="mb-1">Zurückgewiesen:</p>
+    <ul class="mb-1">
+      {% for msg in parse_summary.get("rejected") %}
+      <li>{{ msg }}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    {% if parse_summary.get("unmatched_units") %}
+    <p class="mb-1">Unbekannte Einheit (Zeile bleibt ohne Einheit):</p>
+    <ul class="mb-0">
+      {% for item in parse_summary.get("unmatched_units") %}
+      <li>Zeile {{ item.row }} ({{ item.san }}): «{{ item.value }}»</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </div>
   {% endif %}
 
   {% if run.status == "running" %}
@@ -76,6 +99,7 @@
     · {{ summary.unmatched }} ohne Zuordnung
     · {{ summary.discount_unset }} ohne Rabattsatz
     · {{ summary.create_no_unit }} neue Bezugsquellen ohne Einheit
+    · {{ summary.attach_no_unit }} Zuordnungen ohne Einheit
   </p>
 
   <form class="row g-3 align-items-end mb-4" method="post" action="/bezugsquellen/neu/{{ run.id }}/einstellungen">
@@ -171,6 +195,11 @@
         <div class="col-auto">
           <button type="button" class="btn btn-outline-primary" id="ss-bulk-zero">Kein Rabatt</button>
         </div>
+        {% if grid_config.showDivergence %}
+        <div class="col-auto">
+          <button type="button" class="btn btn-outline-primary" id="ss-bulk-template">Übernimmt Vorlagenwert</button>
+        </div>
+        {% endif %}
         <div class="col-auto">
           <p class="mb-0" id="ss-bulk-result" role="status"></p>
         </div>

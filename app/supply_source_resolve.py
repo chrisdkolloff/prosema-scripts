@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from collections import defaultdict
 from datetime import UTC, datetime
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from sqlalchemy import select
@@ -125,6 +126,63 @@ def _apply_current_ek(row: SupplySourceRow, ss_id: str | None, db: Session) -> N
     row.current_ek_currency = price.currency_code
 
 
+def _text_eq(left: str | None, right: str | None) -> bool:
+    a = (left or "").strip()
+    b = (right or "").strip()
+    return a == b
+
+
+def _qty_eq(left: object, right: object) -> bool:
+    if left in (None, "") and right in (None, ""):
+        return True
+    if left in (None, "") or right in (None, ""):
+        return False
+    try:
+        return Decimal(str(left)) == Decimal(str(right))
+    except (InvalidOperation, ValueError, TypeError):
+        return str(left) == str(right)
+
+
+def _intent_for_upload_linked(row: SupplySourceRow) -> str:
+    overrides = row.field_overrides or {}
+    for key in ("name", "ean", "min_purchase_qty", "procurement_lead_days"):
+        if overrides.get(key) == "template":
+            return "update"
+    return "price_only"
+
+
+def _apply_upload_divergences(db: Session, row: SupplySourceRow) -> None:
+    if not row.weclapp_supply_source_id:
+        return
+    ss = db.get(WeclappSupplySource, row.weclapp_supply_source_id)
+    if ss is None:
+        return
+    overrides = dict(row.field_overrides or {})
+
+    if not _text_eq(row.template_name, ss.name):
+        overrides.setdefault("name", "weclapp")
+    if overrides.get("name") == "template":
+        row.name = row.template_name
+    else:
+        row.name = ss.name
+
+    if not _text_eq(row.template_ean, ss.ean):
+        overrides.setdefault("ean", "weclapp")
+    if overrides.get("ean") == "template":
+        row.ean = row.template_ean
+    else:
+        row.ean = ss.ean
+
+    if not _qty_eq(row.template_min_qty, ss.min_purchase_qty):
+        overrides.setdefault("min_purchase_qty", "weclapp")
+    if not _qty_eq(row.template_lead_days, ss.procurement_lead_days):
+        overrides.setdefault("procurement_lead_days", "weclapp")
+
+    row.field_overrides = overrides
+    if row.row_intent in {"update", "price_only"}:
+        row.row_intent = _intent_for_upload_linked(row)
+
+
 def _intent_for_linked_ss(
     row: SupplySourceRow, ss: WeclappSupplySource
 ) -> str:
@@ -186,7 +244,12 @@ def _existing_ss_for_articles(
 
 
 def _assign_unit(db: Session, row: SupplySourceRow) -> None:
-    """Pre-fill Einheit: article unit if resolved, else SS unit on update-like intents."""
+    """Pre-fill Einheit: article unit if resolved, else SS unit on update-like intents.
+
+    An upload may already have set unit_id from a recognised Einheit name. Keep
+    that when there is no article (create without a match uses the file, or
+    stays NULL and blocks).
+    """
     if row.weclapp_article_ids:
         article = db.get(WeclappArticle, row.weclapp_article_ids[0])
         if article is not None and article.unit_id:
@@ -197,8 +260,6 @@ def _assign_unit(db: Session, row: SupplySourceRow) -> None:
         if ss is not None:
             row.unit_id = ss.unit_id
             return
-    if row.row_intent in {"create", "attach"} and not row.weclapp_article_ids:
-        row.unit_id = None
 
 
 def resolve_row(
@@ -375,7 +436,8 @@ def run_resolve(
     elif run.datenstand is None:
         run.datenstand = datetime.now(UTC)
 
-    _seed_rows_from_mirror(db, run, supplier)
+    if run.source != "upload":
+        _seed_rows_from_mirror(db, run, supplier)
     rows = list(
         db.scalars(
             select(SupplySourceRow).where(SupplySourceRow.run_id == run.id)
@@ -385,6 +447,8 @@ def run_resolve(
         if row.row_intent == "skip":
             continue
         resolve_row(db, run, row, supplier=supplier)
+        if run.source == "upload":
+            _apply_upload_divergences(db, row)
 
     run.status = "preview"
     run.error = None

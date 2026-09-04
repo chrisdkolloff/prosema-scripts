@@ -344,3 +344,21 @@ def test_gone_on_404(db_session):
     db_session.refresh(row)
     assert row.apply_outcome == "GONE"
     assert client.put_calls == []
+
+
+def test_non_price_updates_honour_field_overrides():
+    from app.supply_source_apply import _non_price_updates
+
+    row = SupplySourceRow(
+        supplier_article_number="X",
+        name="weclapp-name",
+        template_name="template-name",
+        ean="111",
+        template_ean="222",
+        field_overrides={"name": "weclapp", "ean": "template"},
+    )
+    extra = _non_price_updates(
+        row, {"name": "weclapp-name", "ean": "111", "minimumPurchaseQuantity": None}
+    )
+    assert "name" not in extra
+    assert extra["ean"] == "222"

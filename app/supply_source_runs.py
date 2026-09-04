@@ -16,7 +16,9 @@ from app.models import (
     SupplierArticleAliasesAudit,
     SupplySourceRow,
     SupplySourceRun,
+    SupplySourceUpload,
     WeclappArticle,
+    WeclappSupplySource,
 )
 from app.supply_source_resolve import resolve_row
 
@@ -213,6 +215,98 @@ def create_pull_run(
     return run
 
 
+def create_upload_run(
+    db: Session,
+    *,
+    supplier_id: int,
+    filename: str,
+    content: bytes,
+    user: Mapping[str, Any],
+) -> SupplySourceRun:
+    from app.supply_source_templates import get_or_create_active_template
+    from app.supply_source_upload import SupplySourceParseError, parse_upload_bytes
+
+    supplier = db.get(Supplier, supplier_id)
+    if supplier is None or supplier.deleted_at is not None:
+        raise SupplySourceRunError("Lieferant nicht gefunden.")
+    if running_for_supplier(db, supplier.id) is not None:
+        raise SupplySourceRunError("Für diesen Lieferanten läuft bereits ein Abgleich.")
+    template = get_or_create_active_template(db, supplier.id, user=user)
+    columns = template.columns if isinstance(template.columns, list) else []
+    try:
+        parsed = parse_upload_bytes(
+            db, content, filename=filename, columns=columns
+        )
+    except SupplySourceParseError as exc:
+        raise SupplySourceRunError("\n".join(exc.messages)) from exc
+
+    upload = SupplySourceUpload(
+        supplier_id=supplier.id,
+        template_id=template.id,
+        filename=filename or "upload.xlsx",
+        content=content,
+        row_count=len(parsed.rows),
+        parse_summary={
+            "accepted": len(parsed.rows),
+            "rejected": parsed.row_errors,
+            "unmatched_units": parsed.unmatched_units,
+        },
+        uploaded_by=str(user["oid"]),
+        uploaded_by_name=str(user.get("name") or user["oid"]),
+    )
+    db.add(upload)
+    db.flush()
+
+    kurs = supplier.default_kurs
+    if supplier.einkaufswaehrung == "CHF":
+        kurs = Decimal("1.0")
+    run = SupplySourceRun(
+        supplier_id=supplier.id,
+        status="running",
+        source="upload",
+        template_id=template.id,
+        upload_id=upload.id,
+        einkaufswaehrung=supplier.einkaufswaehrung,
+        kurs=kurs,
+        verkaufswaehrung=supplier.default_verkaufswaehrung,
+        aufschlag=supplier.default_aufschlag,
+        created_by=str(user["oid"]),
+        created_by_name=str(user.get("name") or user["oid"]),
+    )
+    db.add(run)
+    db.flush()
+    for item in parsed.rows:
+        db.add(
+            SupplySourceRow(
+                run_id=run.id,
+                supplier_article_number=item.supplier_article_number,
+                name=item.name,
+                ean=item.ean,
+                listenpreis=item.listenpreis,
+                rabattcode=item.rabattcode,
+                unit_id=item.unit_id,
+                template_name=item.name,
+                template_ean=item.ean,
+                template_min_qty=item.min_purchase_qty,
+                template_lead_days=item.procurement_lead_days,
+                field_overrides={},
+            )
+        )
+    db.flush()
+    from app.jobs import enqueue
+
+    job = enqueue(
+        db,
+        "supply_source_resolve",
+        {"run_id": run.id},
+        user,
+    )
+    run.job_id = job.id
+    db.commit()
+    db.refresh(run)
+    return run
+
+
 def summary_counts(rows: list[SupplySourceRow]) -> dict[str, int]:
     return {
         "update": sum(1 for r in rows if r.row_intent == "update"),
@@ -234,6 +328,11 @@ def summary_counts(rows: list[SupplySourceRow]) -> dict[str, int]:
             for r in rows
             if r.row_intent == "create" and not str(r.unit_id or "").strip()
         ),
+        "attach_no_unit": sum(
+            1
+            for r in rows
+            if r.row_intent == "attach" and not str(r.unit_id or "").strip()
+        ),
         "skip": sum(1 for r in rows if r.row_intent == "skip"),
         "total": len(rows),
         "attach": sum(1 for r in rows if r.row_intent == "attach"),
@@ -244,6 +343,7 @@ def approval_blockers(rows: list[SupplySourceRow]) -> dict[str, int]:
     unmatched = 0
     unset = 0
     create_no_unit = 0
+    attach_no_unit = 0
     for row in rows:
         if row.row_intent == "skip":
             continue
@@ -253,10 +353,16 @@ def approval_blockers(rows: list[SupplySourceRow]) -> dict[str, int]:
             unset += 1
         if row.row_intent == "create" and not str(row.unit_id or "").strip():
             create_no_unit += 1
+        # Guard: attach without unit should not occur (those rows are unmatched
+        # today). Same block as create so a future matcher cannot approve a
+        # write weclapp would reject.
+        if row.row_intent == "attach" and not str(row.unit_id or "").strip():
+            attach_no_unit += 1
     return {
         "unmatched": unmatched,
         "discount_unset": unset,
         "create_no_unit": create_no_unit,
+        "attach_no_unit": attach_no_unit,
     }
 
 
@@ -266,6 +372,7 @@ def can_approve(rows: list[SupplySourceRow]) -> bool:
         blocks["unmatched"] == 0
         and blocks["discount_unset"] == 0
         and blocks["create_no_unit"] == 0
+        and blocks["attach_no_unit"] == 0
     )
 
 
@@ -334,6 +441,57 @@ def apply_bulk_rates(
     return len(rows)
 
 
+OVERRIDE_FIELDS = ("name", "ean", "min_purchase_qty", "procurement_lead_days")
+
+
+def _apply_override_choice(row: SupplySourceRow, key: str, choice: str) -> None:
+    ss = None
+    session = Session.object_session(row)
+    if session is not None and row.weclapp_supply_source_id:
+        ss = session.get(WeclappSupplySource, row.weclapp_supply_source_id)
+    if key == "name":
+        row.name = row.template_name if choice == "template" else (ss.name if ss else row.name)
+    elif key == "ean":
+        row.ean = row.template_ean if choice == "template" else (ss.ean if ss else row.ean)
+
+
+def apply_template_overrides(
+    db: Session,
+    run: SupplySourceRun,
+    *,
+    row_ids: list[int],
+) -> int:
+    """Set every divergent field on the given rows to the template value."""
+    assert_editable(run)
+    if not row_ids:
+        raise SupplySourceRunError("Keine Zeilen ausgewählt.")
+    rows = list(
+        db.scalars(
+            select(SupplySourceRow).where(
+                SupplySourceRow.run_id == run.id,
+                SupplySourceRow.id.in_(row_ids),
+            )
+        ).all()
+    )
+    from app.supply_source_resolve import _intent_for_upload_linked
+
+    count = 0
+    for row in rows:
+        overrides = dict(row.field_overrides or {})
+        if not overrides:
+            continue
+        for key in OVERRIDE_FIELDS:
+            if key in overrides:
+                overrides[key] = "template"
+                _apply_override_choice(row, key, "template")
+        row.field_overrides = overrides
+        if row.row_intent in {"update", "price_only"}:
+            row.row_intent = _intent_for_upload_linked(row)
+        count += 1
+    db.commit()
+    return count
+
+
 def apply_edits(
     db: Session,
     run: SupplySourceRun,
@@ -382,6 +540,31 @@ def apply_edits(
                 )
             uid = str(value or "").strip()
             row.unit_id = uid or None
+        elif field in {
+            "override_name",
+            "override_ean",
+            "override_min_qty",
+            "override_lead_days",
+        }:
+            key = {
+                "override_name": "name",
+                "override_ean": "ean",
+                "override_min_qty": "min_purchase_qty",
+                "override_lead_days": "procurement_lead_days",
+            }[field]
+            choice = str(value or "weclapp").strip()
+            if choice not in {"weclapp", "template"}:
+                raise SupplySourceRunError("Ungültige Feldwahl.")
+            overrides = dict(row.field_overrides or {})
+            if key not in overrides:
+                continue
+            overrides[key] = choice
+            row.field_overrides = overrides
+            _apply_override_choice(row, key, choice)
+            if row.row_intent in {"update", "price_only"}:
+                from app.supply_source_resolve import _intent_for_upload_linked
+
+                row.row_intent = _intent_for_upload_linked(row)
         else:
             continue
         touched.append(row)
@@ -516,9 +699,23 @@ def approve_run(db: Session, run: SupplySourceRun, user: Mapping[str, Any]) -> N
     enqueue_apply_chunk(db, run, user)
 
 
-def row_payload(row: SupplySourceRow, run: SupplySourceRun) -> dict[str, Any]:
+def row_payload(
+    row: SupplySourceRow,
+    run: SupplySourceRun,
+    *,
+    supply_source: WeclappSupplySource | None = None,
+) -> dict[str, Any]:
     prices = derived_prices(row, run)
     numbers = list(row.resolved_article_numbers or [])
+    overrides = dict(row.field_overrides or {})
+    weclapp_name = supply_source.name if supply_source is not None else row.name
+    weclapp_ean = supply_source.ean if supply_source is not None else row.ean
+    weclapp_min = (
+        supply_source.min_purchase_qty if supply_source is not None else None
+    )
+    weclapp_lead = (
+        supply_source.procurement_lead_days if supply_source is not None else None
+    )
     return {
         "id": row.id,
         "supplier_article_number": row.supplier_article_number,
@@ -543,7 +740,24 @@ def row_payload(row: SupplySourceRow, run: SupplySourceRun) -> dict[str, Any]:
         "row_intent": row.row_intent or "",
         "intent_label": INTENT_LABELS.get(row.row_intent or "", ""),
         "unit_id": row.unit_id or "",
+        "template_name": row.template_name or "",
+        "template_ean": row.template_ean or "",
+        "template_min_qty": row.template_min_qty,
+        "template_lead_days": row.template_lead_days,
+        "weclapp_name": weclapp_name or "",
+        "weclapp_ean": weclapp_ean or "",
+        "weclapp_min_qty": weclapp_min,
+        "weclapp_lead_days": weclapp_lead,
+        "override_name": overrides.get("name") or "",
+        "override_ean": overrides.get("ean") or "",
+        "override_min_qty": overrides.get("min_purchase_qty") or "",
+        "override_lead_days": overrides.get("procurement_lead_days") or "",
+        "has_divergence": bool(overrides),
     }
+
+
+def _override_cell(choice: str) -> str:
+    return choice if choice in {"weclapp", "template"} else ""
 
 
 def build_grid_config(run: SupplySourceRun, rows: list[SupplySourceRow]) -> dict[str, Any]:
@@ -552,7 +766,26 @@ def build_grid_config(run: SupplySourceRun, rows: list[SupplySourceRow]) -> dict
     session = Session.object_session(run)
     units = units_for_dropdown(session) if session is not None else []
     unit_source = [[u["id"], u["name"]] for u in units]
-    payloads = [row_payload(row, run) for row in rows]
+    ss_ids = [r.weclapp_supply_source_id for r in rows if r.weclapp_supply_source_id]
+    ss_map: dict[str, WeclappSupplySource] = {}
+    if session is not None and ss_ids:
+        ss_map = {
+            s.weclapp_id: s
+            for s in session.scalars(
+                select(WeclappSupplySource).where(
+                    WeclappSupplySource.weclapp_id.in_(ss_ids)
+                )
+            )
+        }
+    payloads = [
+        row_payload(
+            row,
+            run,
+            supply_source=ss_map.get(row.weclapp_supply_source_id or ""),
+        )
+        for row in rows
+    ]
+    show_div = any(p["has_divergence"] for p in payloads)
     fields = [
         "supplier_article_number",
         "name",
@@ -607,9 +840,46 @@ def build_grid_config(run: SupplySourceRun, rows: list[SupplySourceRow]) -> dict
             ],
         },
     ]
+    override_source = [
+        ["weclapp", "weclapp belassen"],
+        ["template", "Vorlagenwert"],
+    ]
+    if show_div:
+        fields.extend(
+            ["override_name", "override_ean", "override_min_qty", "override_lead_days"]
+        )
+        columns.extend(
+            [
+                {
+                    "title": "Bezeichnung von",
+                    "width": 140,
+                    "type": "dropdown",
+                    "source": override_source,
+                },
+                {
+                    "title": "EAN von",
+                    "width": 140,
+                    "type": "dropdown",
+                    "source": override_source,
+                },
+                {
+                    "title": "Mindestmenge von",
+                    "width": 150,
+                    "type": "dropdown",
+                    "source": override_source,
+                },
+                {
+                    "title": "Lieferzeit von",
+                    "width": 140,
+                    "type": "dropdown",
+                    "source": override_source,
+                },
+            ]
+        )
     data = []
     unmatched_rows: list[int] = []
     unit_locked_rows: list[int] = []
+    divergence_titles: list[str] = []
     for i, payload in enumerate(payloads):
         r1 = (
             format_pct(payload["rabatt_1"])
@@ -626,8 +896,7 @@ def build_grid_config(run: SupplySourceRun, rows: list[SupplySourceRow]) -> dict
         )
         if payload["multi_article"]:
             match_label += " — alle genannten Artikel betroffen"
-        data.append(
-            [
+        row_data = [
                 payload["supplier_article_number"],
                 payload["name"],
                 payload["article_numbers_label"],
@@ -644,18 +913,61 @@ def build_grid_config(run: SupplySourceRun, rows: list[SupplySourceRow]) -> dict
                 format_pct(payload["implied_discount"]),
                 match_label,
                 payload["row_intent"],
-            ]
-        )
+        ]
+        if show_div:
+            row_data.extend(
+                [
+                    _override_cell(payload["override_name"]),
+                    _override_cell(payload["override_ean"]),
+                    _override_cell(payload["override_min_qty"]),
+                    _override_cell(payload["override_lead_days"]),
+                ]
+            )
+        data.append(row_data)
         if payload["match_status"] == "unmatched":
             unmatched_rows.append(i)
         if payload["row_intent"] not in {"create", "attach"}:
             unit_locked_rows.append(i)
+        titles: list[str] = []
+        if payload["override_name"]:
+            titles.append(
+                f"Bezeichnung weclapp: {payload['weclapp_name'] or '—'} · "
+                f"Vorlage: {payload['template_name'] or '—'}"
+            )
+        if payload["override_ean"]:
+            titles.append(
+                f"EAN weclapp: {payload['weclapp_ean'] or '—'} · "
+                f"Vorlage: {payload['template_ean'] or '—'}"
+            )
+        if payload["override_min_qty"]:
+            titles.append(
+                "Mindestmenge weclapp: "
+                f"{payload['weclapp_min_qty'] if payload['weclapp_min_qty'] is not None else '—'} · "
+                f"Vorlage: {payload['template_min_qty'] if payload['template_min_qty'] is not None else '—'}"
+            )
+        if payload["override_lead_days"]:
+            titles.append(
+                "Lieferzeit weclapp: "
+                f"{payload['weclapp_lead_days'] if payload['weclapp_lead_days'] is not None else '—'} · "
+                f"Vorlage: {payload['template_lead_days'] if payload['template_lead_days'] is not None else '—'}"
+            )
+        divergence_titles.append(" | ".join(titles))
     codes = sorted({p["rabattcode"] for p in payloads if p["rabattcode"]})
     counts = summary_counts(rows)
     return {
         "runId": run.id,
         "editable": run.status in EDITABLE_STATUSES and run.approved_at is None,
-        "editableFields": ["rabatt_1", "rabatt_2", "vk_chf", "row_intent", "unit_id"],
+        "editableFields": [
+            "rabatt_1",
+            "rabatt_2",
+            "vk_chf",
+            "row_intent",
+            "unit_id",
+            "override_name",
+            "override_ean",
+            "override_min_qty",
+            "override_lead_days",
+        ],
         "fields": fields,
         "columns": columns,
         "data": data,
@@ -664,10 +976,13 @@ def build_grid_config(run: SupplySourceRun, rows: list[SupplySourceRow]) -> dict
         "unitLockedRows": unit_locked_rows,
         "unitLockedHint": UNIT_LOCKED_HINT,
         "units": units,
+        "divergenceTitles": divergence_titles,
         "rabattcodes": codes,
         "editsUrl": f"/bezugsquellen/neu/{run.id}/edits",
         "bulkUrl": f"/bezugsquellen/neu/{run.id}/rabatte",
+        "templateBulkUrl": f"/bezugsquellen/neu/{run.id}/vorlagenwert",
         "idleMs": 400,
         "discountUnset": counts["discount_unset"],
-        "createNoUnit": counts["create_no_unit"],
+        "createNoUnit": counts["create_no_unit"] + counts["attach_no_unit"],
+        "showDivergence": show_div,
     }

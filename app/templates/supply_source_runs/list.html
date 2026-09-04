@@ -7,19 +7,19 @@
 {% block content %}
   <h1 class="mb-2">Bezugsquellen abgleichen</h1>
   <p class="text-body-secondary mb-4">
-    Vorlage aus weclapp erzeugen, Zuordnungen prüfen und Rabattsätze setzen.
+    Erzeugt eine Vorlage, prüft die zurückgesendete Datei und gleicht sie mit weclapp ab.
     Es wird noch nichts nach weclapp geschrieben.
   </p>
 
   {% if request.query_params.get("error") %}
-  <div class="alert alert-danger" role="alert">{{ request.query_params.get("error") }}</div>
+  <div class="alert alert-danger" role="alert" style="white-space: pre-wrap">{{ request.query_params.get("error") }}</div>
   {% endif %}
 
   {% if busy %}
   <div class="alert alert-warning" role="alert">Für diesen Lieferanten läuft bereits ein Abgleich.</div>
   {% endif %}
 
-  <form method="post" action="/bezugsquellen/neu/abfragen" class="row g-3 align-items-end mb-4">
+  <form method="get" action="/bezugsquellen/neu/vorlage.xlsx" class="row g-3 align-items-end mb-3">
     <div class="col-auto">
       <label class="form-label" for="ss-supplier">Lieferant</label>
       <select class="form-select" id="ss-supplier" name="supplier_id">
@@ -31,11 +31,33 @@
       </select>
     </div>
     <div class="col-auto">
-      <button type="submit" class="btn btn-primary" {% if busy %}disabled{% endif %}>
-        Vorlage aus weclapp erzeugen
+      <button type="submit" class="btn btn-primary">Erzeugt Vorlage für Lieferant</button>
+    </div>
+  </form>
+
+  <form method="post" action="/bezugsquellen/neu/upload" enctype="multipart/form-data" class="row g-3 align-items-end mb-4">
+    <input type="hidden" name="supplier_id" id="ss-upload-supplier" value="{{ default_supplier_id }}">
+    <div class="col-auto">
+      <label class="form-label" for="ss-file">Datei (xlsx oder csv)</label>
+      <input class="form-control" type="file" id="ss-file" name="datei" accept=".xlsx,.csv" required>
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-primary" {% if busy %}disabled{% endif %}>Prüft Datei</button>
+    </div>
+  </form>
+
+  <form method="post" action="/bezugsquellen/neu/abfragen" class="row g-3 align-items-end mb-4">
+    <input type="hidden" name="supplier_id" id="ss-pull-supplier" value="{{ default_supplier_id }}">
+    <div class="col-auto">
+      <button type="submit" class="btn btn-outline-secondary" {% if busy %}disabled{% endif %}>
+        Ohne Datei aus weclapp abgleichen
       </button>
     </div>
   </form>
+
+  {% if is_admin %}
+  <p class="mb-4"><a href="/bezugsquellen/neu/vorlagen">Spalten der Lieferanten-Vorlage (selten)</a></p>
+  {% endif %}
 
   {% if runs %}
   <div class="table-responsive">
@@ -53,7 +75,7 @@
         <tr>
           <td><a href="/bezugsquellen/neu/{{ item.id }}">{{ item.created_at.strftime("%d.%m.%Y %H:%M") }}</a></td>
           <td>{% if item.supplier %}{{ item.supplier.supplier_number }} · {{ item.supplier.name }}{% else %}—{% endif %}</td>
-          <td>{{ status_labels.get(item.status, item.status) }}</td>
+          <td>{{ status_labels.get(item.status, item.status) }}{% if item.source == "upload" %} · Datei{% endif %}</td>
           <td>{{ item.created_by_name }}</td>
         </tr>
         {% endfor %}
@@ -63,4 +85,18 @@
   {% else %}
   <p class="text-body-secondary">Noch kein Abgleich vorhanden.</p>
   {% endif %}
+  <script>
+    (function () {
+      var sel = document.getElementById("ss-supplier");
+      function sync() {
+        var v = sel && sel.value;
+        ["ss-upload-supplier", "ss-pull-supplier"].forEach(function (id) {
+          var n = document.getElementById(id);
+          if (n && v) n.value = v;
+        });
+      }
+      if (sel) sel.addEventListener("change", sync);
+      sync();
+    })();
+  </script>
 {% endblock %}

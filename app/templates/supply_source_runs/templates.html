@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Bezugsquellen-Vorlage — PROSEMA{% endblock %}
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/">Home</a></li>
+<li class="breadcrumb-item"><a href="/bezugsquellen/neu">Bezugsquellen abgleichen</a></li>
+<li class="breadcrumb-item active"><span>Vorlage</span></li>
+{% endblock %}
+{% block content %}
+  <p class="mb-2"><a href="/bezugsquellen/neu">Zur Übersicht</a></p>
+  <h1 class="mb-2">Spalten der Lieferanten-Vorlage</h1>
+  <p class="text-body-secondary mb-4">
+    Seltene strukturelle Änderung: welche Spalten ein Lieferantenfile hat.
+    Rabatt 1 und Rabatt 2 gehören nicht in die Vorlage.
+  </p>
+
+  {% if error %}
+  <div class="alert alert-danger" role="alert">{{ error }}</div>
+  {% endif %}
+  {% if notice %}
+  <div class="alert alert-success" role="alert">{{ notice }}</div>
+  {% endif %}
+
+  <form method="get" action="/bezugsquellen/neu/vorlagen" class="row g-3 align-items-end mb-4">
+    <div class="col-auto">
+      <label class="form-label" for="tpl-supplier">Lieferant</label>
+      <select class="form-select" id="tpl-supplier" name="supplier_id" onchange="this.form.submit()">
+        {% for s in suppliers %}
+        <option value="{{ s.id }}" {% if supplier and s.id == supplier.id %}selected{% endif %}>
+          {{ s.supplier_number }} · {{ s.name }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+  </form>
+
+  {% if supplier %}
+  <p class="text-body-secondary">
+    {% if active %}Aktive Version {{ active.version }}{% else %}Noch keine Vorlage — Standardspalten.{% endif %}
+  </p>
+  <form method="post" action="/bezugsquellen/neu/vorlagen" class="mb-4">
+    <input type="hidden" name="supplier_id" value="{{ supplier.id }}">
+    {% for col in columns %}
+    <div class="form-check">
+      <input class="form-check-input" type="checkbox" name="keys" value="{{ col.key }}"
+             id="col-{{ col.key }}"
+             {% if col.required %}checked disabled{% endif %}
+             {% if not col.required and col.key in active_keys %}checked{% endif %}>
+      {% if col.required %}
+      <input type="hidden" name="keys" value="{{ col.key }}">
+      {% endif %}
+      <label class="form-check-label" for="col-{{ col.key }}">
+        {{ col.label }}{% if col.required %} (Pflicht){% endif %}
+      </label>
+    </div>
+    {% endfor %}
+    <button type="submit" class="btn btn-primary mt-3">Neue Version aktivieren</button>
+  </form>
+  {% if versions %}
+  <h2 class="h5">Versionen</h2>
+  <ul>
+    {% for v in versions %}
+    <li>v{{ v.version }}{% if v.is_active %} · aktiv{% endif %} · {{ v.created_by_name }} · {{ v.created_at.strftime("%d.%m.%Y %H:%M") }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% endif %}
+{% endblock %}

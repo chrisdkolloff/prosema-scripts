@@ -263,6 +263,26 @@ def test_create_without_unit_blocks_approval(db_session):
     assert can_approve([row]) is True
 
 
+def test_attach_without_unit_blocks_approval(db_session):
+    supplier = _supplier(db_session)
+    run = _run(db_session, supplier)
+    run.status = "preview"
+    row = SupplySourceRow(
+        run_id=run.id,
+        supplier_article_number="ATTACH-PART",
+        match_status="matched",
+        row_intent="attach",
+        weclapp_article_ids=["a1"],
+        resolved_article_numbers=["999.010.1010"],
+        unit_id=None,
+    )
+    set_rates(row, rabatt_1=Decimal(0), rabatt_2=Decimal(0), kein_rabatt=True)
+    db_session.add(row)
+    db_session.flush()
+    assert approval_blockers([row])["attach_no_unit"] == 1
+    assert can_approve([row]) is False
+
+
 def test_blank_rates_block_kein_rabatt_does_not(db_session):
     supplier = _supplier(db_session)
     _ss(db_session, ss_id="tst-ss1", san="TST-SAN-1")
@@ -368,7 +388,8 @@ def test_list_and_legacy_export_pages(user_client):
     neu = user_client.get("/bezugsquellen/neu")
     assert neu.status_code == 200
     assert "Bezugsquellen abgleichen" in neu.text
-    assert "Vorlage aus weclapp erzeugen" in neu.text
+    assert "Erzeugt Vorlage für Lieferant" in neu.text
+    assert "Prüft Datei" in neu.text
     legacy = user_client.get("/bezugsquellen")
     assert legacy.status_code == 200
     assert "Bezugsquellenexport" in legacy.text

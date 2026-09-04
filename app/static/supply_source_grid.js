@@ -83,6 +83,11 @@
     return ids;
   }
 
+  function fieldIndex(name) {
+    if (!config || !config.fields) return -1;
+    return config.fields.indexOf(name);
+  }
+
   function applyFilters() {
     if (!worksheet || !config) return;
     var code = ($("ss-filter-code") && $("ss-filter-code").value) || "";
@@ -90,16 +95,21 @@
     var name = (($("ss-filter-name") && $("ss-filter-name").value) || "").toLowerCase();
     var match = ($("ss-filter-match") && $("ss-filter-match").value) || "";
     var intent = ($("ss-filter-intent") && $("ss-filter-intent").value) || "";
+    var iSan = fieldIndex("supplier_article_number");
+    var iName = fieldIndex("name");
+    var iCode = fieldIndex("rabattcode");
+    var iMatch = fieldIndex("match_status");
+    var iIntent = fieldIndex("row_intent");
     var last = config.data.length;
     for (var y = 0; y < last; y++) {
       var row = config.data[y];
       var show = true;
-      if (code && String(row[4] || "") !== code) show = false;
-      if (prefix && String(row[0] || "").toLowerCase().indexOf(prefix) !== 0) show = false;
-      if (name && String(row[1] || "").toLowerCase().indexOf(name) < 0) show = false;
-      if (match === "matched" && String(row[14] || "").indexOf("ohne Zuordnung") >= 0) show = false;
-      if (match === "unmatched" && String(row[14] || "").indexOf("ohne Zuordnung") < 0) show = false;
-      if (intent && String(row[15] || "") !== intent) show = false;
+      if (code && String(row[iCode] || "") !== code) show = false;
+      if (prefix && String(row[iSan] || "").toLowerCase().indexOf(prefix) !== 0) show = false;
+      if (name && String(row[iName] || "").toLowerCase().indexOf(name) < 0) show = false;
+      if (match === "matched" && String(row[iMatch] || "").indexOf("ohne Zuordnung") >= 0) show = false;
+      if (match === "unmatched" && String(row[iMatch] || "").indexOf("ohne Zuordnung") < 0) show = false;
+      if (intent && String(row[iIntent] || "") !== intent) show = false;
       var el = worksheet.rows && worksheet.rows[y] && worksheet.rows[y].element;
       if (el) el.style.display = show ? "" : "none";
     }
@@ -154,6 +164,24 @@
     }
   }
 
+  function markDivergences() {
+    if (!worksheet || !config) return;
+    var titles = config.divergenceTitles || [];
+    var xName = (config.fields || []).indexOf("name");
+    for (var y = 0; y < titles.length; y++) {
+      if (!titles[y]) continue;
+      var el = worksheet.rows && worksheet.rows[y] && worksheet.rows[y].element;
+      if (el) el.classList.add("ss-divergent");
+      if (xName < 0) continue;
+      var cell = null;
+      try { cell = worksheet.getCell(xName, y); } catch (err) { cell = null; }
+      if (cell) {
+        cell.classList.add("ss-divergent");
+        cell.title = titles[y];
+      }
+    }
+  }
+
   function replaceGrid(next) {
     config = next;
     var el = $("ss-spreadsheet");
@@ -185,6 +213,7 @@
     }
     markUnmatched();
     markUnitLocked();
+    markDivergences();
     applyFilters();
     var unset = $("ss-discount-unset");
     if (unset && typeof config.discountUnset === "number") {
@@ -287,6 +316,35 @@
         var ids = visibleSelectedIds();
         if (!ids.length) ids = visibleRowIds();
         postBulk({ row_ids: ids, kein_rabatt: true });
+      });
+    }
+    var tplBtn = $("ss-bulk-template");
+    if (tplBtn) {
+      tplBtn.addEventListener("click", function () {
+        var ids = visibleSelectedIds();
+        if (!ids.length) ids = visibleRowIds();
+        var url = config.templateBulkUrl;
+        if (!url) return;
+        fetch(url, {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ row_ids: ids }),
+        })
+          .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
+          .then(function (res) {
+            var out = $("ss-bulk-result");
+            if (!res.ok) {
+              if (out) out.textContent = (res.body && res.body.error) || "Übernehmen fehlgeschlagen";
+              return;
+            }
+            if (out) out.textContent = res.body.applied + " Zeilen: Vorlagenwert übernommen";
+            if (res.body.grid) replaceGrid(res.body.grid);
+          })
+          .catch(function () {
+            var out = $("ss-bulk-result");
+            if (out) out.textContent = "Übernehmen fehlgeschlagen";
+          });
       });
     }
   }

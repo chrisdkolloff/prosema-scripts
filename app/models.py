@@ -1171,6 +1171,75 @@ class SuppliersAudit(Base):
     )
 
 
+class SupplySourceTemplate(Base):
+    """Per-supplier versioned column spec for Bezugsquellen uploads.
+
+    Serial PK and created_by (not UUID / created_by_oid) match supply_source_run.
+    Unlike article_templates there is no xlsx_bytes: the file is generated from
+    ``columns`` plus the mirror.
+    """
+
+    __tablename__ = "supply_source_templates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    supplier_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("suppliers.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    columns: Mapped[list] = mapped_column(JSONB, nullable=False)
+    created_by: Mapped[str] = mapped_column(Text, nullable=False)
+    created_by_name: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "supplier_id",
+            "version",
+            name="uq_supply_source_templates_supplier_version",
+        ),
+        Index(
+            "uq_supply_source_templates_active",
+            "supplier_id",
+            unique=True,
+            postgresql_where=text("is_active"),
+        ),
+    )
+
+
+class SupplySourceUpload(Base):
+    __tablename__ = "supply_source_uploads"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    supplier_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("suppliers.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    template_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("supply_source_templates.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    filename: Mapped[str] = mapped_column(Text, nullable=False)
+    content: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    row_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    parse_summary: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )
+    uploaded_by: Mapped[str] = mapped_column(Text, nullable=False)
+    uploaded_by_name: Mapped[str] = mapped_column(Text, nullable=False)
+    uploaded_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+
 class SupplySourceRun(Base):
     __tablename__ = "supply_source_run"
 
@@ -1183,6 +1252,16 @@ class SupplySourceRun(Base):
     job_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("jobs.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    template_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("supply_source_templates.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    upload_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("supply_source_uploads.id", ondelete="SET NULL"),
         nullable=True,
     )
     status: Mapped[str] = mapped_column(Text, nullable=False)
@@ -1221,6 +1300,10 @@ class SupplySourceRun(Base):
     )
 
     supplier: Mapped[Supplier] = relationship()
+    template: Mapped[SupplySourceTemplate | None] = relationship(
+        foreign_keys=[template_id]
+    )
+    upload: Mapped[SupplySourceUpload | None] = relationship(foreign_keys=[upload_id])
     rows: Mapped[list["SupplySourceRow"]] = relationship(
         back_populates="run",
         cascade="all, delete-orphan",
@@ -1295,6 +1378,13 @@ class SupplySourceRow(Base):
     current_ek_currency: Mapped[str | None] = mapped_column(Text, nullable=True)
     vk_override: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     unit_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    template_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    template_ean: Mapped[str | None] = mapped_column(Text, nullable=True)
+    template_min_qty: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
+    template_lead_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    field_overrides: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )
     created_supply_source_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     apply_outcome: Mapped[str | None] = mapped_column(Text, nullable=True)
     apply_detail: Mapped[dict | None] = mapped_column(JSONB, nullable=True)

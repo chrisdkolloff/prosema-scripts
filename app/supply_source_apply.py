@@ -379,10 +379,30 @@ def _price_fields_changed(live: Mapping[str, Any], rebuilt: list[dict[str, Any]]
 
 def _non_price_updates(row: SupplySourceRow, live: Mapping[str, Any]) -> dict[str, Any]:
     updates: dict[str, Any] = {}
-    if row.name and str(live.get("name") or "") != row.name:
+    overrides = row.field_overrides or {}
+    if overrides.get("name") == "template":
+        name = row.template_name or ""
+        if name and str(live.get("name") or "") != name:
+            updates["name"] = name
+    elif row.name and str(live.get("name") or "") != row.name:
         updates["name"] = row.name
-    if row.ean and str(live.get("ean") or "") != row.ean:
+    if overrides.get("ean") == "template":
+        ean = row.template_ean or ""
+        if ean and str(live.get("ean") or "") != ean:
+            updates["ean"] = ean
+    elif row.ean and str(live.get("ean") or "") != row.ean:
         updates["ean"] = row.ean
+    if overrides.get("min_purchase_qty") == "template" and row.template_min_qty is not None:
+        live_qty = live.get("minimumPurchaseQuantity")
+        if not _qty_same(live_qty, row.template_min_qty):
+            updates["minimum_purchase_quantity"] = row.template_min_qty
+    if (
+        overrides.get("procurement_lead_days") == "template"
+        and row.template_lead_days is not None
+    ):
+        live_days = live.get("procurementLeadDays")
+        if str(live_days or "") != str(row.template_lead_days):
+            updates["procurement_lead_days"] = row.template_lead_days
     # Switch: UNIT_ID_PUT_WRITABLE is False (live 400 "unit cannot be changed").
     if (
         UNIT_ID_PUT_WRITABLE
@@ -391,6 +411,15 @@ def _non_price_updates(row: SupplySourceRow, live: Mapping[str, Any]) -> dict[st
     ):
         updates["unit_id"] = row.unit_id
     return updates
+
+
+def _qty_same(live: object, template: object) -> bool:
+    if live in (None, "") and template in (None, ""):
+        return True
+    try:
+        return Decimal(str(live)) == Decimal(str(template))
+    except (InvalidOperation, ValueError, TypeError):
+        return str(live) == str(template)
 
 
 def _apply_price_or_update(ctx: _ApplyCtx, *, intent: str) -> str:
@@ -446,6 +475,8 @@ def _apply_price_or_update(ctx: _ApplyCtx, *, intent: str) -> str:
             name=extra.get("name"),
             ean=extra.get("ean"),
             unit_id=extra.get("unit_id"),
+            minimum_purchase_quantity=extra.get("minimum_purchase_quantity"),
+            procurement_lead_days=extra.get("procurement_lead_days"),
         )
     except SupplySourcePayloadError as exc:
         return _finish(ctx, "REJECTED", message=str(exc))

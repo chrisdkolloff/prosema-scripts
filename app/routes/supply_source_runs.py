@@ -7,27 +7,28 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
-from app.auth import SessionUser, require_user
+from app.auth import SessionUser, require_admin, require_user
 from app.db import get_db
 from app.models import SupplySourceRow, SupplySourceRun
 from app.supply_source_runs import (
     SupplySourceRunError,
+    apply_template_overrides,
     apply_bulk_rates,
     apply_edits,
     apply_run_settings,
     approval_blockers,
     approve_run,
-    assert_editable,
     attach_manual_alias,
     build_grid_config,
     can_approve,
     create_pull_run,
+    create_upload_run,
     format_pct,
     format_swiss_number,
     list_runs,
@@ -72,6 +73,10 @@ class CellEditIn(BaseModel):
     value: Any = ""
 
 
+class BulkTemplateIn(BaseModel):
+    row_ids: list[int] | None = None
+
+
 class BulkRatesIn(BaseModel):
     row_ids: list[int] | None = None
     rabattcode: str | None = None
@@ -83,7 +88,10 @@ class BulkRatesIn(BaseModel):
 def _get_run(db: Session, run_id: int) -> SupplySourceRun:
     run = db.scalars(
         select(SupplySourceRun)
-        .options(joinedload(SupplySourceRun.supplier))
+        .options(
+            joinedload(SupplySourceRun.supplier),
+            joinedload(SupplySourceRun.upload),
+        )
         .where(SupplySourceRun.id == run_id)
     ).first()
     if run is None:
@@ -137,7 +145,7 @@ def run_list(
             "busy": busy,
             "default_supplier_id": default_id,
             "status_labels": STATUS_LABELS,
-            "format_swiss_number": format_swiss_number,
+            "is_admin": "admin" in (user.get("roles") or []),
         },
     )
 
@@ -156,6 +164,132 @@ def start_pull(
             status_code=303,
         )
     return RedirectResponse(url=f"/bezugsquellen/neu/{run.id}", status_code=303)
+
+
+@router.get("/bezugsquellen/neu/vorlage.xlsx")
+def download_template(
+    supplier_id: int,
+    db: Session = Depends(get_db),
+    user: SessionUser = Depends(require_user),
+):
+    from app.models import Supplier
+    from app.supply_source_templates import (
+        SupplySourceTemplateError,
+        generate_template_xlsx_for_user,
+    )
+
+    supplier = db.get(Supplier, supplier_id)
+    if supplier is None or supplier.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Lieferant nicht gefunden")
+    try:
+        _template, data = generate_template_xlsx_for_user(db, supplier, user=user)
+    except SupplySourceTemplateError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    filename = f"bezugsquellen-{supplier.supplier_number}.xlsx"
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+        },
+    )
+
+
+@router.post("/bezugsquellen/neu/upload")
+async def start_upload(
+    supplier_id: int = Form(...),
+    datei: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user: SessionUser = Depends(require_user),
+):
+    content = await datei.read()
+    filename = datei.filename or "upload.xlsx"
+    try:
+        run = create_upload_run(
+            db,
+            supplier_id=supplier_id,
+            filename=filename,
+            content=content,
+            user=user,
+        )
+    except SupplySourceRunError as exc:
+        return RedirectResponse(
+            url=f"/bezugsquellen/neu?error={quote(str(exc))}",
+            status_code=303,
+        )
+    return RedirectResponse(url=f"/bezugsquellen/neu/{run.id}", status_code=303)
+
+
+@router.get("/bezugsquellen/neu/vorlagen", response_class=HTMLResponse)
+def template_admin(
+    request: Request,
+    supplier_id: int | None = None,
+    db: Session = Depends(get_db),
+    user: SessionUser = Depends(require_admin),
+):
+    from app.models import Supplier
+    from app.supply_source_templates import (
+        ALL_KEYS,
+        DEFAULT_COLUMNS,
+        get_active_template,
+        list_templates,
+    )
+
+    suppliers = list_suppliers(db)
+    chosen = supplier_id or (suppliers[0].id if suppliers else None)
+    supplier = db.get(Supplier, chosen) if chosen else None
+    active = get_active_template(db, chosen) if chosen else None
+    versions = list_templates(db, chosen) if chosen else []
+    active_keys = (
+        [str(c.get("key")) for c in (active.columns or [])]
+        if active is not None
+        else list(ALL_KEYS)
+    )
+    return request.app.state.templates.TemplateResponse(
+        request,
+        "supply_source_runs/templates.html",
+        {
+            "user": user,
+            "suppliers": suppliers,
+            "supplier": supplier,
+            "active": active,
+            "versions": versions,
+            "columns": DEFAULT_COLUMNS,
+            "active_keys": active_keys,
+            "error": request.query_params.get("error"),
+            "notice": request.query_params.get("notice"),
+        },
+    )
+
+
+@router.post("/bezugsquellen/neu/vorlagen")
+def save_template(
+    supplier_id: int = Form(...),
+    keys: list[str] = Form(default=[]),
+    db: Session = Depends(get_db),
+    user: SessionUser = Depends(require_admin),
+):
+    from app.supply_source_templates import (
+        REQUIRED_KEYS,
+        SupplySourceTemplateError,
+        create_template_version,
+    )
+
+    selected = list(dict.fromkeys([*REQUIRED_KEYS, *keys]))
+    try:
+        create_template_version(db, supplier_id, keys=selected, user=user, activate=True)
+    except SupplySourceTemplateError as exc:
+        return RedirectResponse(
+            url=f"/bezugsquellen/neu/vorlagen?supplier_id={supplier_id}&error={quote(str(exc))}",
+            status_code=303,
+        )
+    return RedirectResponse(
+        url=(
+            f"/bezugsquellen/neu/vorlagen?supplier_id={supplier_id}"
+            "&notice=" + quote("Neue Vorlagenversion ist aktiv.")
+        ),
+        status_code=303,
+    )
 
 
 @router.get("/bezugsquellen/neu/{run_id}", response_class=HTMLResponse)
@@ -203,6 +337,7 @@ def run_detail(
             "format_pct": format_pct,
             "error": request.query_params.get("error"),
             "notice": request.query_params.get("notice"),
+            "parse_summary": (run.upload.parse_summary if run.upload is not None else None),
         },
     )
 
@@ -273,6 +408,32 @@ def bulk_rates(
                 rabatt_1=parse_rate(payload.rabatt_1),
                 rabatt_2=parse_rate(payload.rabatt_2),
             )
+    except SupplySourceRunError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    rows = load_rows(db, run.id)
+    return JSONResponse(
+        {
+            "ok": True,
+            "applied": applied,
+            "discount_unset": summary_counts(rows)["discount_unset"],
+            "can_approve": can_approve(rows),
+            "grid": build_grid_config(run, rows),
+        }
+    )
+
+
+@router.post("/bezugsquellen/neu/{run_id}/vorlagenwert")
+def bulk_template(
+    run_id: int,
+    payload: BulkTemplateIn,
+    db: Session = Depends(get_db),
+    user: SessionUser = Depends(require_user),
+):
+    run = _get_run(db, run_id)
+    try:
+        applied = apply_template_overrides(
+            db, run, row_ids=payload.row_ids or []
+        )
     except SupplySourceRunError as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
     rows = load_rows(db, run.id)
