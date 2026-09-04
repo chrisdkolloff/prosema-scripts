@@ -58,6 +58,8 @@ JOB_TYPE_LABELS = {
     "weclapp_article_snapshot": "Artikelabfrage",
     "weclapp_supply_source_export": "Bezugsquellenabfrage",
     "article_batch_submit": "Artikelregistrierung senden",
+    "article_transform_preview": "Artikel-Transformation Vorschau",
+    "article_transform_apply": "Artikel-Transformation anwenden",
 }
 
 _STALE_FAILURE_ERROR = (
@@ -166,6 +168,82 @@ def handle_article_batch_submit(
         if batch is not None and batch.status == "submitting":
             batch.status = "approved"
             db.commit()
+        raise
+
+
+@job_handler("article_transform_preview")
+def handle_article_transform_preview(
+    db: Session,
+    payload: dict,
+    oid: str,
+) -> dict:
+    import uuid as uuid_mod
+
+    from app.models import TransformRun
+    from app.transform.preview import TransformAuthAbort, fail_preview, run_preview
+    from app.transform.schemas import TransformSpecError
+
+    run_id = uuid_mod.UUID(str(payload["transform_run_id"]))
+    run = db.get(TransformRun, run_id)
+    if run is None:
+        raise ValueError("Transform-Lauf nicht gefunden")
+    try:
+        return run_preview(db, run, oid=oid)
+    except TransformAuthAbort as exc:
+        db.rollback()
+        run = db.get(TransformRun, run_id)
+        if run is not None:
+            fail_preview(db, run, exc.message)
+        raise ValueError(exc.message) from exc
+    except TransformSpecError as exc:
+        db.rollback()
+        run = db.get(TransformRun, run_id)
+        if run is not None:
+            fail_preview(db, run, exc.message_de)
+        raise ValueError(exc.message_de) from exc
+    except Exception as exc:
+        db.rollback()
+        run = db.get(TransformRun, run_id)
+        if run is not None:
+            message = job_error_message(exc) or str(exc) or "Vorschau fehlgeschlagen"
+            fail_preview(db, run, message)
+        raise
+
+
+@job_handler("article_transform_apply")
+def handle_article_transform_apply(
+    db: Session,
+    payload: dict,
+    oid: str,
+) -> dict:
+    import uuid as uuid_mod
+
+    from app.models import TransformChunk
+    from app.transform.apply import apply_chunk, fail_chunk
+    from app.transform.preview import TransformAuthAbort
+
+    chunk_id = uuid_mod.UUID(str(payload["transform_chunk_id"]))
+    chunk = db.get(TransformChunk, chunk_id)
+    if chunk is None:
+        raise ValueError("Abschnitt nicht gefunden")
+    actor_name = str(payload.get("actor_name") or oid)
+    try:
+        return apply_chunk(db, chunk, oid=oid, actor_name=actor_name)
+    except TransformAuthAbort as exc:
+        db.rollback()
+        chunk = db.get(TransformChunk, chunk_id)
+        if chunk is not None:
+            fail_chunk(db, chunk, exc.message)
+        raise ValueError(exc.message) from exc
+    except Exception as exc:
+        db.rollback()
+        chunk = db.get(TransformChunk, chunk_id)
+        if chunk is not None and chunk.status == "applying":
+            fail_chunk(
+                db,
+                chunk,
+                job_error_message(exc) or str(exc) or "Anwenden fehlgeschlagen",
+            )
         raise
 
 

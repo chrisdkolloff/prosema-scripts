@@ -9,49 +9,41 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
-from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from sqlalchemy import and_, func, or_, select
+from pydantic import ValidationError
+from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import ColumnElement
 
 from app.assistant.catalog import (
     CONFORMING_NUMBER_PATTERN,
-    GEWICHT_UNIT_EQUIV,
-    QueryableColumn,
     column_expression,
     get_column,
     hauptgruppe_code_expression,
-    is_empty_expression,
     is_not_empty_expression,
     numeric_expression,
     resolve_key,
     snapshot_for_query,
     untergruppe_code_expression,
-    volltext_expression,
 )
+
 from app.assistant.schemas import (
     ArtikelDetailsArgs,
     ArtikelSuchenArgs,
     ArtikelZaehlenArgs,
     DatenstandArgs,
     EinheitenAuflistenArgs,
-    FilterCondition,
     GruppenAuflistenArgs,
-    Operator,
-    QueryFilter,
     SortSpec,
 )
 from app.config import settings
+from app.filter_clauses import filter_clauses as _filter_clauses
 from app.models import ArticleSnapshot, ArticleSnapshotRow, Hauptgruppe, Job, Untergruppe
 from app.snapshots import format_snapshot_timestamp
 
 MAX_ROWS_TO_MODEL = 50
 MAX_ROWS_SCANNED = 5000
-
-_TRUE = frozenset({"ja", "true", "1", "yes"})
-_FALSE = frozenset({"nein", "false", "0", "no"})
 
 
 @dataclass
@@ -89,143 +81,6 @@ def _empty_result(*, hinweis: str, snapshot: ArticleSnapshot | None = None) -> T
         datenstand_hinweis_de=_datenstand_hinweis(snapshot),
         hinweis_de=hinweis,
     )
-
-
-def _snapshot_scope(snapshot: ArticleSnapshot) -> ColumnElement:
-    return ArticleSnapshotRow.snapshot_id == snapshot.id
-
-
-def _like_pattern(value: str, *, prefix: bool) -> str:
-    escaped = (
-        value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-    )
-    if prefix:
-        return f"{escaped}%"
-    return f"%{escaped}%"
-
-
-def _coerce_bool(value: Any) -> bool:
-    if isinstance(value, bool):
-        return value
-    token = str(value).strip().casefold()
-    if token in _TRUE:
-        return True
-    if token in _FALSE:
-        return False
-    raise ValueError(
-        f"Ungültiger Wahrheitswert «{value}». Erlaubt sind Ja und Nein."
-    )
-
-
-def _coerce_number(value: Any) -> Decimal:
-    if isinstance(value, Decimal):
-        return value
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
-        return Decimal(str(value))
-    text = str(value).strip().replace("'", "").replace("\u2019", "")
-    if "," in text and "." not in text:
-        text = text.replace(",", ".")
-    try:
-        return Decimal(text)
-    except InvalidOperation as exc:
-        raise ValueError(f"Ungültiger Zahlenwert «{value}».") from exc
-
-
-def _gewicht_values(value: Any) -> list[str]:
-    token = str(value)
-    if token in GEWICHT_UNIT_EQUIV:
-        return list(GEWICHT_UNIT_EQUIV)
-    return [token]
-
-
-def _clause(
-    session: Session,
-    snapshot: ArticleSnapshot,
-    col: QueryableColumn,
-    condition: FilterCondition,
-) -> ColumnElement:
-    if not col.filterable:
-        raise ValueError(f"«{col.label_de}» kann nicht gefiltert werden.")
-    if col.storage == "virtual":
-        if condition.operator != Operator.contains:
-            raise ValueError(
-                f"Operator «{condition.operator}» ist für «{col.label_de}» nicht zulässig. "
-                "Erlaubt ist nur «contains»."
-            )
-        return volltext_expression(session, str(condition.value))
-    if col.storage == "jsonb" and resolve_key(session, col) is None:
-        raise ValueError(
-            f"Die Spalte «{col.label_de}» ist in diesem Snapshot nicht vorhanden."
-        )
-
-    if condition.operator == Operator.is_null:
-        return is_empty_expression(session, col)
-    if condition.operator == Operator.is_not_null:
-        return is_not_empty_expression(session, col)
-
-    if col.type == "number":
-        expr = numeric_expression(session, col)
-        number = _coerce_number(condition.value)
-        ops = {
-            Operator.eq: expr == number,
-            Operator.ne: expr != number,
-            Operator.gt: expr > number,
-            Operator.gte: expr >= number,
-            Operator.lt: expr < number,
-            Operator.lte: expr <= number,
-        }
-        return ops[condition.operator]
-
-    expr = column_expression(session, col)
-
-    if col.type == "bool":
-        flag = _coerce_bool(condition.value)
-        if condition.operator == Operator.eq:
-            return expr.is_(flag)
-        return expr.is_not(flag)
-
-    if col.name == "Gewichtseinheit" and condition.operator in {
-        Operator.eq,
-        Operator.ne,
-        Operator.in_list,
-    }:
-        raw_items = (
-            condition.value if condition.operator == Operator.in_list else [condition.value]
-        )
-        expanded: list[str] = []
-        for item in raw_items:
-            expanded.extend(_gewicht_values(item))
-        unique = list(dict.fromkeys(expanded))
-        if condition.operator == Operator.ne:
-            return or_(expr.not_in(unique), is_empty_expression(session, col))
-        return expr.in_(unique)
-
-    if condition.operator == Operator.eq:
-        return expr == str(condition.value)
-    if condition.operator == Operator.ne:
-        return or_(expr != str(condition.value), is_empty_expression(session, col))
-    if condition.operator == Operator.contains:
-        return expr.ilike(_like_pattern(str(condition.value), prefix=False), escape="\\")
-    if condition.operator == Operator.starts_with:
-        return expr.ilike(_like_pattern(str(condition.value), prefix=True), escape="\\")
-    if condition.operator == Operator.in_list:
-        return expr.in_([str(item) for item in condition.value])
-    raise ValueError(f"Operator «{condition.operator}» wird nicht unterstützt.")
-
-
-def _filter_clauses(
-    session: Session,
-    snapshot: ArticleSnapshot,
-    filters: QueryFilter,
-) -> list[ColumnElement]:
-    filters.validate_select_values(session)
-    clauses: list[ColumnElement] = [_snapshot_scope(snapshot)]
-    for condition in filters.conditions:
-        col = get_column(condition.column)
-        if col is None:
-            raise ValueError(f"Unbekannte Spalte «{condition.column}».")
-        clauses.append(_clause(session, snapshot, col, condition))
-    return clauses
 
 
 def _order_by(session: Session, spec: SortSpec | None) -> ColumnElement:
@@ -549,4 +404,216 @@ def datenstand(session: Session, args: DatenstandArgs) -> ToolResult:
         total_count=snapshot.row_count or 0,
         datenstand=snapshot.created_at,
         datenstand_hinweis_de=_datenstand_hinweis(snapshot),
+    )
+
+
+_PROPOSE_ONLY_FORBIDDEN = frozenset(
+    {
+        "start_transform_preview",
+        "start_transform_apply",
+        "update_article",
+        "update_article_category",
+        "approve_chunk",
+        "reconcile_unknown_row",
+    }
+)
+
+
+def _transform_spec_error_de(exc: BaseException) -> str:
+    from app.transform.schemas import TransformSpecError
+
+    if isinstance(exc, TransformSpecError):
+        return exc.message_de
+    if isinstance(exc, ValidationError):
+        for err in exc.errors():
+            ctx = err.get("ctx") or {}
+            inner = ctx.get("error")
+            if isinstance(inner, TransformSpecError):
+                return inner.message_de
+            msg = str(err.get("msg") or "").removeprefix("Value error, ").strip()
+            if msg:
+                return msg
+    return str(exc) or "Die Vorgabe ist ungültig."
+
+
+def snapshot_key_for_transform_field(name: str) -> str:
+    """Map an assistant column name or alias to a write-catalogue snapshot_key.
+
+    Does not add a third vocabulary: ``get_column`` then ``write_field`` on the
+    column's label and aliases. Unknown names are returned unchanged so
+    TransformSpec can refuse them.
+    """
+    from core.article_write_fields import write_field
+
+    cleaned = (name or "").strip()
+    if not cleaned:
+        return cleaned
+    try:
+        return write_field(cleaned).snapshot_key
+    except KeyError:
+        pass
+    col = get_column(cleaned)
+    if col is None:
+        return cleaned
+    for candidate in (col.label_de, *col.aliases, col.name):
+        if not candidate:
+            continue
+        try:
+            return write_field(candidate).snapshot_key
+        except KeyError:
+            continue
+    return cleaned
+
+
+def _snapshot_field_text(session: Session, row: ArticleSnapshotRow, snapshot_key: str) -> str:
+    col = get_column(snapshot_key)
+    if col is not None and col.storage == "column" and col.column_attr:
+        return str(getattr(row, col.column_attr, None) or "")
+    data = row.data if isinstance(row.data, dict) else {}
+    if col is not None:
+        header_key = resolve_key(session, col)
+        if header_key and data.get(header_key) is not None:
+            return str(data[header_key])
+        for key in col.json_keys:
+            if data.get(key) is not None:
+                return str(data[key])
+    return str(data.get(snapshot_key) or "")
+
+
+def transform_vorschlagen(session: Session, args: Any) -> ToolResult:
+    """Return a validated TransformSpec. Never preview, enqueue, or write."""
+    leaked = _PROPOSE_ONLY_FORBIDDEN & set(globals())
+    assert not leaked, (
+        "transform_vorschlagen must not bind preview, apply, or write helpers: "
+        f"{sorted(leaked)}"
+    )
+
+    from app.assistant.schemas import TransformVorschlagenArgs
+    from app.transform.schemas import (
+        TransformSpec,
+        TransformSpecError,
+        destructive_insertion_refusal,
+    )
+
+    if not isinstance(args, TransformVorschlagenArgs):
+        args = TransformVorschlagenArgs.model_validate(args)
+
+    snapshot = resolve_current_snapshot(session)
+    if snapshot is None:
+        return _empty_result(hinweis="Kein abgeschlossener Artikel-Snapshot vorhanden.")
+
+    try:
+        operations = []
+        for operation in args.operations:
+            item: dict[str, str] = {"op": operation.op, "search": operation.search}
+            if operation.op in {"replace_word", "replace_literal"}:
+                item["replace"] = operation.replace or ""
+            operations.append(item)
+        spec = TransformSpec.model_validate(
+            {
+                "scope": {"query_filter": args.filters.model_dump(mode="json")},
+                "fields": [
+                    snapshot_key_for_transform_field(key) for key in args.fields
+                ],
+                "operations": operations,
+            }
+        )
+        clauses = _filter_clauses(session, snapshot, args.filters)
+        total = int(session.scalar(select(func.count()).where(and_(*clauses))) or 0)
+        scoped_rows = list(session.scalars(select(ArticleSnapshotRow).where(and_(*clauses))))
+        field_values = [
+            _snapshot_field_text(session, row, key)
+            for row in scoped_rows
+            for key in spec.fields
+        ]
+        for operation in spec.operations:
+            refused = destructive_insertion_refusal(operation, field_values)
+            if refused:
+                return ToolResult(
+                    rows=[],
+                    total_count=total,
+                    datenstand=snapshot.created_at,
+                    datenstand_hinweis_de=_datenstand_hinweis(snapshot),
+                    hinweis_de=refused,
+                )
+    except (TransformSpecError, ValidationError, ValueError) as exc:
+        message = _transform_spec_error_de(exc)
+        return ToolResult(
+            rows=[],
+            total_count=0,
+            datenstand=snapshot.created_at,
+            datenstand_hinweis_de=_datenstand_hinweis(snapshot),
+            hinweis_de=message,
+        )
+
+    warnings = list(spec.idempotency_warnings)
+    return ToolResult(
+        rows=[
+            {
+                "spec": spec.model_dump(mode="json"),
+                "warnings": warnings,
+            }
+        ],
+        total_count=total,
+        datenstand=snapshot.created_at,
+        datenstand_hinweis_de=_datenstand_hinweis(snapshot),
+        hinweis_de="\n".join(warnings),
+    )
+
+
+def gruppen_zuordnen(session: Session, args: Any) -> ToolResult:
+    """Return a validated GroupAssignSpec. Never preview, enqueue, or write."""
+    leaked = _PROPOSE_ONLY_FORBIDDEN & set(globals())
+    assert not leaked, (
+        "gruppen_zuordnen must not bind preview, apply, or write helpers: "
+        f"{sorted(leaked)}"
+    )
+
+    from app.assistant.schemas import GruppenZuordnenArgs
+    from app.group_assign import (
+        MSG_EMPTY_SCOPE,
+        MSG_NUMBERS_UNCHANGED,
+        build_group_assign_spec,
+    )
+
+    if not isinstance(args, GruppenZuordnenArgs):
+        args = GruppenZuordnenArgs.model_validate(args)
+
+    snapshot = resolve_current_snapshot(session)
+    if snapshot is None:
+        return _empty_result(hinweis="Kein abgeschlossener Artikel-Snapshot vorhanden.")
+
+    if not args.filters.conditions:
+        return ToolResult(
+            rows=[],
+            total_count=0,
+            datenstand=snapshot.created_at,
+            datenstand_hinweis_de=_datenstand_hinweis(snapshot),
+            hinweis_de=MSG_EMPTY_SCOPE,
+        )
+
+    try:
+        spec = build_group_assign_spec(
+            session,
+            filters=args.filters.model_dump(mode="json"),
+            ziel=args.ziel_gruppe,
+        )
+        clauses = _filter_clauses(session, snapshot, args.filters)
+        total = int(session.scalar(select(func.count()).where(and_(*clauses))) or 0)
+    except (ValidationError, ValueError) as exc:
+        message = str(exc)
+        return ToolResult(
+            rows=[],
+            total_count=0,
+            datenstand=snapshot.created_at,
+            datenstand_hinweis_de=_datenstand_hinweis(snapshot),
+            hinweis_de=message,
+        )
+
+    return ToolResult(
+        rows=[{"spec": spec.model_dump(mode="json")}],
+        total_count=total,
+        datenstand=snapshot.created_at,
+        datenstand_hinweis_de=_datenstand_hinweis(snapshot),
+        hinweis_de=MSG_NUMBERS_UNCHANGED,
     )

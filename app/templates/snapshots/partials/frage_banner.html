@@ -22,6 +22,18 @@
       <p class="mb-1">{{ assistant_answer }}</p>
       {% endif %}
       {% endif %}
+      {% if proposed_spec_summary %}
+      <details class="mt-2" open>
+        <summary>Vorgabe</summary>
+        <pre class="mb-2 mt-2 small">{{ proposed_spec_summary }}</pre>
+        {% if transform_allowed and transform_mode == 'aendern' and proposed_spec_json %}
+        <form method="post" action="/artikel-uebersicht/{{ snapshot.id }}/transform/vorschau-vorschlag">
+          <input type="hidden" name="spec_json" value="{{ proposed_spec_json }}">
+          <button type="submit" class="btn btn-primary btn-sm">{{ msg_open_preview }}</button>
+        </form>
+        {% endif %}
+      </details>
+      {% endif %}
       {% if assistant_hinweis %}
       <p class="mb-0 small text-body-secondary">{{ assistant_hinweis }}</p>
       {% endif %}

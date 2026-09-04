@@ -392,7 +392,7 @@ def test_zaehlen_group_by_truncates(db_session, snapshot):
     result = artikel_zaehlen(
         db_session,
         ArtikelZaehlenArgs(
-            filters=QueryFilter(),
+            filters=QueryFilter(conditions=[]),
             group_by="Einheit",
         ),
     )

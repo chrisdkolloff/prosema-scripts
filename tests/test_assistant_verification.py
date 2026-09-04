@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
+
 from app.assistant.verification import verify_numbers
+from app.snapshots import snapshot_timestamp_numerals
 
 
 def test_all_numbers_accounted_for():
@@ -50,3 +54,28 @@ def test_empty_answer():
     ok, missing = verify_numbers("", {"1"})
     assert ok is True
     assert missing == set()
+
+
+def test_datenstand_single_digit_day_is_traceable():
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from app.assistant.service import _collect_numbers
+    from app.snapshots import snapshot_timestamp_numerals
+
+    when = datetime(2026, 9, 2, 15, 59, tzinfo=ZoneInfo("Europe/Zurich"))
+    allowed = snapshot_timestamp_numerals(when)
+    assert "2" in allowed
+    assert "9" in allowed
+    assert "2026" in allowed
+    ok, missing = verify_numbers(
+        "Ich habe 4174 Artikel gefunden. Der Datenstand ist der 2. September 2026, 15:59 Uhr.",
+        allowed | {"4174"},
+    )
+    assert missing == set()
+    assert ok is True
+    collected = _collect_numbers(when)
+    assert "2" in collected
+    prose_ok, prose_missing = verify_numbers("2. September 2026", collected)
+    assert prose_ok is True
+    assert prose_missing == set()

@@ -33,60 +33,15 @@
   {% if filters.query %}{% set keep.parts = keep.parts + ['q=' ~ (filters.query | urlencode)] %}{% endif %}
   {% if filters.hauptgruppe %}{% set keep.parts = keep.parts + ['hauptgruppe=' ~ (filters.hauptgruppe | urlencode)] %}{% endif %}
   {% if filters.untergruppe %}{% set keep.parts = keep.parts + ['untergruppe=' ~ (filters.untergruppe | urlencode)] %}{% endif %}
+  {% if transform_mode == 'aendern' %}{% set keep.parts = keep.parts + ['modus=aendern'] %}{% endif %}
   {% set keep_qs = keep.parts | join('&') %}
 
-  {% if assistant_available %}
+  {% if snapshot.status == "complete" %}
   <div class="card mb-4" id="snapshot-frage-card">
-    <div class="card-header">{{ assistant_name }}</div>
+    <div class="card-header">{% if transform_mode == 'aendern' %}Ändern{% elif assistant_available %}{{ assistant_name }}{% else %}Artikelübersicht{% endif %}</div>
     <div class="card-body">
-      <form
-        id="snapshot-frage-form"
-        method="post"
-        action="/artikel-uebersicht/{{ snapshot.id }}/frage{% if keep_qs %}?{{ keep_qs }}{% endif %}"
-        hx-boost="false"
-        hx-disinherit="*"
-        onsubmit="document.body.classList.add('is-frage-busy')"
-      >
-        {% if filters.query %}
-        <input type="hidden" name="q" value="{{ filters.query }}">
-        {% endif %}
-        {% if filters.hauptgruppe %}
-        <input type="hidden" name="hauptgruppe" value="{{ filters.hauptgruppe }}">
-        {% endif %}
-        {% if filters.untergruppe %}
-        <input type="hidden" name="untergruppe" value="{{ filters.untergruppe }}">
-        {% endif %}
-        <label class="form-label" for="snapshot-frage">Stell {{ assistant_name }} eine Frage zur Artikelliste. Die Treffer werden in der Tabelle ausgewählt.</label>
-        <div class="row g-3 align-items-end">
-          <div class="col">
-            <input
-              class="form-control"
-              id="snapshot-frage"
-              type="text"
-              name="frage"
-              value="{{ assistant_question or '' }}"
-              placeholder="{{ assistant_example_questions[0] }}"
-              autocomplete="off"
-            >
-            <script type="application/json" id="snapshot-frage-examples">{{ assistant_example_questions | tojson }}</script>
-          </div>
-          <div class="col-auto">
-            <button type="submit" class="btn btn-primary" id="snapshot-frage-submit">Fragen</button>
-          </div>
-        </div>
-        <p id="snapshot-frage-status" class="alert alert-info mt-3 mb-0" hidden role="status"></p>
-      </form>
-      <div class="alert alert-info mt-3 mb-0" id="snapshot-frage-running-banner" role="status">
-        Suchanfrage läuft...
-      </div>
-      {% if assistant_query_id %}
-      {% include "snapshots/partials/frage_banner.html" %}
-      {% endif %}
+      {% include "snapshots/partials/frage_card_body.html" %}
     </div>
-  </div>
-  {% elif assistant_query_id %}
-  <div class="mb-4">
-    {% include "snapshots/partials/frage_banner.html" %}
   </div>
   {% endif %}
 
@@ -152,5 +107,6 @@
   <script src="/static/jsuites.js"></script>
   <script src="/static/jspreadsheet.js"></script>
   <script src="/static/snapshot_grid.js?v={{ app_version }}"></script>
+  <script src="/static/transform_form.js?v={{ app_version }}"></script>
   {% endif %}
 {% endblock %}

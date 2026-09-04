@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from typing import Any
 from urllib.parse import urlencode
@@ -33,6 +34,13 @@ from app.snapshots import (
     format_swiss_number,
     list_snapshots,
     running_snapshot,
+)
+from app.transform.ui import (
+    MSG_WRITE_PROMPT,
+    format_spec_summary_de,
+    proposed_spec_from_tool_calls,
+    transform_form_context,
+    transform_gate,
 )
 
 router = APIRouter()
@@ -180,8 +188,11 @@ def _assistant_viewer_fields(
             "assistant_selection_count": None,
             "assistant_truncated": False,
             "assistant_query_id": None,
+            "proposed_spec_summary": None,
+            "proposed_spec_json": None,
         }
     numbers = query.applied_article_numbers
+    spec = proposed_spec_from_tool_calls(query.tool_calls)
     return {
         "assistant_question": query.question_de,
         "assistant_answer": query.answer_de,
@@ -191,6 +202,10 @@ def _assistant_viewer_fields(
         "assistant_selection_count": len(numbers) if numbers is not None else None,
         "assistant_truncated": query.selection_truncated,
         "assistant_query_id": query.id,
+        "proposed_spec_summary": format_spec_summary_de(spec) if spec is not None else None,
+        "proposed_spec_json": json.dumps(spec.model_dump(mode="json"), ensure_ascii=False)
+        if spec is not None
+        else None,
     }
 
 
@@ -220,11 +235,15 @@ def _viewer_context(
         "jsuites_version": JSUITES_VERSION,
         "running_snapshot": running_snapshot(db),
         "assistant_example_questions": list(EXAMPLE_QUESTIONS),
+        "msg_write_prompt": MSG_WRITE_PROMPT.format(name=settings.assistant_name),
         **_assistant_viewer_fields(query, hinweis),
     }
     ctx["assistant_available"] = bool(
         settings.assistant_enabled and snapshot.status == "complete"
     )
+    ctx["transform_mode"] = str(request.query_params.get("modus") or "lesen")
+    ctx.update(transform_gate(db, snapshot))
+    ctx.update(transform_form_context())
 
     if snapshot.status == "complete":
         page_rows, total_filtered, pages = fetch_filtered_rows(db, snapshot.id, filters)
@@ -445,12 +464,18 @@ def snapshot_frage(
             ctx,
         )
 
-    result = ask(db, user, frage, snapshot=snapshot)
+    write_mode = (
+        str(request.query_params.get("modus") or "") == "aendern"
+        and transform_gate(db, snapshot)["transform_allowed"]
+    )
+    result = ask(db, user, frage, snapshot=snapshot, write_mode=write_mode)
     params: list[tuple[str, str]] = [("frage", str(result.audit_id))]
     for key in ("q", "hauptgruppe", "untergruppe"):
         value = str(request.query_params.get(key) or "").strip()
         if value:
             params.append((key, value))
+    if write_mode:
+        params.append(("modus", "aendern"))
     return RedirectResponse(
         url=f"/artikel-uebersicht/{snapshot_id}?{urlencode(params)}",
         status_code=303,

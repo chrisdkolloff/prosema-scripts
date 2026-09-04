@@ -1,0 +1,136 @@
+[
+  {
+    "probe": "P1",
+    "baseline_version": "7",
+    "article_id": "353023"
+  },
+  {
+    "probe": "P2",
+    "question": "partial PUT with correct version",
+    "payload_keys": [
+      "name",
+      "version"
+    ],
+    "version_sent": "7",
+    "raised": false,
+    "result": "accepted",
+    "returned_version": "8"
+  },
+  {
+    "probe": "P2-observed",
+    "version_after": "8",
+    "incremented": true
+  },
+  {
+    "probe": "P3",
+    "question": "PUT with STALE version (v0, now superseded)",
+    "payload_keys": [
+      "name",
+      "version"
+    ],
+    "version_sent": "7",
+    "raised": true,
+    "status": null,
+    "body": "WeclappError('weclapp API Fehler 409 bei PUT /article/id/353023')",
+    "result": "rejected"
+  },
+  {
+    "probe": "P3-observed",
+    "name_changed": false,
+    "version_after": "8"
+  },
+  {
+    "probe": "P4",
+    "question": "PUT with NO version key at all",
+    "payload_keys": [
+      "name"
+    ],
+    "version_sent": "<omitted>",
+    "raised": false,
+    "result": "accepted",
+    "returned_version": "9"
+  },
+  {
+    "probe": "P4-observed",
+    "name_changed": true,
+    "version_after": "9"
+  },
+  {
+    "probe": "P5",
+    "question": "PUT with identical values (no-op)",
+    "payload_keys": [
+      "name",
+      "version"
+    ],
+    "version_sent": "9",
+    "raised": false,
+    "result": "accepted",
+    "returned_version": "9"
+  },
+  {
+    "probe": "P5-observed",
+    "version_before": "9",
+    "version_after": "9",
+    "bumped_on_noop": false
+  },
+  {
+    "probe": "P6",
+    "question": "PUT lowLevelCode alone (known read-only)",
+    "payload_keys": [
+      "lowLevelCode",
+      "version"
+    ],
+    "version_sent": "9",
+    "raised": true,
+    "status": null,
+    "body": "WeclappError('weclapp API Fehler 400 bei PUT /article/id/353023')",
+    "result": "rejected"
+  },
+  {
+    "probe": "P6-observed",
+    "lowLevelCode_changed": false,
+    "version_after": "9"
+  },
+  {
+    "probe": "P7",
+    "question": "PUT valid shortDescription1 + read-only lowLevelCode",
+    "payload_keys": [
+      "lowLevelCode",
+      "shortDescription1",
+      "version"
+    ],
+    "version_sent": "9",
+    "raised": true,
+    "status": null,
+    "body": "WeclappError('weclapp API Fehler 400 bei PUT /article/id/353023')",
+    "result": "rejected"
+  },
+  {
+    "probe": "P7-observed",
+    "valid_field_landed": false,
+    "version_after": "9"
+  },
+  {
+    "probe": "P8",
+    "question": "PUT customAttributes with ONE of 26 entries",
+    "payload_keys": [
+      "customAttributes",
+      "version"
+    ],
+    "version_sent": "9",
+    "raised": false,
+    "result": "accepted",
+    "returned_version": "10"
+  },
+  {
+    "probe": "P8-observed",
+    "attrs_before": 26,
+    "attrs_after": 26,
+    "behaviour": "merge",
+    "version_after": "10"
+  },
+  {
+    "probe": "restore",
+    "clean": true
+  }
+]

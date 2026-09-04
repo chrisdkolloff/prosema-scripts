@@ -86,3 +86,29 @@ def test_volltext_eq_rejected_names_contains():
     assert "Volltext" in message
     assert "contains" in message
     assert "nicht zulässig" in message
+
+
+def test_query_filter_requires_conditions_list():
+    with pytest.raises(ValidationError):
+        QueryFilter.model_validate({})
+    with pytest.raises(ValidationError):
+        QueryFilter.model_validate({"conditions": None})
+    assert QueryFilter.model_validate({"conditions": []}).conditions == []
+
+
+def test_transform_vorschlagen_schema_requires_conditions():
+    from app.assistant.schemas import TransformVorschlagenArgs
+
+    schema = TransformVorschlagenArgs.model_json_schema()
+    assert "filters" in schema["required"]
+    query = schema["$defs"]["QueryFilter"]
+    assert "conditions" in query["required"]
+    assert query["properties"]["conditions"]["type"] == "array"
+
+
+def test_gruppen_zuordnen_schema_requires_ziel():
+    from app.assistant.schemas import GruppenZuordnenArgs
+
+    schema = GruppenZuordnenArgs.model_json_schema()
+    assert "ziel_gruppe" in schema["required"]
+    assert "filters" in schema["required"]

@@ -1266,8 +1266,10 @@ def test_frage_card_hidden_when_assistant_disabled(db_session, user_client):
     with patch("app.config.settings.assistant_enabled", False):
         response = user_client.get(f"/artikel-uebersicht/{snapshot.id}")
     assert response.status_code == 200
-    assert 'id="snapshot-frage-card"' not in response.text
+    assert 'id="snapshot-frage-card"' in response.text
     assert 'name="frage"' not in response.text
+    assert "Lesen" in response.text
+    assert "Ändern" in response.text
 
 
 @patch("app.config.settings.weclapp_tenant", TENANT)

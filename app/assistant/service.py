@@ -29,6 +29,7 @@ from app.assistant.prompts import (
     FINAL_TURN_HINT,
     PARSE_RETRY_HINT,
     build_system_prompt,
+    build_write_system_prompt,
     compatible_protocol_suffix,
 )
 from app.assistant.schemas import (
@@ -39,23 +40,27 @@ from app.assistant.schemas import (
     EinheitenAuflistenArgs,
     GruppenAuflistenArgs,
     QueryFilter,
+    TransformVorschlagenArgs,
+    GruppenZuordnenArgs,
 )
 from app.assistant.tools import (
     ToolResult,
-    _filter_clauses,
     artikel_details,
     artikel_suchen,
     artikel_zaehlen,
     datenstand,
     einheiten_auflisten,
     gruppen_auflisten,
+    gruppen_zuordnen,
     resolve_current_snapshot,
+    transform_vorschlagen,
 )
 from app.assistant.verification import _TOKEN_RE, verify_numbers
 from app.auth import SessionUser
 from app.config import settings
+from app.filter_clauses import filter_clauses
 from app.models import ArticleSnapshot, ArticleSnapshotRow, AssistantQuery
-from app.snapshots import format_snapshot_timestamp
+from app.snapshots import format_snapshot_timestamp, snapshot_timestamp_numerals
 
 logger = logging.getLogger(__name__)
 
@@ -166,12 +171,41 @@ TOOL_SPECS: tuple[_ToolSpec, ...] = (
         datenstand,
     ),
 )
+
+TRANSFORM_VORSCHLAGEN_SPEC = _ToolSpec(
+    "transform_vorschlagen",
+    (
+        "Propose a validated TransformSpec for article field rewrites. "
+        "Does not preview, enqueue, or write. "
+        "filters.conditions is required; an empty list means the whole catalogue."
+    ),
+    TransformVorschlagenArgs,
+    transform_vorschlagen,
+)
+
+GRUPPEN_ZUORDNEN_SPEC = _ToolSpec(
+    "gruppen_zuordnen",
+    (
+        "Propose reassigning matching articles to a Hauptgruppe.Untergruppe "
+        "(weclapp articleCategoryId). Does not preview, enqueue, or write. "
+        "ziel_gruppe is MMM.SSS, e.g. 100.130. filters.conditions is required "
+        "and must not be empty. Does not change article numbers."
+    ),
+    GruppenZuordnenArgs,
+    gruppen_zuordnen,
+)
+
+WRITE_TOOL_SPECS: tuple[_ToolSpec, ...] = TOOL_SPECS + (
+    TRANSFORM_VORSCHLAGEN_SPEC,
+    GRUPPEN_ZUORDNEN_SPEC,
+)
 TOOLS_BY_NAME = {spec.name: spec for spec in TOOL_SPECS}
+WRITE_TOOLS_BY_NAME = {spec.name: spec for spec in WRITE_TOOL_SPECS}
 
 
-def _tool_schemas() -> list[dict[str, Any]]:
+def _tool_schemas(specs: tuple[_ToolSpec, ...] = TOOL_SPECS) -> list[dict[str, Any]]:
     schemas: list[dict[str, Any]] = []
-    for spec in TOOL_SPECS:
+    for spec in specs:
         parameters = spec.args_model.model_json_schema()
         parameters.setdefault("type", "object")
         parameters.setdefault("additionalProperties", False)
@@ -304,8 +338,7 @@ def _collect_numbers(*objs: Any) -> set[str]:
             found.add(format(value, "g"))
             return
         if isinstance(value, datetime):
-            found.update(_TOKEN_RE.findall(value.isoformat()))
-            found.update(_TOKEN_RE.findall(format_snapshot_timestamp(value)))
+            found.update(snapshot_timestamp_numerals(value))
             return
         if isinstance(value, str):
             found.update(_TOKEN_RE.findall(value))
@@ -391,7 +424,7 @@ def _pin_selection(
     This second query selects only article_number, with no model-facing limit,
     capped at MAX_SELECTION_ROWS + 1 so truncation is detectable.
     """
-    clauses = _filter_clauses(session, snapshot, query_filter)
+    clauses = filter_clauses(session, snapshot, query_filter)
     stmt = (
         select(ArticleSnapshotRow.article_number)
         .where(and_(*clauses))
@@ -410,6 +443,7 @@ def ask(
     question_de: str,
     *,
     snapshot: ArticleSnapshot | None = None,
+    write_mode: bool = False,
 ) -> AssistantResult:
     started = time.perf_counter()
     audit_id = uuid.uuid4()
@@ -535,8 +569,14 @@ def ask(
                 error=MSG_EMPTY_QUESTION,
             )
 
-        schemas = _tool_schemas()
-        system = build_system_prompt(session)
+        active_specs = WRITE_TOOL_SPECS if write_mode else TOOL_SPECS
+        tools_by_name = WRITE_TOOLS_BY_NAME if write_mode else TOOLS_BY_NAME
+        schemas = _tool_schemas(active_specs)
+        system = (
+            build_write_system_prompt(session)
+            if write_mode
+            else build_system_prompt(session)
+        )
         messages: list[dict[str, Any]] = [
             {"role": "user", "content": question_de.strip()},
         ]
@@ -641,7 +681,7 @@ def ask(
                     assistant_msg, tool_msgs = _tool_messages(provider, step.tool_calls)
                     messages.append(assistant_msg)
                     for call, tool_msg in zip(step.tool_calls, tool_msgs, strict=True):
-                        spec = TOOLS_BY_NAME.get(call.name)
+                        spec = tools_by_name.get(call.name)
                         recorded: dict[str, Any] = {
                             "name": call.name,
                             "arguments": call.arguments,
@@ -702,17 +742,28 @@ def ask(
                             continue
                         payload = _serialize_tool_result(result)
                         recorded["total_count"] = result.total_count
+                        if spec.name in {"transform_vorschlagen", "gruppen_zuordnen"}:
+                            if result.hinweis_de:
+                                recorded["hinweis_de"] = result.hinweis_de
+                            if result.rows:
+                                first = result.rows[0]
+                                if isinstance(first, dict) and first.get("spec"):
+                                    recorded["spec"] = first["spec"]
+                                    recorded["warnings"] = first.get("warnings") or []
                         recorded_calls.append(recorded)
                         executed_payloads[key] = payload
                         call_counts[key] = 1
-                        had_row_returning = True
                         allowed.update(_collect_numbers(call.arguments, payload, result.total_count))
-                        last_rows = result.rows
-                        last_columns = _columns_for(result.rows)
                         last_total = result.total_count
                         last_truncated = result.truncated
-                        last_empty_rows = not result.rows
-                        if spec.name in _SELECTION_TOOLS:
+                        if spec.name not in {"transform_vorschlagen", "gruppen_zuordnen"}:
+                            had_row_returning = True
+                            last_rows = result.rows
+                            last_columns = _columns_for(result.rows)
+                            last_empty_rows = not result.rows
+                            if spec.name in _SELECTION_TOOLS:
+                                last_selection_filter = args.filters
+                        elif spec.name == "gruppen_zuordnen" and result.rows:
                             last_selection_filter = args.filters
                         if result.datenstand is not None:
                             last_datenstand = result.datenstand

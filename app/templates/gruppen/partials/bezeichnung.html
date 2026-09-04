@@ -1,6 +1,7 @@
-<div id="bezeichnung-panel">
-  {% if name_error %}
-  <div class="alert alert-danger" role="alert">{{ name_error }}</div>
+<div id="bezeichnung-panel"
+     hx-on::before-swap="if(event.detail.xhr.status===400){event.detail.shouldSwap=true;event.detail.isError=false}">
+  {% if panel_banners %}
+  {% include "gruppen/partials/banners.html" %}
   {% endif %}
   {% if editing %}
   <form

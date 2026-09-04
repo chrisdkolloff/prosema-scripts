@@ -1,9 +1,10 @@
-<div id="untergruppen-panel">
+<div id="untergruppen-panel"
+     hx-on::before-swap="if(event.detail.xhr.status===400){event.detail.shouldSwap=true;event.detail.isError=false}">
   <div class="card mb-4">
     <div class="card-header">Untergruppen</div>
     <div class="card-body">
-      {% if error %}
-      <div class="alert alert-danger" role="alert">{{ error }}</div>
+      {% if panel_banners %}
+      {% include "gruppen/partials/banners.html" %}
       {% endif %}
       <div class="table-responsive">
         <table class="table table-hover align-middle">
@@ -22,7 +23,7 @@
               <td>
                 {% if item.locked_at %}
                 <code>{{ item.code }}</code>
-                <p class="text-body-secondary small mb-0">Es befinden sich bereits Artikel in dieser Untergruppe</p>
+                <p class="text-body-secondary small mb-0">Es befinden sich Artikel in dieser Untergruppe</p>
                 {% elif is_admin and not item.deleted_at %}
                 <form method="post" action="/untergruppen/{{ item.id }}/code" class="d-flex flex-wrap gap-2 align-items-center">
                   <input class="form-control form-control-sm" style="width: 5rem;" type="text" name="code" maxlength="3" required pattern="[0-9]{3}" value="{{ item.code }}" aria-label="Code">

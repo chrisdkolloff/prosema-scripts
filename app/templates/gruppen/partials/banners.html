@@ -1,0 +1,15 @@
+{% if notice_ok %}
+<div class="alert alert-info" role="status">{{ notice_ok }}</div>
+{% endif %}
+{% if error %}
+<div class="alert alert-warning" role="alert">
+  <p class="{% if error_prompt %}mb-2{% else %}mb-0{% endif %}">{{ error }}</p>
+  {% if error_prompt %}
+  <p class="mb-1">Vorschlag für {{ assistant_name }} — in der Artikelübersicht im Modus <strong>Ändern</strong> einfügen. <code>XXX.YYY</code> durch die neue Haupt- und Untergruppe ersetzen:</p>
+  <textarea class="form-control font-monospace" rows="3" readonly>{{ error_prompt }}</textarea>
+  {% endif %}
+</div>
+{% endif %}
+{% if name_error %}
+<div class="alert alert-warning" role="alert">{{ name_error }}</div>
+{% endif %}

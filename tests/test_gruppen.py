@@ -27,7 +27,7 @@ from app.groups_service import (
     resolve_untergruppe,
 )
 from app.main import app
-from app.models import Hauptgruppe, Untergruppe
+from app.models import ArticleSnapshot, ArticleSnapshotRow, Hauptgruppe, Untergruppe
 from scripts.seed_groups import apply_seed, main, parse_workbook
 
 ACTOR = {"oid": "test-oid", "name": "Test User"}
@@ -366,7 +366,12 @@ def test_create_pair_locally_skips_weclapp(admin_client, db_session):
             follow_redirects=False,
         )
     assert response.status_code == 303
+    assert "ok=angelegt" in response.headers["location"]
+    assert "wc=0" in response.headers["location"]
     mock_client.assert_not_called()
+    followed = admin_client.get(response.headers["location"])
+    assert "alert-info" in followed.text
+    assert "Gruppe wurde gespeichert." in followed.text
     parent = db_session.scalars(select(Hauptgruppe).where(Hauptgruppe.code == code)).one()
     assert parent.name == "Lokalhaupt"
     kids = list(
@@ -399,6 +404,7 @@ def test_create_pair_on_tools_host_posts_both_to_weclapp(admin_client, db_sessio
             follow_redirects=False,
         )
     assert response.status_code == 303
+    assert "ok=angelegt" in response.headers["location"]
     assert mock_wc.post.call_count == 2
     assert mock_wc.post.call_args_list[0].kwargs["json"] == {
         "name": "Toolshaupt",
@@ -413,6 +419,7 @@ def test_create_untergruppe_on_tools_host_posts_child(admin_client, db_session):
     parent = _make_hauptgruppe(db_session, name="Bestehend")
     db_session.flush()
     mock_wc = MagicMock()
+    mock_wc.get_count.return_value = 0
     mock_wc.iter_pages.return_value = [
         {"id": "p1", "name": "Bestehend", "parentCategoryId": None},
     ]
@@ -456,6 +463,7 @@ def test_create_pair_weclapp_failure_rolls_back(admin_client, db_session):
         )
     assert response.status_code == 400
     assert "weclapp" in response.text
+    assert "alert-warning" in response.text
     found = db_session.scalars(select(Hauptgruppe).where(Hauptgruppe.code == code)).all()
     assert found == []
 
@@ -480,6 +488,7 @@ def test_rename_hauptgruppe_on_tools_host_puts_weclapp(admin_client, db_session)
     group = _make_hauptgruppe(db_session, name="Altname")
     db_session.flush()
     mock_wc = MagicMock()
+    mock_wc.get_count.return_value = 0
     mock_wc.iter_pages.return_value = [
         {
             "id": "p1",
@@ -504,6 +513,10 @@ def test_rename_hauptgruppe_on_tools_host_puts_weclapp(admin_client, db_session)
     assert mock_wc.put.call_args.kwargs["json"]["name"] == "Neuname"
     db_session.refresh(group)
     assert group.name == "Neuname"
+    followed = admin_client.get(response.headers["location"])
+    assert followed.status_code == 200
+    assert "alert-info" in followed.text
+    assert "Bezeichnung wurde in weclapp geändert." in followed.text
 
 
 def test_rename_untergruppe_on_tools_host_puts_weclapp(admin_client, db_session):
@@ -511,6 +524,7 @@ def test_rename_untergruppe_on_tools_host_puts_weclapp(admin_client, db_session)
     child = _make_untergruppe(db_session, parent, code="008", name="Altunter")
     db_session.flush()
     mock_wc = MagicMock()
+    mock_wc.get_count.return_value = 0
     mock_wc.iter_pages.return_value = [
         {"id": "p1", "name": "Bestehend", "description": parent.code, "parentCategoryId": None},
         {
@@ -541,12 +555,110 @@ def test_rename_untergruppe_on_tools_host_puts_weclapp(admin_client, db_session)
     assert child.name == "Neuunter"
 
 
+def test_delete_untergruppe_on_tools_host_deletes_weclapp(admin_client, db_session):
+    parent = _make_hauptgruppe(db_session, name="Bestehend")
+    child = _make_untergruppe(db_session, parent, code="020", name="Heizmatten")
+    db_session.flush()
+    mock_wc = MagicMock()
+    mock_wc.get_count.return_value = 0
+    mock_wc.iter_pages.return_value = [
+        {"id": "p1", "name": "Bestehend", "description": parent.code, "parentCategoryId": None},
+        {
+            "id": "c1",
+            "name": "Heizmatten",
+            "description": "020",
+            "parentCategoryId": "p1",
+        },
+    ]
+    with (
+        patch("app.routes.gruppen.weclapp_category_writes_allowed", return_value=True),
+        patch("app.routes.gruppen.weclapp_client_for", return_value=mock_wc),
+    ):
+        response = admin_client.post(
+            f"/untergruppen/{child.id}/loeschen",
+            follow_redirects=False,
+        )
+    assert response.status_code == 303
+    mock_wc.request.assert_called_once_with("DELETE", "/articleCategory/id/c1")
+    db_session.refresh(child)
+    assert child.deleted_at is not None
+    followed = admin_client.get(response.headers["location"])
+    assert "alert-info" in followed.text
+    assert "Gruppe wurde in weclapp gelöscht." in followed.text
+
+
+def test_delete_untergruppe_weclapp_failure_rolls_back(admin_client, db_session):
+    from scripts.weclapp.client import WeclappError
+
+    parent = _make_hauptgruppe(db_session, name="Bestehend")
+    child = _make_untergruppe(db_session, parent, code="020", name="Heizmatten")
+    db_session.flush()
+    mock_wc = MagicMock()
+    mock_wc.get_count.return_value = 0
+    mock_wc.iter_pages.return_value = [
+        {"id": "p1", "name": "Bestehend", "description": parent.code, "parentCategoryId": None},
+        {
+            "id": "c1",
+            "name": "Heizmatten",
+            "description": "020",
+            "parentCategoryId": "p1",
+        },
+    ]
+    mock_wc.request.side_effect = WeclappError("in use", status_code=400)
+    with (
+        patch("app.routes.gruppen.weclapp_category_writes_allowed", return_value=True),
+        patch("app.routes.gruppen.weclapp_client_for", return_value=mock_wc),
+    ):
+        response = admin_client.post(
+            f"/untergruppen/{child.id}/loeschen",
+            follow_redirects=False,
+        )
+    assert response.status_code == 400
+    assert "gelöscht" in response.text
+    assert "alert-warning" in response.text
+    db_session.refresh(child)
+    assert child.deleted_at is None
+
+
+def test_restore_untergruppe_on_tools_host_posts_weclapp(admin_client, db_session):
+    from app.groups_service import soft_delete_untergruppe
+
+    parent = _make_hauptgruppe(db_session, name="Bestehend")
+    child = _make_untergruppe(db_session, parent, code="020", name="Heizmatten")
+    with patch("app.group_usage.snapshot_for_query", return_value=None):
+        soft_delete_untergruppe(db_session, child, actor=ACTOR)
+    db_session.flush()
+    mock_wc = MagicMock()
+    mock_wc.get_count.return_value = 0
+    mock_wc.iter_pages.return_value = [
+        {"id": "p1", "name": "Bestehend", "description": parent.code, "parentCategoryId": None},
+    ]
+    mock_wc.post.return_value = {"id": "c9"}
+    with (
+        patch("app.routes.gruppen.weclapp_category_writes_allowed", return_value=True),
+        patch("app.routes.gruppen.weclapp_client_for", return_value=mock_wc),
+    ):
+        response = admin_client.post(
+            f"/untergruppen/{child.id}/wiederherstellen",
+            follow_redirects=False,
+        )
+    assert response.status_code == 303
+    mock_wc.post.assert_called_once()
+    payload = mock_wc.post.call_args.kwargs["json"]
+    assert payload["parentCategoryId"] == "p1"
+    assert payload["name"] == "Heizmatten"
+    assert payload["description"] == "020"
+    db_session.refresh(child)
+    assert child.deleted_at is None
+
+
 def test_rename_hauptgruppe_weclapp_failure_rolls_back(admin_client, db_session):
     from scripts.weclapp.client import WeclappError
 
     group = _make_hauptgruppe(db_session, name="Bleibt")
     db_session.flush()
     mock_wc = MagicMock()
+    mock_wc.get_count.return_value = 0
     mock_wc.iter_pages.return_value = [
         {
             "id": "p1",
@@ -572,6 +684,7 @@ def test_rename_hauptgruppe_weclapp_failure_rolls_back(admin_client, db_session)
         )
     assert response.status_code == 400
     assert "bereits vergeben" in response.text
+    assert "alert-warning" in response.text
     db_session.refresh(group)
     assert group.name == "Bleibt"
 
@@ -598,6 +711,7 @@ def test_gruppen_list_warns_when_weclapp_is_out_of_sync(admin_client, db_session
     _make_untergruppe(db_session, parent, code="030", name="Werkzeug")
     db_session.flush()
     mock_wc = MagicMock()
+    mock_wc.get_count.return_value = 0
     mock_wc.iter_pages.return_value = [
         {"id": "p1", "name": "Zubehör", "description": parent.code, "parentCategoryId": None},
         {
@@ -632,4 +746,127 @@ def test_gruppen_list_skips_sync_check_locally(admin_client, db_session):
     mock_client.assert_not_called()
     assert MSG_SYNC_BANNER not in response.text
     assert "alert-warning" not in response.text
+
+
+def _snapshot_with_number(db_session, article_number: str) -> ArticleSnapshot:
+    from app.config import settings
+
+    snap = ArticleSnapshot(
+        status="complete",
+        created_by_oid="oid",
+        created_by_name="Tester",
+        weclapp_tenant=settings.weclapp_tenant,
+        row_count=1,
+        columns=[],
+        created_at=datetime.now(UTC),
+    )
+    db_session.add(snap)
+    db_session.flush()
+    db_session.add(
+        ArticleSnapshotRow(
+            snapshot_id=snap.id,
+            position=0,
+            data={"Prosema Artikelnummer": article_number},
+            article_number=article_number,
+            article_name="Heizmatte",
+            active=True,
+            weclapp_id="art-1",
+        )
+    )
+    db_session.flush()
+    return snap
+
+
+def test_delete_untergruppe_refused_when_articles_remain(admin_client, db_session):
+    parent = _make_hauptgruppe(db_session, name="HeizHG")
+    child = _make_untergruppe(db_session, parent, code="020", name="Heizmatten")
+    db_session.flush()
+    snap = _snapshot_with_number(db_session, f"{parent.code}.020.0001")
+    with patch("app.group_usage.snapshot_for_query", return_value=snap):
+        response = admin_client.post(
+            f"/untergruppen/{child.id}/loeschen",
+            follow_redirects=False,
+        )
+    assert response.status_code == 400
+    assert "nicht gelöscht" in response.text
+    assert "alert-warning" in response.text
+    assert f"{parent.code}.020" in response.text
+    assert "XXX.YYY" in response.text
+    assert "textarea" in response.text
+    db_session.refresh(child)
+    assert child.deleted_at is None
+
+
+def test_delete_untergruppe_htmx_swaps_warning(admin_client, db_session):
+    parent = _make_hauptgruppe(db_session, name="HeizHG")
+    child = _make_untergruppe(db_session, parent, code="020", name="Heizmatten")
+    db_session.flush()
+    snap = _snapshot_with_number(db_session, f"{parent.code}.020.0001")
+    with patch("app.group_usage.snapshot_for_query", return_value=snap):
+        response = admin_client.post(
+            f"/untergruppen/{child.id}/loeschen",
+            headers={"HX-Request": "true"},
+            follow_redirects=False,
+        )
+    assert response.status_code == 200
+    assert "alert-warning" in response.text
+    assert "textarea" in response.text
+    db_session.refresh(child)
+    assert child.deleted_at is None
+
+
+def test_delete_untergruppe_refused_from_weclapp_count(admin_client, db_session):
+    parent = _make_hauptgruppe(db_session, name="HeizHG")
+    child = _make_untergruppe(db_session, parent, code="020", name="Heizmatten")
+    db_session.flush()
+    mock_wc = MagicMock()
+    mock_wc.get_count.return_value = 0
+    mock_wc.iter_pages.return_value = [
+        {
+            "id": "p1",
+            "name": "HeizHG",
+            "description": parent.code,
+            "parentCategoryId": None,
+        },
+        {
+            "id": "c1",
+            "name": "Heizmatten",
+            "description": "020",
+            "parentCategoryId": "p1",
+        },
+    ]
+    mock_wc.get_count.return_value = 4
+    with (
+        patch("app.group_usage.snapshot_for_query", return_value=None),
+        patch("app.routes.gruppen.weclapp_client_for", return_value=mock_wc),
+    ):
+        response = admin_client.post(
+            f"/untergruppen/{child.id}/loeschen",
+            follow_redirects=False,
+        )
+    assert response.status_code == 400
+    assert "4 Artikel" in response.text
+    mock_wc.get_count.assert_called_once()
+    db_session.refresh(child)
+    assert child.deleted_at is None
+
+
+def test_delete_untergruppe_refused_when_locked_and_no_snapshot(
+    admin_client, db_session
+):
+    from app.group_usage import MSG_NO_SNAPSHOT
+
+    parent = _make_hauptgruppe(db_session, name="LockHG")
+    child = _make_untergruppe(db_session, parent, code="020", name="LockUG")
+    child.locked_at = datetime.now(UTC)
+    db_session.flush()
+    with patch("app.group_usage.snapshot_for_query", return_value=None):
+        response = admin_client.post(
+            f"/untergruppen/{child.id}/loeschen",
+            follow_redirects=False,
+        )
+    assert response.status_code == 400
+    assert MSG_NO_SNAPSHOT in response.text
+    db_session.refresh(child)
+    assert child.deleted_at is None
 

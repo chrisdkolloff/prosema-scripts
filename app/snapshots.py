@@ -58,6 +58,29 @@ def format_snapshot_timestamp(when: datetime) -> str:
     return local.strftime("%d.%m.%Y, %H:%M Uhr")
 
 
+def snapshot_timestamp_numerals(when: datetime) -> set[str]:
+    """Day, month, year, hour, and minute as they may appear in a Datenstand.
+
+    ``format_snapshot_timestamp`` zero-pads the day (``02.09.2026``). German
+    prose uses the unpadded day (``2. September 2026``). Both forms are
+    allowed numeral sources, plus the ISO payload the tools return.
+    """
+    local = when.astimezone(ZURICH)
+    found: set[str] = set()
+    found.update(_snapshot_numeral_tokens(format_snapshot_timestamp(when)))
+    found.update(_snapshot_numeral_tokens(when.isoformat()))
+    for part in (local.day, local.month, local.year, local.hour, local.minute):
+        found.add(str(part))
+        found.add(f"{part:02d}")
+    return found
+
+
+def _snapshot_numeral_tokens(text: str) -> set[str]:
+    from app.assistant.verification import _TOKEN_RE
+
+    return set(_TOKEN_RE.findall(text))
+
+
 def excel_filename_timestamp(when: datetime) -> str:
     local = when.astimezone(ZURICH)
     return local.strftime("%Y-%m-%d_%H%M")

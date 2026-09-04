@@ -42,13 +42,40 @@ from app.weclapp_categories import (
     GroupSyncIssue,
     collect_weclapp_sync_issues,
     create_haupt_and_unter_in_weclapp,
+    create_haupt_in_weclapp,
     create_unter_in_weclapp,
+    delete_haupt_in_weclapp,
+    delete_unter_in_weclapp,
     rename_haupt_in_weclapp,
     rename_unter_in_weclapp,
     weclapp_category_writes_allowed,
 )
 
 router = APIRouter()
+
+# (weclapp text, Tools-only text) for ?ok= keys after a successful write.
+_NOTICE_OK: dict[str, tuple[str, str]] = {
+    "angelegt": (
+        "Gruppe wurde in weclapp angelegt.",
+        "Gruppe wurde gespeichert.",
+    ),
+    "unter_angelegt": (
+        "Untergruppe wurde in weclapp angelegt.",
+        "Untergruppe wurde gespeichert.",
+    ),
+    "umbenannt": (
+        "Bezeichnung wurde in weclapp geändert.",
+        "Bezeichnung wurde gespeichert.",
+    ),
+    "geloescht": (
+        "Gruppe wurde in weclapp gelöscht.",
+        "Gruppe wurde gelöscht.",
+    ),
+    "wiederhergestellt": (
+        "Gruppe wurde in weclapp wiederhergestellt.",
+        "Gruppe wurde wiederhergestellt.",
+    ),
+}
 
 
 def _is_admin(user: SessionUser) -> bool:
@@ -82,6 +109,31 @@ def _get_alias(db: Session, alias_id: uuid.UUID) -> GruppenAlias:
     if alias is None:
         raise HTTPException(status_code=404, detail="Alias nicht gefunden")
     return alias
+
+
+def _notice_ok_text(kind: str, *, weclapp: bool) -> str:
+    weclapp_text, local_text = _NOTICE_OK[kind]
+    return weclapp_text if weclapp else local_text
+
+
+def _notice_ok_from_query(request: Request) -> str | None:
+    kind = request.query_params.get("ok")
+    if kind not in _NOTICE_OK:
+        return None
+    wc = request.query_params.get("wc")
+    if wc is None:
+        weclapp = weclapp_category_writes_allowed(request)
+    else:
+        weclapp = wc == "1"
+    return _notice_ok_text(kind, weclapp=weclapp)
+
+
+def _ok_redirect(url: str, kind: str, *, weclapp: bool) -> RedirectResponse:
+    join = "&" if "?" in url else "?"
+    return RedirectResponse(
+        url=f"{url}{join}ok={kind}&wc={'1' if weclapp else '0'}",
+        status_code=303,
+    )
 
 
 def _error_page(request: Request, user: SessionUser, message: str) -> HTMLResponse:
@@ -118,6 +170,22 @@ def _sync_issues_for_page(request: Request, db: Session, user: SessionUser) -> l
         return collect_weclapp_sync_issues(client, haupt, unter)
     except (NoWeclappToken, WeclappTokenUnreadable, WeclappError):
         return []
+
+
+def _optional_weclapp_client(db: Session, oid: str):
+    try:
+        return weclapp_client_for(db, oid)
+    except (NoWeclappToken, WeclappTokenUnreadable):
+        return None
+
+
+def _form_error_status(request: Request) -> int:
+    """HTMX ignores 4xx bodies by default; keep 400 for full-page posts."""
+    return 200 if _is_htmx(request) else 400
+
+
+def _error_fields(exc: GroupRegistryError) -> dict[str, str | None]:
+    return {"error": exc.message, "error_prompt": exc.prompt}
 
 
 def _list_context(
@@ -210,12 +278,21 @@ def _render_detail(
     user: SessionUser,
     *,
     error: str | None = None,
+    notice_ok: str | None = None,
+    error_prompt: str | None = None,
     status_code: int = 200,
 ) -> HTMLResponse:
     return request.app.state.templates.TemplateResponse(
         request,
         "gruppen/detail.html",
-        _detail_context(db, group, user, error=error),
+        _detail_context(
+            db,
+            group,
+            user,
+            error=error,
+            notice_ok=notice_ok,
+            error_prompt=error_prompt,
+        ),
         status_code=status_code,
     )
 
@@ -227,12 +304,22 @@ def _render_untergruppen(
     user: SessionUser,
     *,
     error: str | None = None,
+    notice_ok: str | None = None,
+    error_prompt: str | None = None,
     status_code: int = 200,
 ) -> HTMLResponse:
     return request.app.state.templates.TemplateResponse(
         request,
         "gruppen/partials/untergruppen.html",
-        _detail_context(db, group, user, error=error),
+        _detail_context(
+            db,
+            group,
+            user,
+            error=error,
+            notice_ok=notice_ok,
+            error_prompt=error_prompt,
+            panel_banners=True,
+        ),
         status_code=status_code,
     )
 
@@ -250,7 +337,14 @@ def _write_failure(
     db.rollback()
     if fragment == "untergruppen" and haupt_id is not None and _is_htmx(request):
         parent = _get_hauptgruppe(db, haupt_id)
-        return _render_untergruppen(request, db, parent, user, error=exc.message)
+        return _render_untergruppen(
+            request, db, parent, user, status_code=_form_error_status(request), **_error_fields(exc)
+        )
+    if haupt_id is not None:
+        parent = _get_hauptgruppe(db, haupt_id)
+        return _render_detail(
+            request, db, parent, user, status_code=_form_error_status(request), **_error_fields(exc)
+        )
     return _error_page(request, user, exc.message)
 
 
@@ -266,7 +360,14 @@ def gruppen_list(
     return request.app.state.templates.TemplateResponse(
         request,
         "gruppen/list.html",
-        _list_context(request, db, user, groups, show_deleted=show_deleted),
+        _list_context(
+            request,
+            db,
+            user,
+            groups,
+            show_deleted=show_deleted,
+            notice_ok=_notice_ok_from_query(request),
+        ),
     )
 
 
@@ -299,7 +400,9 @@ def gruppen_detail(
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     group = _get_hauptgruppe(db, group_id)
-    return _render_detail(request, db, group, user)
+    return _render_detail(
+        request, db, group, user, notice_ok=_notice_ok_from_query(request)
+    )
 
 
 @router.post("/gruppen", response_class=HTMLResponse)
@@ -371,7 +474,8 @@ def create_hauptgruppe_route(
             ),
             status_code=400,
         )
-    return RedirectResponse(url=f"/gruppen/{group.id}", status_code=303)
+    wrote_weclapp = weclapp_category_writes_allowed(request)
+    return _ok_redirect(f"/gruppen/{group.id}", "angelegt", weclapp=wrote_weclapp)
 
 
 @router.post("/gruppen/{group_id}/umbenennen", response_class=HTMLResponse)
@@ -384,6 +488,7 @@ def rename_hauptgruppe_route(
 ) -> Response:
     group = _get_hauptgruppe(db, group_id)
     nested = db.begin_nested()
+    wrote_weclapp = False
     try:
         old_name = group.name
         rename_hauptgruppe(db, group, name=name, actor=user)
@@ -395,6 +500,7 @@ def rename_hauptgruppe_route(
                 new_name=group.name,
                 code=group.code,
             )
+            wrote_weclapp = True
         nested.commit()
         _commit(db)
     except GroupRegistryError as exc:
@@ -404,9 +510,12 @@ def rename_hauptgruppe_route(
             return request.app.state.templates.TemplateResponse(
                 request,
                 "gruppen/partials/bezeichnung.html",
-                _ctx(user, group=group, editing=True, name_error=exc.message),
+                _ctx(user, group=group, editing=True, name_error=exc.message, panel_banners=True),
+                status_code=_form_error_status(request),
             )
-        return _error_page(request, user, exc.message)
+        return _render_detail(
+            request, db, group, user, status_code=_form_error_status(request), **_error_fields(exc)
+        )
     except (NoWeclappToken, WeclappError) as exc:
         nested.rollback()
         db.refresh(group)
@@ -415,16 +524,18 @@ def rename_hauptgruppe_route(
             return request.app.state.templates.TemplateResponse(
                 request,
                 "gruppen/partials/bezeichnung.html",
-                _ctx(user, group=group, editing=True, name_error=message),
+                _ctx(user, group=group, editing=True, name_error=message, panel_banners=True),
+                status_code=_form_error_status(request),
             )
-        return _error_page(request, user, message)
+        return _render_detail(request, db, group, user, error=message, status_code=_form_error_status(request))
+    notice = _notice_ok_text("umbenannt", weclapp=wrote_weclapp)
     if _is_htmx(request):
         return request.app.state.templates.TemplateResponse(
             request,
             "gruppen/partials/bezeichnung.html",
-            _ctx(user, group=group, editing=False),
+            _ctx(user, group=group, editing=False, notice_ok=notice, panel_banners=True),
         )
-    return RedirectResponse(url=f"/gruppen/{group.id}", status_code=303)
+    return _ok_redirect(f"/gruppen/{group.id}", "umbenannt", weclapp=wrote_weclapp)
 
 
 @router.get("/gruppen/{group_id}/bezeichnung", response_class=HTMLResponse)
@@ -456,7 +567,9 @@ def change_hauptgruppe_code_route(
         change_hauptgruppe_code(db, group, code=code, actor=user)
         _commit(db)
     except GroupRegistryError as exc:
-        return _error_page(request, user, exc.message)
+        return _render_detail(
+            request, db, group, user, status_code=_form_error_status(request), **_error_fields(exc)
+        )
     return RedirectResponse(url=f"/gruppen/{group.id}", status_code=303)
 
 
@@ -468,12 +581,45 @@ def delete_hauptgruppe_route(
     db: Session = Depends(get_db),
 ) -> Response:
     group = _get_hauptgruppe(db, group_id)
+    nested = db.begin_nested()
     try:
-        soft_delete_hauptgruppe(db, group, actor=user)
+        soft_delete_hauptgruppe(
+            db,
+            group,
+            actor=user,
+            weclapp_client=_optional_weclapp_client(db, user["oid"]),
+        )
+        if weclapp_category_writes_allowed(request):
+            client = weclapp_client_for(db, user["oid"])
+            delete_haupt_in_weclapp(
+                client,
+                haupt_name=group.name,
+                haupt_code=group.code,
+            )
+        nested.commit()
         _commit(db)
     except GroupRegistryError as exc:
-        return _write_failure(request, db, user, exc, hauptgruppe=group)
-    return RedirectResponse(url="/gruppen?geloeschte=1", status_code=303)
+        nested.rollback()
+        db.refresh(group)
+        return _render_detail(
+            request, db, group, user, status_code=_form_error_status(request), **_error_fields(exc)
+        )
+    except (NoWeclappToken, WeclappError) as exc:
+        nested.rollback()
+        db.refresh(group)
+        return _render_detail(
+            request,
+            db,
+            group,
+            user,
+            error=_weclapp_write_message(exc, verb="gelöscht"),
+            status_code=400,
+        )
+    return _ok_redirect(
+        "/gruppen?geloeschte=1",
+        "geloescht",
+        weclapp=weclapp_category_writes_allowed(request),
+    )
 
 
 @router.post("/gruppen/{group_id}/wiederherstellen", response_class=HTMLResponse)
@@ -484,12 +630,40 @@ def restore_hauptgruppe_route(
     db: Session = Depends(get_db),
 ) -> Response:
     group = _get_hauptgruppe(db, group_id)
+    nested = db.begin_nested()
     try:
         restore_hauptgruppe(db, group, actor=user)
+        if weclapp_category_writes_allowed(request):
+            client = weclapp_client_for(db, user["oid"])
+            create_haupt_in_weclapp(
+                client,
+                haupt_name=group.name,
+                haupt_code=group.code,
+            )
+        nested.commit()
         _commit(db)
     except GroupRegistryError as exc:
-        return _error_page(request, user, exc.message)
-    return RedirectResponse(url=f"/gruppen/{group.id}", status_code=303)
+        nested.rollback()
+        db.refresh(group)
+        return _render_detail(
+            request, db, group, user, status_code=_form_error_status(request), **_error_fields(exc)
+        )
+    except (NoWeclappToken, WeclappError) as exc:
+        nested.rollback()
+        db.refresh(group)
+        return _render_detail(
+            request,
+            db,
+            group,
+            user,
+            error=_weclapp_write_message(exc),
+            status_code=400,
+        )
+    return _ok_redirect(
+        f"/gruppen/{group.id}",
+        "wiederhergestellt",
+        weclapp=weclapp_category_writes_allowed(request),
+    )
 
 
 @router.post("/gruppen/{group_id}/untergruppen", response_class=HTMLResponse)
@@ -509,6 +683,7 @@ def create_untergruppe_route(
             create_unter_in_weclapp(
                 client,
                 parent_name=parent.name,
+                parent_code=parent.code,
                 unter_name=created.name,
                 unter_code=created.code,
             )
@@ -525,9 +700,11 @@ def create_untergruppe_route(
             fragment="untergruppen",
         )
     db.refresh(parent)
+    wrote_weclapp = weclapp_category_writes_allowed(request)
+    notice = _notice_ok_text("unter_angelegt", weclapp=wrote_weclapp)
     if _is_htmx(request):
-        return _render_untergruppen(request, db, parent, user)
-    return RedirectResponse(url=f"/gruppen/{parent.id}", status_code=303)
+        return _render_untergruppen(request, db, parent, user, notice_ok=notice)
+    return _ok_redirect(f"/gruppen/{parent.id}", "unter_angelegt", weclapp=wrote_weclapp)
 
 
 @router.post("/untergruppen/{group_id}/umbenennen", response_class=HTMLResponse)
@@ -541,6 +718,7 @@ def rename_untergruppe_route(
     group = _get_untergruppe(db, group_id)
     parent = _get_hauptgruppe(db, group.hauptgruppe_id)
     nested = db.begin_nested()
+    wrote_weclapp = False
     try:
         old_name = group.name
         rename_untergruppe(db, group, name=name, actor=user)
@@ -554,25 +732,33 @@ def rename_untergruppe_route(
                 new_name=group.name,
                 unter_code=group.code,
             )
+            wrote_weclapp = True
         nested.commit()
         _commit(db)
     except GroupRegistryError as exc:
         nested.rollback()
         db.refresh(parent)
         if _is_htmx(request):
-            return _render_untergruppen(request, db, parent, user, error=exc.message)
-        return _error_page(request, user, exc.message)
+            return _render_untergruppen(
+                request, db, parent, user, status_code=_form_error_status(request), **_error_fields(exc)
+            )
+        return _render_detail(
+            request, db, parent, user, status_code=_form_error_status(request), **_error_fields(exc)
+        )
     except (NoWeclappToken, WeclappError) as exc:
         nested.rollback()
         db.refresh(parent)
         message = _weclapp_write_message(exc, verb="umbenannt")
         if _is_htmx(request):
-            return _render_untergruppen(request, db, parent, user, error=message)
-        return _error_page(request, user, message)
+            return _render_untergruppen(
+                request, db, parent, user, error=message, status_code=_form_error_status(request)
+            )
+        return _render_detail(request, db, parent, user, error=message, status_code=_form_error_status(request))
     db.refresh(parent)
+    notice = _notice_ok_text("umbenannt", weclapp=wrote_weclapp)
     if _is_htmx(request):
-        return _render_untergruppen(request, db, parent, user)
-    return RedirectResponse(url=f"/gruppen/{parent.id}", status_code=303)
+        return _render_untergruppen(request, db, parent, user, notice_ok=notice)
+    return _ok_redirect(f"/gruppen/{parent.id}", "umbenannt", weclapp=wrote_weclapp)
 
 
 @router.post("/untergruppen/{group_id}/code", response_class=HTMLResponse)
@@ -589,7 +775,9 @@ def change_untergruppe_code_route(
         change_untergruppe_code(db, group, code=code, actor=user)
         _commit(db)
     except GroupRegistryError as exc:
-        return _error_page(request, user, exc.message)
+        return _render_detail(
+            request, db, parent, user, status_code=_form_error_status(request), **_error_fields(exc)
+        )
     return RedirectResponse(url=f"/gruppen/{parent.id}", status_code=303)
 
 
@@ -602,15 +790,50 @@ def delete_untergruppe_route(
 ) -> Response:
     group = _get_untergruppe(db, group_id)
     parent = _get_hauptgruppe(db, group.hauptgruppe_id)
+    nested = db.begin_nested()
     try:
-        soft_delete_untergruppe(db, group, actor=user)
+        soft_delete_untergruppe(
+            db,
+            group,
+            actor=user,
+            weclapp_client=_optional_weclapp_client(db, user["oid"]),
+        )
+        if weclapp_category_writes_allowed(request):
+            client = weclapp_client_for(db, user["oid"])
+            delete_unter_in_weclapp(
+                client,
+                parent_name=parent.name,
+                parent_code=parent.code,
+                unter_name=group.name,
+                unter_code=group.code,
+            )
+        nested.commit()
         _commit(db)
     except GroupRegistryError as exc:
-        return _write_failure(request, db, user, exc, hauptgruppe=parent, fragment="untergruppen")
+        nested.rollback()
+        db.refresh(parent)
+        if _is_htmx(request):
+            return _render_untergruppen(
+                request, db, parent, user, status_code=_form_error_status(request), **_error_fields(exc)
+            )
+        return _render_detail(
+            request, db, parent, user, status_code=_form_error_status(request), **_error_fields(exc)
+        )
+    except (NoWeclappToken, WeclappError) as exc:
+        nested.rollback()
+        db.refresh(parent)
+        message = _weclapp_write_message(exc, verb="gelöscht")
+        if _is_htmx(request):
+            return _render_untergruppen(
+                request, db, parent, user, error=message, status_code=_form_error_status(request)
+            )
+        return _render_detail(request, db, parent, user, error=message, status_code=_form_error_status(request))
     db.refresh(parent)
+    wrote_weclapp = weclapp_category_writes_allowed(request)
+    notice = _notice_ok_text("geloescht", weclapp=wrote_weclapp)
     if _is_htmx(request):
-        return _render_untergruppen(request, db, parent, user)
-    return RedirectResponse(url=f"/gruppen/{parent.id}", status_code=303)
+        return _render_untergruppen(request, db, parent, user, notice_ok=notice)
+    return _ok_redirect(f"/gruppen/{parent.id}", "geloescht", weclapp=wrote_weclapp)
 
 
 @router.post("/untergruppen/{group_id}/wiederherstellen", response_class=HTMLResponse)
@@ -622,15 +845,47 @@ def restore_untergruppe_route(
 ) -> Response:
     group = _get_untergruppe(db, group_id)
     parent = _get_hauptgruppe(db, group.hauptgruppe_id)
+    nested = db.begin_nested()
     try:
         restore_untergruppe(db, group, actor=user)
+        if weclapp_category_writes_allowed(request):
+            client = weclapp_client_for(db, user["oid"])
+            create_unter_in_weclapp(
+                client,
+                parent_name=parent.name,
+                parent_code=parent.code,
+                unter_name=group.name,
+                unter_code=group.code,
+            )
+        nested.commit()
         _commit(db)
     except GroupRegistryError as exc:
-        return _write_failure(request, db, user, exc, hauptgruppe=parent, fragment="untergruppen")
+        nested.rollback()
+        db.refresh(parent)
+        if _is_htmx(request):
+            return _render_untergruppen(
+                request, db, parent, user, status_code=_form_error_status(request), **_error_fields(exc)
+            )
+        return _render_detail(
+            request, db, parent, user, status_code=_form_error_status(request), **_error_fields(exc)
+        )
+    except (NoWeclappToken, WeclappError) as exc:
+        nested.rollback()
+        db.refresh(parent)
+        message = _weclapp_write_message(exc)
+        if _is_htmx(request):
+            return _render_untergruppen(
+                request, db, parent, user, error=message, status_code=_form_error_status(request)
+            )
+        return _render_detail(request, db, parent, user, error=message, status_code=_form_error_status(request))
     db.refresh(parent)
+    wrote_weclapp = weclapp_category_writes_allowed(request)
+    notice = _notice_ok_text("wiederhergestellt", weclapp=wrote_weclapp)
     if _is_htmx(request):
-        return _render_untergruppen(request, db, parent, user)
-    return RedirectResponse(url=f"/gruppen/{parent.id}", status_code=303)
+        return _render_untergruppen(request, db, parent, user, notice_ok=notice)
+    return _ok_redirect(
+        f"/gruppen/{parent.id}", "wiederhergestellt", weclapp=wrote_weclapp
+    )
 
 
 @router.post("/gruppen/{group_id}/aliases", response_class=HTMLResponse)

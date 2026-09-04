@@ -1,7 +1,40 @@
 # PROSEMA release history — edit this file to bump the version and document changes.
 # The top-level `version` is shown in the site header; `[[releases]]` entries appear on /changelog.
 
-version = "1.1.12"
+version = "1.2.0"
+
+[[releases]]
+version = "1.2.0"
+date = "2026-09-04"
+summary = "Refactor group deletion logic and enhance Weclapp integration (+24 more)"
+changes = [
+  "Update article registration and snapshot overview templates for improved clarity and user guidance. Revise text to enhance descriptions of article import and registration processes, and refine snapshot overview for better user engagement.",
+  "Refactor article registration and snapshot overview templates for enhanced clarity and user guidance. Update text descriptions to improve understanding of article import and registration processes, and refine snapshot overview for better user engagement.",
+  "Refactor article registration and snapshot overview templates for improved clarity and user guidance. Update text descriptions to enhance understanding of article import and registration processes, and refine snapshot overview for better user engagement.",
+  "Refactor article registration and snapshot overview templates for enhanced clarity and user guidance. Update text descriptions to improve understanding of article import and registration processes, and refine snapshot overview for better user engagement.",
+  "Add Weclapp error handling and transform run models",
+  "Add transform run and chunk handling in article write process",
+  "Refactor audit log retrieval in transformation application process",
+  "Add UNKNOWN outcome handling in article write process",
+  "Add non-idempotent operation handling and audit reconstruction logging",
+  "Enhance transformation functionality and UI integration",
+  "Refactor transformation logic and UI enhancements",
+  "Implement transformation permission checks and enhance test coverage",
+  "Enhance transformation error handling and logging improvements",
+  "Enhance transformation preview functionality and UI updates",
+  "Refactor transformation preview logic and remove estimation functionality",
+  "Implement write mode for transformation proposals",
+  "Implement snapshot numeral extraction and enhance transformation field mapping",
+  "Enhance query filter requirements and transformation proposal validation",
+  "Enhance transformation proposal handling and validation",
+  "Add tests for empty replacements and non-idempotent warnings in transformation proposals",
+  "Enhance validation for wildcard usage in transformation proposals",
+  "Implement category deletion and creation functionality in weclapp integration",
+  "Implement article category update functionality in weclapp integration",
+  "Enhance group deletion handling and error messaging",
+  "Refactor group deletion logic and enhance Weclapp integration",
+]
+
 
 [[releases]]
 version = "1.1.12"

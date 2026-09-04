@@ -244,3 +244,35 @@ def test_no_answer_fails_default_outcome():
     )
     assert score.outcome == "fail"
     assert score.overall() == "fail"
+
+
+def test_empty_replace_literal_scores_as_remove_literal():
+    question = eval_run.TransformQuestion(
+        id="grundmaterial-brackets",
+        question_de="?",
+        expect=eval_run.TransformExpect(
+            outcome="proposed",
+            fields=["Grundmaterial"],
+            ops=[
+                {"type": "remove_literal", "search": "["},
+                {"type": "remove_literal", "search": "]"},
+            ],
+        ),
+    )
+    spec = {
+        "fields": ["Grundmaterial"],
+        "operations": [
+            {"op": "replace_literal", "search": "[", "replace": ""},
+            {"op": "replace_literal", "search": "]", "replace": ""},
+        ],
+    }
+    score = eval_run.score_transform_question(
+        question,
+        spec=spec,
+        tool_calls=[],
+        total_count=1,
+        answer_de="",
+        hinweis_de=None,
+    )
+    assert score.ops_match == "pass"
+    assert score.overall() == "pass"

@@ -235,6 +235,54 @@ def test_fabricated_number_is_unverified(db_session, snapshot, caplog):
     assert row.answer_de is None
 
 
+def test_datenstand_single_digit_day_in_prose_is_verified(db_session, snapshot):
+    snapshot.created_at = datetime(2026, 9, 2, 13, 59, tzinfo=UTC)
+    db_session.flush()
+    client = _client(
+        _tool("artikel_zaehlen"),
+        _text(
+            "Ich habe 4 Artikel gefunden. "
+            "Der Datenstand ist der 2. September 2026."
+        ),
+    )
+    result = _run(db_session, client)
+    assert result.outcome == "answered"
+    assert result.answer_de is not None
+    assert "2. September" in result.answer_de
+
+
+def test_datenstand_single_digit_day_in_prose_is_verified(db_session, snapshot):
+    snapshot.created_at = datetime(2026, 9, 2, 13, 59, tzinfo=UTC)
+    db_session.flush()
+    client = _client(
+        _tool("artikel_zaehlen"),
+        _text(
+            "Ich habe 4 Artikel gefunden. "
+            "Der Datenstand ist der 2. September 2026."
+        ),
+    )
+    result = _run(db_session, client)
+    assert result.outcome == "answered"
+    assert result.answer_de is not None
+    assert "2. September" in result.answer_de
+
+
+def test_datenstand_single_digit_day_in_prose_is_verified(db_session, snapshot):
+    snapshot.created_at = datetime(2026, 9, 2, 13, 59, tzinfo=UTC)
+    db_session.flush()
+    client = _client(
+        _tool("artikel_zaehlen"),
+        _text(
+            "Ich habe 4 Artikel gefunden. "
+            "Der Datenstand ist der 2. September 2026."
+        ),
+    )
+    result = _run(db_session, client)
+    assert result.outcome == "answered"
+    assert result.answer_de is not None
+    assert "2. September" in result.answer_de
+
+
 def test_invalid_filter_is_fed_back_and_retried(db_session, snapshot):
     client = _client(
         _tool(

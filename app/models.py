@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import (
     Boolean,
@@ -938,4 +939,145 @@ class AssistantQuery(Base):
             name="ck_assistant_queries_outcome",
         ),
         Index("ix_assistant_queries_asked_at", "asked_at"),
+    )
+
+
+class TransformRun(Base):
+    __tablename__ = "transform_runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    created_by_oid: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+    )
+    snapshot_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("article_snapshots.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    spec: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    candidate_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    case_variants: Mapped[list] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=list,
+        server_default=text("'[]'::jsonb"),
+    )
+    word_positions: Mapped[dict] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=dict,
+        server_default=text("'{}'::jsonb"),
+    )
+
+    rows: Mapped[list["TransformRow"]] = relationship(
+        back_populates="run",
+        cascade="all, delete-orphan",
+    )
+    chunks: Mapped[list["TransformChunk"]] = relationship(
+        back_populates="run",
+        cascade="all, delete-orphan",
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('previewing', 'previewed', 'failed')",
+            name="ck_transform_runs_status",
+        ),
+        Index("ix_transform_runs_created_at", "created_at"),
+        Index("ix_transform_runs_snapshot", "snapshot_id"),
+    )
+
+
+class TransformRow(Base):
+    __tablename__ = "transform_rows"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("transform_runs.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    article_number: Mapped[str] = mapped_column(Text, nullable=False)
+    weclapp_id: Mapped[str] = mapped_column(Text, nullable=False)
+    version_at_preview: Mapped[str | None] = mapped_column(Text, nullable=True)
+    field: Mapped[str] = mapped_column(Text, nullable=False)
+    old_value: Mapped[str] = mapped_column(Text, nullable=False)
+    new_value: Mapped[str] = mapped_column(Text, nullable=False)
+    operations_fired: Mapped[list] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=list,
+        server_default=text("'[]'::jsonb"),
+    )
+    row_status: Mapped[str] = mapped_column(Text, nullable=False)
+    apply_outcome: Mapped[str | None] = mapped_column(Text, nullable=True)
+    apply_detail: Mapped[Any] = mapped_column(JSONB, nullable=True)
+    apply_version_seen: Mapped[str | None] = mapped_column(Text, nullable=True)
+    inside_compound: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+
+    run: Mapped[TransformRun] = relationship(back_populates="rows")
+
+    __table_args__ = (
+        CheckConstraint(
+            "row_status IN ('CHANGED', 'UNCHANGED', 'REFUSED', 'GONE', 'DECLINED')",
+            name="ck_transform_rows_status",
+        ),
+        CheckConstraint(
+            "apply_outcome IS NULL OR apply_outcome IN ("
+            "'UPDATED','UNCHANGED','CONFLICT','REJECTED','GONE',"
+            "'REFUSED','UNAVAILABLE','UNKNOWN'"
+            ")",
+            name="ck_transform_rows_apply_outcome",
+        ),
+        Index("ix_transform_rows_run", "run_id"),
+        Index("ix_transform_rows_run_article", "run_id", "article_number"),
+    )
+
+
+class TransformChunk(Base):
+    __tablename__ = "transform_chunks"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("transform_runs.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    row_ids: Mapped[list] = mapped_column(JSONB, nullable=False)
+    approved_by_oid: Mapped[str] = mapped_column(Text, nullable=False)
+    approved_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+    )
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    run: Mapped[TransformRun] = relationship(back_populates="chunks")
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('approved', 'applying', 'applied', 'failed')",
+            name="ck_transform_chunks_status",
+        ),
+        UniqueConstraint("run_id", "chunk_index", name="uq_transform_chunks_run_index"),
+        Index("ix_transform_chunks_run", "run_id"),
     )

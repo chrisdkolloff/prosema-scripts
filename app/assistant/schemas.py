@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from enum import StrEnum
 
+from typing import Any, Literal
+
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 NUMERIC_OPERATORS = frozenset({"gt", "gte", "lt", "lte"})
@@ -99,11 +101,20 @@ class FilterCondition(BaseModel):
 
 
 class QueryFilter(BaseModel):
-    """AND-only filter. Multi-value questions use ``in_list``, not OR."""
+    """AND-only filter. Multi-value questions use ``in_list``, not OR.
+
+    ``conditions`` is required. An empty list means no restriction (the whole
+    catalogue). Do not omit the field or send null.
+    """
 
     model_config = {"extra": "forbid"}
 
-    conditions: list[FilterCondition] = Field(default_factory=list)
+    conditions: list[FilterCondition] = Field(
+        description=(
+            "AND conditions. An empty list means the whole catalogue "
+            "(no restriction). Required; never null."
+        ),
+    )
 
     def validate_select_values(self, session) -> None:
         """Reject select values that are not in the current snapshot's distinct list."""
@@ -133,6 +144,10 @@ class QueryFilter(BaseModel):
                 f"Ungültiger Wert für «{col.label_de}»: {', '.join(invalid)}. "
                 f"Erlaubte Werte: {listing}."
             )
+
+
+def empty_query_filter() -> QueryFilter:
+    return QueryFilter(conditions=[])
 
 
 class SortSpec(BaseModel):
@@ -173,7 +188,7 @@ def _clamp_limit(value: object) -> int:
 class ArtikelSuchenArgs(BaseModel):
     model_config = {"extra": "forbid"}
 
-    filters: QueryFilter = Field(default_factory=QueryFilter)
+    filters: QueryFilter = Field(default_factory=empty_query_filter)
     sort: SortSpec | None = None
     limit: int = 50
 
@@ -186,7 +201,7 @@ class ArtikelSuchenArgs(BaseModel):
 class ArtikelZaehlenArgs(BaseModel):
     model_config = {"extra": "forbid"}
 
-    filters: QueryFilter = Field(default_factory=QueryFilter)
+    filters: QueryFilter = Field(default_factory=empty_query_filter)
     group_by: str | None = None
 
     @model_validator(mode="after")
@@ -225,3 +240,60 @@ class EinheitenAuflistenArgs(BaseModel):
 
 class DatenstandArgs(BaseModel):
     model_config = {"extra": "forbid"}
+
+
+class TransformOpArg(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    op: Literal["replace_literal", "remove_literal", "replace_word", "remove_word"]
+    search: str
+    replace: str | None = None
+
+
+class TransformVorschlagenArgs(BaseModel):
+    """Scope uses the same QueryFilter vocabulary as artikel_suchen.
+
+    ``filters.conditions`` is required. ``[]`` means the whole catalogue.
+    """
+
+    model_config = {"extra": "forbid"}
+
+    filters: QueryFilter
+    fields: list[str]
+    operations: list[TransformOpArg]
+
+    @field_validator("fields")
+    @classmethod
+    def fields_nonempty(cls, value: list[str]) -> list[str]:
+        cleaned = [str(item).strip() for item in value if str(item).strip()]
+        if not cleaned:
+            raise ValueError("Mindestens ein Feld ist erforderlich")
+        return cleaned
+
+    @field_validator("operations")
+    @classmethod
+    def operations_nonempty(cls, value: list[TransformOpArg]) -> list[TransformOpArg]:
+        if not value:
+            raise ValueError("Mindestens eine Operation ist erforderlich")
+        return value
+
+
+class GruppenZuordnenArgs(BaseModel):
+    """Reassign matching articles to a Hauptgruppe.Untergruppe weclapp category.
+
+    ``filters.conditions`` is required and must not be empty.
+    ``ziel_gruppe`` is ``MMM.SSS`` (optional trailing article suffix is ignored).
+    """
+
+    model_config = {"extra": "forbid"}
+
+    filters: QueryFilter
+    ziel_gruppe: str
+
+    @field_validator("ziel_gruppe")
+    @classmethod
+    def require_ziel(cls, value: str) -> str:
+        cleaned = str(value).strip()
+        if not cleaned:
+            raise ValueError("Zielgruppe darf nicht leer sein.")
+        return cleaned

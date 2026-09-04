@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block title %}Änderung prüfen — PROSEMA{% endblock %}
+{% block extra_head %}
+  <link rel="stylesheet" href="/static/app.css?v={{ app_version }}">
+{% endblock %}
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/">Home</a></li>
+<li class="breadcrumb-item"><a href="/artikel-uebersicht">Artikelübersicht</a></li>
+<li class="breadcrumb-item active"><span>Änderung</span></li>
+{% endblock %}
+{% block content %}
+  {% if snapshot %}
+  <p class="mb-2"><a href="/artikel-uebersicht/{{ snapshot.id }}">Zur Übersicht</a></p>
+  {% endif %}
+  <h1 class="mb-3">Änderung prüfen</h1>
+
+  {% if run.status == "previewing" %}
+  <div
+    class="alert alert-info"
+    role="status"
+    data-previewing="1"
+    hx-get="/transform/{{ run.id }}"
+    hx-trigger="every 3s"
+    hx-swap="none"
+    hx-on::after-request="if(event.detail.successful && event.detail.xhr.responseText.indexOf('data-previewing=&quot;1&quot;')<0){ window.location.reload() }"
+  >
+    Vorschau wird erstellt…
+    {% if run.candidate_count is not none %}
+    <span class="d-block small mt-1">{{ run.candidate_count }} Artikel mit Treffer in der Übersicht.</span>
+    {% endif %}
+  </div>
+  {% elif run.status == "failed" %}
+  <div class="alert alert-danger" role="alert">{{ run.error }}</div>
+  {% else %}
+
+  {% if result_summary %}
+  <div class="card mb-4">
+    <div class="card-header">Ergebnis</div>
+    <div class="card-body">
+      <pre class="mb-0 transform-result-summary">{{ result_summary }}</pre>
+      {% if unknown_rows %}
+      <ul class="mt-3 mb-0">
+        {% for row in unknown_rows %}
+        <li>
+          {{ row.article_number }}
+          <form method="post" action="/transform/zeilen/{{ row.id }}/abgleichen" class="d-inline">
+            <button type="submit" class="btn btn-link btn-sm p-0">{{ msg_reconcile }}</button>
+          </form>
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if preview_summary %}
+  <div class="card mb-4">
+    <div class="card-header">Zusammenfassung</div>
+    <div class="card-body">
+      <pre class="mb-3">{{ preview_summary }}</pre>
+      {% if case_variants %}
+      <p class="mb-0">Schreibweisen: {{ case_variants | join(", ") }}</p>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if pending %}
+  <form method="post" action="/transform/{{ run.id }}/bestaetigen" id="transform-review-form">
+    {% for group in groups %}
+    <details class="mb-3" open>
+      <summary class="fw-semibold">
+        {{ group.title }}
+        <span class="text-body-secondary">({{ group.views | length }})</span>
+      </summary>
+      <p class="mt-2 mb-2">
+        <button type="button" class="btn btn-link btn-sm p-0 transform-group-all" data-group="{{ group.key }}" data-on="1">{{ msg_select_all }}</button>
+        ·
+        <button type="button" class="btn btn-link btn-sm p-0 transform-group-all" data-group="{{ group.key }}" data-on="0">{{ msg_deselect_all }}</button>
+      </p>
+    </details>
+    {% endfor %}
+
+    <div class="transform-review-viewport table-responsive" id="transform-review-viewport">
+      <table class="table table-sm table-hover mb-0 transform-review-table">
+        <thead>
+          <tr>
+            <th></th>
+            <th>Artikelnummer</th>
+            <th>Feld</th>
+            <th>Änderung</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in views %}
+          {% set row = item.row %}
+          <tr>
+            <td>
+              <input
+                class="form-check-input transform-row-check"
+                type="checkbox"
+                name="zeile"
+                value="{{ row.id }}"
+                data-group="{{ item.group_key }}"
+                {% if item.checked %}checked{% endif %}
+              >
+            </td>
+            <td>{{ row.article_number }}</td>
+            <td>{{ row.field }}{% if row.row_status == "DECLINED" %} <span class="badge text-bg-secondary">Abgelehnt</span>{% endif %}</td>
+            <td class="transform-diff">
+              {{ item.diff }}
+              {% if item.has_markup %}
+              <div class="form-text">{{ msg_html_format }}</div>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <button type="submit" class="btn btn-primary mt-3" id="transform-confirm" disabled>{{ confirm_label }}</button>
+  </form>
+  {% endif %}
+
+  {% endif %}
+{% endblock %}
+{% block extra_scripts %}
+  <script src="/static/transform_preview.js?v={{ app_version }}"></script>
+{% endblock %}

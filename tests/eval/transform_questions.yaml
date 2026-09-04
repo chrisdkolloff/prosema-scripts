@@ -1,0 +1,146 @@
+# Write-mode fixtures. Separate from questions.yaml — the 13 read-mode
+# questions remain the read gate, unchanged, and must not regress.
+#
+# Not merged into questions.yaml. Run with:
+#   python tests/eval/run_eval.py --set write --provider azure --model gpt-4.1-mini
+#   scope_match        filter she emits (not the resolved article set)
+#   min_rows/max_rows  optional count plausibility, same as read fixtures
+#   fields_match       exactly the expected PASS_1 fields, no extras
+#   ops_match          operation types and search/replace values
+#   order_correct      ordered list is in the required sequence
+#   op_type_correct    replace_word vs replace_literal chosen appropriately
+#   outcome            proposed | clarified | refused
+
+- id: winkel-ordered
+  frage: >
+    In der Untergruppe Abschlussprofile Winkel soll überall, wo Abschlussprofil
+    steht, Winkelprofil stehen. Winkel-Abschlussprofil soll zu Winkelprofil
+    werden, nicht zu Winkel-Winkelprofil.
+  expect:
+    outcome: proposed
+    fields: [Prosema-Artikelname, Prosema-Langtext, Kurzbeschreibung]
+    ops:
+      - {type: replace_literal, search: "Winkel-Abschlussprofil", replace: "Winkelprofil"}
+      - {type: replace_literal, search: "Abschlussprofil", replace: "Winkelprofil"}
+    order_required: true
+  notes: >
+    The canonical case. Order is the whole test — reversed, every cell reads
+    WinkelWinkelprofil.
+
+- id: winkel-ambiguous
+  frage: >
+    In der Untergruppe Abschlussprofile Winkel soll Abschlussprofil zu
+    Winkelprofil werden. Winkel-Abschlussprofil ausschliessen und nur zu
+    Winkelprofil umbenennen.
+  expect:
+    outcome: clarified
+  notes: >
+    Christopher's original wording. "Ausschliessen" and "umbenennen" contradict.
+    Correct behaviour is to state the interpretation in German and propose,
+    NOT to silently pick one. A spec produced without restating the ambiguity
+    scores zero even if the spec is the one we would have wanted.
+
+- id: verbinder-word
+  frage: Überall wo verbinder klein geschrieben ist, soll Verbinder stehen.
+  expect:
+    outcome: proposed
+    ops:
+      - {type: replace_word, search: "verbinder", replace: "Verbinder"}
+    op_type_required: replace_word
+  notes: >
+    replace_literal would rewrite Winkelverbinder and LED-Direktverbinder.
+    Measured: 60 names, 61 langtexts, 0 mismatches with replace_word.
+
+- id: ral-doublespace
+  frage: Bei der Farbe steht nach RAL manchmal ein doppeltes Leerzeichen. Bereinigen.
+  expect:
+    outcome: proposed
+    fields: [Farbe]
+    ops:
+      - {type: replace_literal, search: "RAL  ", replace: "RAL "}
+  notes: 441 rows across five Hauptgruppen. Field inference is the test here.
+
+- id: grundmaterial-brackets
+  frage: Entferne die eckigen Klammern aus dem Grundmaterial.
+  expect:
+    outcome: proposed
+    fields: [Grundmaterial]
+    ops:
+      - {type: remove_literal, search: "["}
+      - {type: remove_literal, search: "]"}
+  notes: >
+    Two operations from one sentence. Order irrelevant. replace_literal with
+    replace "" is the same deletion as remove_literal; scoring treats them as
+    equivalent.
+
+- id: ampersand-refusal
+  frage: Ersetze "Rand & Ecke" durch "Randecke".
+  expect:
+    outcome: refused
+    reason_contains: "&"
+  notes: >
+    Must refuse in German before preview, citing the ampersand. Must NOT
+    silently drop the & or propose a partial match.
+
+- id: forbidden-artikelnummer
+  frage: Ändere bei allen Profilen die Artikelnummer von 010 auf 011.
+  expect:
+    outcome: refused
+  notes: >
+    FORBIDDEN field. Refusal must explain that article numbers embed group
+    codes, not just say no.
+
+- id: forbidden-gruppe
+  frage: Verschiebe alle Artikel aus Untergruppe Abschlussprofile Winkel nach Winkelprofile.
+  expect:
+    outcome: proposed
+  notes: >
+    Group reassignment is gruppen_zuordnen, not a LIST-attribute rewrite.
+    Name-only targets may first call gruppen_auflisten. Codes such as
+    100.130 go straight to gruppen_zuordnen.
+
+- id: gruppen-zuordnen-prefix
+  frage: >
+    Ordne alle Artikel, deren Artikelnummer mit 060.020 anfangen, der
+    Haupt- und Untergruppe 100.130 zu.
+  expect:
+    outcome: proposed
+  notes: >
+    Canonical group-assign case. Filter article_number starts_with 060.020,
+    ziel_gruppe 100.130. Must not rewrite article numbers.
+
+- id: mm-glued
+  frage: Bei manchen Artikeln fehlt das Leerzeichen vor mm. Korrigieren.
+  expect:
+    outcome: refused_or_clarified
+  notes: >
+    Inexpressible in the vocabulary — mm → " mm" would turn 2096 correct
+    "150 mm" into "150  mm". Acceptable: refuse and explain, or clarify by
+    listing the specific glued values. Unacceptable: propose the destructive
+    single operation.
+
+- id: price-blocked
+  frage: Erhöhe alle Einkaufspreise um 3 Prozent.
+  expect:
+    outcome: refused
+  notes: BLOCKED field, and arithmetic is not in the vocabulary. Two reasons.
+
+- id: scope-too-broad
+  frage: Ersetze überall Profil durch Winkelprofil.
+  expect:
+    outcome: proposed
+    empty_scope: true
+  notes: >
+    Catalogue-wide is legitimate now that the 1000-article ceiling is gone.
+    Expect a spec with filters.conditions []. Preview shows the count.
+
+- id: weiss-case
+  frage: Im Artikelnamen soll weiss immer gross geschrieben werden.
+  expect:
+    outcome: proposed
+    ops:
+      - {type: replace_word, search: "weiss", replace: "Weiss"}
+    op_type_required: replace_word
+  notes: >
+    replace_literal would hit warmweiss → warmWeiss. 227 lowercase occurrences
+    in name/kurz. Tests the word-vs-literal instinct outside Profile.

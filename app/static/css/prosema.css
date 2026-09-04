@@ -402,3 +402,33 @@ body.is-frage-busy #snapshot-frage-banner {
 .file-picker .file-picker-name {
   min-width: 12rem;
 }
+
+.transform-review-viewport {
+  max-height: 24rem;
+  overflow: auto;
+  border: 1px solid var(--cui-border-color, #d8dbe0);
+}
+
+.transform-review-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--cui-tertiary-bg, #f3f4f6);
+}
+
+.transform-diff {
+  white-space: pre-wrap;
+}
+
+.transform-diff del {
+  text-decoration: line-through;
+}
+
+.transform-diff ins {
+  text-decoration: none;
+}
+
+.transform-result-summary {
+  white-space: pre-wrap;
+  font-family: inherit;
+}

@@ -32,6 +32,8 @@ MSG_PARENT_MISSING = "Hauptgruppe fehlt in weclapp — bitte zuerst die Hauptgru
 MSG_CHILD_MISSING = "Untergruppe fehlt in weclapp"
 MSG_CREATE_FAILED = "Gruppe in weclapp konnte nicht angelegt werden"
 MSG_RENAME_FAILED = "Gruppe in weclapp konnte nicht umbenannt werden"
+MSG_DELETE_FAILED = "Gruppe in weclapp konnte nicht gelöscht werden"
+MSG_PARENT_HAS_CHILDREN = "Hauptgruppe hat in weclapp noch Untergruppen"
 MSG_SYNC_BANNER = (
     "Tools und weclapp sind nicht synchron. Diese Einträge müssen manuell aktualisiert werden."
 )
@@ -226,11 +228,16 @@ def create_unter_in_weclapp(
     parent_name: str,
     unter_name: str,
     unter_code: str,
+    parent_code: str | None = None,
 ) -> dict[str, Any]:
     """Create an Untergruppe under an existing weclapp Hauptgruppe."""
-    parent = _find_parent_category(client, parent_name)
+    rows = _categories(client)
+    parent = _find_parent_category(rows, parent_name, code=parent_code)
     if parent is None:
         raise GroupRegistryError(MSG_PARENT_MISSING)
+    existing = _find_child_category(rows, str(parent["id"]), unter_name, code=unter_code)
+    if existing is not None:
+        return existing
     child = client.post(
         CATEGORY_PATH,
         json={
@@ -285,8 +292,143 @@ def rename_unter_in_weclapp(
     return _put_category_name(client, child, new_name)
 
 
+def create_haupt_in_weclapp(
+    client: WeclappClient,
+    *,
+    haupt_name: str,
+    haupt_code: str,
+) -> dict[str, Any]:
+    """Create a Hauptgruppe article category, or return it if it already exists."""
+    rows = _categories(client)
+    existing = _find_parent_category(rows, haupt_name, code=haupt_code)
+    if existing is not None:
+        return existing
+    parent = client.post(
+        CATEGORY_PATH,
+        json={"name": haupt_name, "description": haupt_code},
+    )
+    if not isinstance(parent, dict) or not parent.get("id"):
+        raise GroupRegistryError(MSG_CREATE_FAILED)
+    return parent
+
+
+def delete_unter_in_weclapp(
+    client: WeclappClient,
+    *,
+    parent_name: str,
+    parent_code: str,
+    unter_name: str,
+    unter_code: str,
+) -> None:
+    """Delete an Untergruppe article category. No-op if it is already gone."""
+    rows = _categories(client)
+    parent = _find_parent_category(rows, parent_name, code=parent_code)
+    if parent is None:
+        return
+    child = _find_child_category(rows, str(parent["id"]), unter_name, code=unter_code)
+    if child is None:
+        return
+    _delete_category_or_raise(client, str(child.get("id") or ""))
+
+
+def delete_haupt_in_weclapp(
+    client: WeclappClient,
+    *,
+    haupt_name: str,
+    haupt_code: str,
+) -> None:
+    """Delete a Hauptgruppe article category. No-op if it is already gone."""
+    rows = _categories(client)
+    parent = _find_parent_category(rows, haupt_name, code=haupt_code)
+    if parent is None:
+        return
+    parent_id = str(parent.get("id") or "")
+    children = [
+        row for row in rows if str(row.get("parentCategoryId") or "") == parent_id
+    ]
+    if children:
+        raise GroupRegistryError(MSG_PARENT_HAS_CHILDREN)
+    _delete_category_or_raise(client, parent_id)
+
+
+def count_articles_in_unter_category(
+    client: WeclappClient,
+    *,
+    parent_name: str,
+    parent_code: str,
+    unter_name: str,
+    unter_code: str,
+) -> int:
+    """Articles whose weclapp ``articleCategoryId`` is this Untergruppe."""
+    rows = _categories(client)
+    parent = _find_parent_category(rows, parent_name, code=parent_code)
+    if parent is None:
+        return 0
+    child = _find_child_category(rows, str(parent["id"]), unter_name, code=unter_code)
+    if child is None or not child.get("id"):
+        return 0
+    return client.get_count("article", params={"articleCategoryId-eq": str(child["id"])})
+
+
+def count_articles_in_haupt_category(
+    client: WeclappClient,
+    *,
+    haupt_name: str,
+    haupt_code: str,
+) -> int:
+    """Articles whose weclapp category is this Hauptgruppe (not a child)."""
+    rows = _categories(client)
+    parent = _find_parent_category(rows, haupt_name, code=haupt_code)
+    if parent is None or not parent.get("id"):
+        return 0
+    return client.get_count("article", params={"articleCategoryId-eq": str(parent["id"])})
+
+
 def _categories(client: WeclappClient) -> list[dict[str, Any]]:
     return [row for row in client.iter_pages("articleCategory") if isinstance(row, dict)]
+
+
+def list_article_categories(client: WeclappClient) -> list[dict[str, Any]]:
+    """All weclapp article categories (Hauptgruppe and Untergruppe)."""
+    return _categories(client)
+
+
+def find_coded_untergruppe_category(
+    categories: list[dict[str, Any]],
+    *,
+    haupt_name: str,
+    haupt_code: str,
+    unter_name: str,
+    unter_code: str,
+) -> dict[str, Any] | None:
+    """Untergruppe category whose parent/child descriptions hold the group codes."""
+    parent = _find_parent_category(categories, haupt_name, code=haupt_code)
+    if parent is None:
+        return None
+    return _find_child_category(
+        categories, str(parent.get("id") or ""), unter_name, code=unter_code
+    )
+
+
+def category_label(categories: list[dict[str, Any]], category_id: str) -> str:
+    """Readable «MMM.SSS Name», or the raw id when the category is unknown."""
+    wanted = str(category_id or "").strip()
+    if not wanted:
+        return "(keine)"
+    by_id = {
+        str(row.get("id") or ""): row for row in categories if isinstance(row, dict)
+    }
+    row = by_id.get(wanted)
+    if row is None:
+        return wanted
+    name = str(row.get("name") or "").strip()
+    child_code = str(row.get("description") or "").strip()
+    parent = by_id.get(str(row.get("parentCategoryId") or ""))
+    parent_code = str((parent or {}).get("description") or "").strip()
+    if _is_group_code(parent_code) and _is_group_code(child_code):
+        suffix = f" {name}" if name else ""
+        return f"{parent_code}.{child_code}{suffix}"
+    return name or wanted
 
 
 def _name_eq(row: dict[str, Any], name: str) -> bool:
@@ -352,10 +494,16 @@ def _put_category_name(
     return updated if isinstance(updated, dict) else {**row, "name": new_name}
 
 
+def _delete_category_or_raise(client: WeclappClient, category_id: str) -> None:
+    if not category_id:
+        raise GroupRegistryError(MSG_DELETE_FAILED)
+    client.request("DELETE", f"{CATEGORY_PATH}/id/{category_id}")
+
+
 def _delete_category(client: WeclappClient, category_id: str) -> None:
     if not category_id:
         return
     try:
-        client.request("DELETE", f"{CATEGORY_PATH}/id/{category_id}")
-    except WeclappError:
+        _delete_category_or_raise(client, category_id)
+    except (GroupRegistryError, WeclappError):
         return

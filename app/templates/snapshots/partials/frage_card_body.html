@@ -1,0 +1,154 @@
+{% if snapshot.status == "complete" %}
+<div class="btn-group mb-3" role="group" aria-label="Modus">
+  {% if transform_allowed %}
+  <a
+    class="btn btn-outline-primary{% if transform_mode != 'aendern' %} active{% endif %}"
+    href="/artikel-uebersicht/{{ snapshot.id }}{% if viewer_qs %}?{{ viewer_qs }}{% endif %}"
+  >{{ msg_mode_read }}</a>
+  <a
+    class="btn btn-outline-primary{% if transform_mode == 'aendern' %} active{% endif %}"
+    href="/artikel-uebersicht/{{ snapshot.id }}?modus=aendern{% if viewer_qs %}&{{ viewer_qs }}{% endif %}"
+  >{{ msg_mode_edit }}</a>
+  {% else %}
+  <button type="button" class="btn btn-outline-primary active" disabled>{{ msg_mode_read }}</button>
+  <button type="button" class="btn btn-outline-secondary" disabled title="{{ msg_transform_unavailable }}">{{ msg_mode_edit }}</button>
+  {% endif %}
+</div>
+{% if not transform_allowed %}
+<p class="text-body-secondary small mb-3">
+  {{ msg_transform_unavailable }}
+  {% for reason in transform_unavailable_reasons %}
+    {% if reason != msg_transform_unavailable %}<br>{{ reason }}{% endif %}
+  {% endfor %}
+  <form method="post" action="/artikel-uebersicht/abfragen" class="d-inline">
+    <button type="submit" class="btn btn-link p-0 align-baseline">{{ msg_transform_pull }}</button>
+  </form>
+</p>
+{% endif %}
+
+{% if assistant_available %}
+<form
+  id="snapshot-frage-form"
+  method="post"
+  action="/artikel-uebersicht/{{ snapshot.id }}/frage{% if keep_qs %}?{{ keep_qs }}{% endif %}"
+  hx-boost="false"
+  hx-disinherit="*"
+  onsubmit="document.body.classList.add('is-frage-busy')"
+>
+  {% if filters.query %}
+  <input type="hidden" name="q" value="{{ filters.query }}">
+  {% endif %}
+  {% if filters.hauptgruppe %}
+  <input type="hidden" name="hauptgruppe" value="{{ filters.hauptgruppe }}">
+  {% endif %}
+  {% if filters.untergruppe %}
+  <input type="hidden" name="untergruppe" value="{{ filters.untergruppe }}">
+  {% endif %}
+  <label class="form-label" for="snapshot-frage">{% if transform_mode == 'aendern' %}{{ msg_write_prompt }}{% else %}Stell {{ assistant_name }} eine Frage zur Artikelliste. Die Treffer werden in der Tabelle ausgewählt.{% endif %}</label>
+  <div class="row g-3 align-items-end">
+    <div class="col">
+      <input
+        class="form-control"
+        id="snapshot-frage"
+        type="text"
+        name="frage"
+        value="{{ assistant_question or '' }}"
+        placeholder="{{ assistant_example_questions[0] }}"
+        autocomplete="off"
+      >
+      <script type="application/json" id="snapshot-frage-examples">{{ assistant_example_questions | tojson }}</script>
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-primary" id="snapshot-frage-submit">{% if transform_mode == 'aendern' %}Vorschlagen{% else %}Fragen{% endif %}</button>
+    </div>
+  </div>
+  <p id="snapshot-frage-status" class="alert alert-info mt-3 mb-0" hidden role="status"></p>
+</form>
+<div class="alert alert-info mt-3 mb-0" id="snapshot-frage-running-banner" role="status">
+  Suchanfrage läuft...
+</div>
+{% if assistant_query_id %}
+{% include "snapshots/partials/frage_banner.html" %}
+{% endif %}
+{% elif assistant_query_id %}
+{% include "snapshots/partials/frage_banner.html" %}
+{% endif %}
+
+{% if transform_allowed and transform_mode == 'aendern' %}
+<details class="mt-3" id="transform-manual-fallback">
+  <summary>{{ msg_manual_fallback }}</summary>
+<form
+  id="transform-spec-form"
+  method="post"
+  action="/artikel-uebersicht/{{ snapshot.id }}/transform/vorschau"
+  class="transform-spec-form mt-3"
+>
+  {% if filters.query %}<input type="hidden" name="q" value="{{ filters.query }}">{% endif %}
+  {% if filters.hauptgruppe %}<input type="hidden" name="hauptgruppe" value="{{ filters.hauptgruppe }}">{% endif %}
+  {% if filters.untergruppe %}<input type="hidden" name="untergruppe" value="{{ filters.untergruppe }}">{% endif %}
+  <input type="hidden" name="nur_aktive" value="{% if filters.nur_aktive %}1{% else %}0{% endif %}">
+  <div id="transform-selected-numbers"></div>
+  <p class="text-body-secondary small mb-1">{{ msg_scope_grid }}</p>
+  <p class="small mb-3" id="transform-scope-count">
+    Aktueller Filter: {{ format_swiss_number(total_filtered) }} Artikel.
+  </p>
+  <fieldset class="mb-3">
+    <legend class="form-label">Felder</legend>
+    <div class="row">
+      {% for key in pass_1_fields %}
+      <div class="col-md-4">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="felder" value="{{ key }}" id="transform-field-{{ loop.index }}" {% if key == 'Prosema-Artikelname' %}checked{% endif %}>
+          <label class="form-check-label" for="transform-field-{{ loop.index }}">{{ key }}</label>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </fieldset>
+  <p class="small">{{ msg_ops_order }}</p>
+  <p class="text-body-secondary small">{{ msg_replace_word_hint }}</p>
+  <ol id="transform-ops" class="transform-ops list-group mb-3"></ol>
+  <button type="button" class="btn btn-outline-secondary btn-sm mb-3" id="transform-op-add">Operation hinzufügen</button>
+  <div>
+    <button type="submit" class="btn btn-primary" id="transform-preview-submit">Vorschau</button>
+  </div>
+</form>
+<script type="application/json" id="transform-op-labels">{{ op_labels | tojson }}</script>
+<script type="application/json" id="transform-op-messages">{{ {
+  'amp': msg_amp,
+  'empty': msg_empty_search,
+  'noop': msg_noop,
+  'non_idem': msg_non_idem,
+} | tojson }}</script>
+<template id="transform-op-template">
+  <li class="list-group-item transform-op">
+    <div class="d-flex gap-2 align-items-start">
+      <span class="transform-op-num fw-semibold"></span>
+      <div class="flex-grow-1">
+        <label class="form-label">Art</label>
+        <select class="form-select transform-op-kind" name="op_art">
+          <option value="replace_word" selected>Wort ersetzen</option>
+          <option value="replace_literal">Text ersetzen</option>
+          <option value="remove_word">Wort entfernen</option>
+          <option value="remove_literal">Text entfernen</option>
+        </select>
+        <label class="form-label mt-2">Suche</label>
+        <input class="form-control transform-op-search" type="text" name="op_suche" autocomplete="off">
+        <div class="invalid-feedback transform-op-search-msg"></div>
+        <div class="transform-op-replace-wrap">
+          <label class="form-label mt-2">Ersatz</label>
+          <input class="form-control transform-op-replace" type="text" name="op_ersatz" autocomplete="off">
+          <div class="form-text text-warning transform-op-warn" hidden></div>
+        </div>
+      </div>
+      <div class="btn-group-vertical">
+        <button type="button" class="btn btn-outline-secondary btn-sm transform-op-up" aria-label="Nach oben">↑</button>
+        <button type="button" class="btn btn-outline-secondary btn-sm transform-op-down" aria-label="Nach unten">↓</button>
+        <button type="button" class="btn btn-outline-danger btn-sm transform-op-remove" aria-label="Entfernen">×</button>
+      </div>
+    </div>
+  </li>
+</template>
+</details>
+{% endif %}
+{% endif %}

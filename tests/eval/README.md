@@ -9,6 +9,7 @@ article snapshot** — no UI. Not a pytest test: it talks to a model and
 # from the repo root, with .env loaded the usual way
 python tests/eval/run_eval.py --provider openai_compatible --model qwen2.5-7b-instruct
 python tests/eval/run_eval.py --provider azure --model gpt-4o
+python tests/eval/run_eval.py --set write --provider azure --model gpt-4.1-mini
 python tests/eval/run_eval.py --id count-all          # one question, cheap iteration
 python tests/eval/run_eval.py --limit 1               # first N questions
 ```
@@ -131,3 +132,33 @@ call (or a stock refusal) so you can inspect the table format and the
 scoring path. Tools still run against the real snapshot, so you need a
 database and a complete snapshot. Use it when no local server is up — not
 as a quality signal.
+
+## Write mode (`--set write`)
+
+Uses `transform_questions.yaml` and `write_mode=True`. Scoring is on the
+proposed spec (fields, operations, order, outcome), not the six read tools.
+
+`replace_literal` with `replace: ""` scores as `remove_literal` — the engine
+treats them identically.
+
+Non-idempotent `replace_literal` (search contained in replace) is covered by
+pytest on `TransformSpec` and `transform_vorschlagen`, not by a write fixture.
+Choosing `replace_word` for a standalone noun is correct and must not fail
+an eval case.
+
+### Known limitations of write mode
+
+- **winkel-ambiguous, 0/3:** contradictory instructions produce a spec rather
+  than a clarifying question. Mitigation: the intent line, the diff, the
+  confirm.
+- **forbidden-gruppe circumvention, 2/3:** a request to move articles between
+  groups can be satisfied by rewriting the group name inside text fields. The
+  validator correctly refuses writing the group attribute; it cannot refuse a
+  text edit that looks identical to a legitimate rename. Mitigation: human
+  review. Note that the diff cannot distinguish this from an intended rename.
+- **Assign / «*» as wildcard:** there is no set-field operation. A spec
+  «*» → «neuer Text» is a literal asterisk replace; preview then reports
+  0 rows. The spec constructor now refuses `search == "*"`. Setting a
+  description to a new string is inexpressible until the current text to
+  replace is named.
+

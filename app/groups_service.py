@@ -37,8 +37,9 @@ class AmbiguousGroupMatch(ValueError):
 class GroupRegistryError(Exception):
     """A registry write was rejected. ``message`` is the German UI string."""
 
-    def __init__(self, message: str) -> None:
+    def __init__(self, message: str, *, prompt: str | None = None) -> None:
         self.message = message
+        self.prompt = prompt
         super().__init__(message)
 
 
@@ -345,10 +346,17 @@ def change_hauptgruppe_code(
 
 
 def soft_delete_hauptgruppe(
-    db: Session, group: Hauptgruppe, *, actor: Mapping[str, Any]
+    db: Session,
+    group: Hauptgruppe,
+    *,
+    actor: Mapping[str, Any],
+    weclapp_client: Any = None,
 ) -> Hauptgruppe:
     if group.deleted_at is not None:
         return group
+    from app.group_usage import refuse_hauptgruppe_delete
+
+    refuse_hauptgruppe_delete(db, group, client=weclapp_client)
     before = snapshot_hauptgruppe(group)
     group.deleted_at = datetime.now(UTC)
     flush_registry(db)
@@ -472,10 +480,17 @@ def change_untergruppe_code(
 
 
 def soft_delete_untergruppe(
-    db: Session, group: Untergruppe, *, actor: Mapping[str, Any]
+    db: Session,
+    group: Untergruppe,
+    *,
+    actor: Mapping[str, Any],
+    weclapp_client: Any = None,
 ) -> Untergruppe:
     if group.deleted_at is not None:
         return group
+    from app.group_usage import refuse_untergruppe_delete
+
+    refuse_untergruppe_delete(db, group, client=weclapp_client)
     before = snapshot_untergruppe(group)
     group.deleted_at = datetime.now(UTC)
     flush_registry(db)

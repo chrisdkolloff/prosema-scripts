@@ -11,8 +11,12 @@ from app.groups_service import GroupRegistryError
 from app.weclapp_categories import (
     TOOLS_HOST,
     compare_group_registry,
+    count_articles_in_haupt_category,
+    count_articles_in_unter_category,
     create_haupt_and_unter_in_weclapp,
     create_unter_in_weclapp,
+    delete_haupt_in_weclapp,
+    delete_unter_in_weclapp,
     rename_haupt_in_weclapp,
     rename_unter_in_weclapp,
     weclapp_category_writes_allowed,
@@ -195,6 +199,96 @@ def test_rename_unter_puts_child():
     )
 
 
+def test_create_unter_skips_post_if_already_present():
+    client = MagicMock()
+    client.iter_pages.return_value = [
+        {"id": "p1", "name": "Zubehör", "parentCategoryId": None},
+        {
+            "id": "c1",
+            "name": "Werkzeug",
+            "description": "030",
+            "parentCategoryId": "p1",
+        },
+    ]
+    child = create_unter_in_weclapp(
+        client,
+        parent_name="Zubehör",
+        unter_name="Werkzeug",
+        unter_code="030",
+    )
+    assert child["id"] == "c1"
+    client.post.assert_not_called()
+
+
+def test_count_articles_in_unter_category():
+    client = MagicMock()
+    client.iter_pages.return_value = [
+        {"id": "p1", "name": "Zubehör", "description": "010", "parentCategoryId": None},
+        {"id": "c1", "name": "Heizmatten", "description": "020", "parentCategoryId": "p1"},
+    ]
+    client.get_count.return_value = 7
+    n = count_articles_in_unter_category(
+        client,
+        parent_name="Zubehör",
+        parent_code="010",
+        unter_name="Heizmatten",
+        unter_code="020",
+    )
+    assert n == 7
+    client.get_count.assert_called_once_with(
+        "article", params={"articleCategoryId-eq": "c1"}
+    )
+    assert (
+        count_articles_in_haupt_category(client, haupt_name="Zubehör", haupt_code="010")
+        == 7
+    )
+
+
+def test_delete_unter_deletes_child_and_skips_if_gone():
+    client = MagicMock()
+    client.iter_pages.return_value = [
+        {"id": "p1", "name": "Zubehör", "description": "010", "parentCategoryId": None},
+        {
+            "id": "c1",
+            "name": "Heizmatten",
+            "description": "020",
+            "parentCategoryId": "p1",
+        },
+    ]
+    delete_unter_in_weclapp(
+        client,
+        parent_name="Zubehör",
+        parent_code="010",
+        unter_name="Heizmatten",
+        unter_code="020",
+    )
+    client.request.assert_called_once_with("DELETE", "/articleCategory/id/c1")
+
+    client.reset_mock()
+    client.iter_pages.return_value = [
+        {"id": "p1", "name": "Zubehör", "description": "010", "parentCategoryId": None},
+    ]
+    delete_unter_in_weclapp(
+        client,
+        parent_name="Zubehör",
+        parent_code="010",
+        unter_name="Heizmatten",
+        unter_code="020",
+    )
+    client.request.assert_not_called()
+
+
+def test_delete_haupt_refuses_when_children_remain():
+    client = MagicMock()
+    client.iter_pages.return_value = [
+        {"id": "p1", "name": "Zubehör", "description": "010", "parentCategoryId": None},
+        {"id": "c1", "name": "Kind", "description": "001", "parentCategoryId": "p1"},
+    ]
+    with pytest.raises(GroupRegistryError, match="noch Untergruppen"):
+        delete_haupt_in_weclapp(client, haupt_name="Zubehör", haupt_code="010")
+    client.request.assert_not_called()
+
+
 def test_rename_unter_missing_child_raises():
     client = MagicMock()
     client.iter_pages.return_value = [
@@ -255,3 +349,22 @@ def test_compare_group_registry_in_sync_is_empty():
         {"id": "c1", "name": "Werkzeug", "description": "030", "parentCategoryId": "p1"},
     ]
     assert compare_group_registry(tools_haupt, tools_unter, categories) == []
+
+
+def test_category_label_uses_codes():
+    from app.weclapp_categories import category_label, find_coded_untergruppe_category
+
+    categories = [
+        {"id": "p1", "name": "Zubehör", "description": "010"},
+        {"id": "c1", "name": "Werkzeug", "description": "030", "parentCategoryId": "p1"},
+    ]
+    found = find_coded_untergruppe_category(
+        categories,
+        haupt_name="Zubehör",
+        haupt_code="010",
+        unter_name="Werkzeug",
+        unter_code="030",
+    )
+    assert found is not None and found["id"] == "c1"
+    assert category_label(categories, "c1") == "010.030 Werkzeug"
+    assert category_label(categories, "") == "(keine)"
