@@ -1,7 +1,46 @@
 # PROSEMA release history — edit this file to bump the version and document changes.
 # The top-level `version` is shown in the site header; `[[releases]]` entries appear on /changelog.
 
-version = "1.2.0"
+version = "1.3.0"
+
+[[releases]]
+version = "1.3.0"
+date = "2026-09-07"
+summary = "Update terminology for supply source registration (+30 more)"
+changes = [
+  "Add Weclapp supply source index job handler and enhance supplier model",
+  "Enhance empty result handling in snapshots and improve user guidance",
+  "Add supply source resolve job handler and enhance models",
+  "Add supply source apply job handler and enhance models",
+  "Enhance supply source application process and improve model tracking",
+  "Enhance supply source management with unit integration",
+  "Implement supply source upload functionality and enhance template management",
+  "Add parse_aufschlag_percent function for percentage handling and update related components",
+  "Refactor supply source models and enhance application logic",
+  "Update discount constraints and enhance rate parsing logic",
+  "Enhance supply source grid functionality and improve UI responsiveness",
+  "Refactor grid freezing functionality and update CSS for improved UI",
+  "Update button labels in supply source templates for clarity",
+  "Implement retry functionality for failed supply source runs and enhance error handling",
+  "Refactor dropdown data structure in supply source grid configuration",
+  "Enhance supply source unit handling and introduce new aliasing functionality",
+  "Refactor unique constraint naming in SupplierUnitAlias model and update migration script",
+  "Add test for unit overwrite persistence during run resolve",
+  "Resolve supply-source currency from the run, and flag live mismatches.",
+  "Keep priceless upload rows and split them out of the accepted count.",
+  "Refactor supply source grid functionality and enhance discount code handling",
+  "Enhance unit editing error handling and improve grid configuration",
+  "Refactor summary display in supply source detail template for improved clarity",
+  "Update error messages and UI labels for clarity in supply source application",
+  "Enhance supply source price handling and implement stale party removal logic",
+  "Implement price entry handling in supply source approval process",
+  "Add price start and end date handling in article price rebuilding",
+  "Enhance price entry handling in supply source runs",
+  "Add CSV download functionality for supply source runs",
+  "Add sales article number and currency handling in CSV export",
+  "Update terminology for supply source registration",
+]
+
 
 [[releases]]
 version = "1.2.0"

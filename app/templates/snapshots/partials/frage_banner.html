@@ -34,6 +34,16 @@
         {% endif %}
       </details>
       {% endif %}
+      {% if empty_filter_explanation %}
+      <p class="mb-0 mt-2">{{ empty_filter_explanation }}</p>
+      {% elif explain_empty_available %}
+      <p class="mb-0 mt-2">
+        <a
+          class="btn btn-outline-secondary btn-sm"
+          href="/artikel-uebersicht/{{ snapshot.id }}?{{ viewer_qs }}{% if viewer_qs %}&{% endif %}warum=1{% if transform_mode == 'aendern' %}&modus=aendern{% endif %}"
+        >{{ msg_explain_empty }}</a>
+      </p>
+      {% endif %}
       {% if assistant_hinweis %}
       <p class="mb-0 small text-body-secondary">{{ assistant_hinweis }}</p>
       {% endif %}

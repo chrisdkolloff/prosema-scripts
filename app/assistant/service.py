@@ -763,7 +763,7 @@ def ask(
                             last_empty_rows = not result.rows
                             if spec.name in _SELECTION_TOOLS:
                                 last_selection_filter = args.filters
-                        elif spec.name == "gruppen_zuordnen" and result.rows:
+                        elif result.rows:
                             last_selection_filter = args.filters
                         if result.datenstand is not None:
                             last_datenstand = result.datenstand

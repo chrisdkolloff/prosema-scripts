@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Bezugsquellenregistrierung — PROSEMA{% endblock %}
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/">Home</a></li>
+<li class="breadcrumb-item active"><span>Bezugsquellenregistrierung</span></li>
+{% endblock %}
+{% block content %}
+  <h1 class="mb-2">Bezugsquellenregistrierung</h1>
+  <p class="text-body-secondary mb-4">
+    Erzeugt eine Vorlage, prüft die zurückgesendete Datei und gleicht sie mit weclapp ab.
+    Es wird noch nichts nach weclapp geschrieben.
+  </p>
+
+  {% if request.query_params.get("error") %}
+  <div class="alert alert-danger" role="alert" style="white-space: pre-wrap">{{ request.query_params.get("error") }}</div>
+  {% endif %}
+
+  {% if busy %}
+  <div class="alert alert-warning" role="alert">Für diesen Lieferanten läuft bereits ein Abgleich.</div>
+  {% endif %}
+
+  <form method="post" action="/bezugsquellen/neu/upload" enctype="multipart/form-data" class="row g-3 align-items-end mb-4">
+    <div class="col-auto">
+      <label class="form-label" for="ss-file">Datei (xlsx oder csv)</label>
+      <label class="file-picker input-group mb-0" for="ss-file">
+        <span class="input-group-text">Datei auswählen</span>
+        <span class="form-control file-picker-name">Keine Datei ausgewählt</span>
+      </label>
+      <input class="visually-hidden" id="ss-file" type="file" name="datei" accept=".xlsx,.csv" required>
+    </div>
+    <div class="col-auto" id="ss-upload-supplier-wrap" hidden>
+      <label class="form-label" for="ss-upload-supplier">Lieferant</label>
+      <select class="form-select" id="ss-upload-supplier" name="supplier_id">
+        {% for supplier in suppliers %}
+        <option value="{{ supplier.id }}" {% if supplier.id == default_supplier_id %}selected{% endif %}>
+          {{ supplier.supplier_number }} · {{ supplier.name }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-primary" {% if busy %}disabled{% endif %}>Datei prüfen</button>
+    </div>
+  </form>
+
+  <form method="post" action="/bezugsquellen/neu/abfragen" class="row g-3 align-items-end mb-4">
+    <input type="hidden" name="supplier_id" id="ss-pull-supplier" value="{{ default_supplier_id }}">
+    <div class="col-auto">
+      <button type="submit" class="btn btn-outline-secondary" {% if busy %}disabled{% endif %}>
+        Ohne Datei aus weclapp abgleichen
+      </button>
+    </div>
+  </form>
+
+  {% if runs %}
+  <div class="table-responsive mb-4">
+    <table class="table table-hover align-middle">
+      <thead>
+        <tr>
+          <th>Stand</th>
+          <th>Lieferant</th>
+          <th>Status</th>
+          <th>Gestartet von</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in runs %}
+        <tr>
+          <td><a href="/bezugsquellen/neu/{{ item.id }}">{{ item.created_at.strftime("%d.%m.%Y %H:%M") }}</a></td>
+          <td>{% if item.supplier %}{{ item.supplier.supplier_number }} · {{ item.supplier.name }}{% else %}—{% endif %}</td>
+          <td>{{ status_labels.get(item.status, item.status) }}{% if item.source == "upload" %} · Datei{% endif %}</td>
+          <td>{{ item.created_by_name }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-body-secondary mb-4">Noch kein Abgleich vorhanden.</p>
+  {% endif %}
+
+  <p class="mb-2">
+    <a class="btn btn-primary" href="/bezugsquellen/neu/vorlage.xlsx">Vorlage erzeugen</a>
+  </p>
+  {% if is_admin %}
+  <p class="mb-4"><a href="/bezugsquellen/neu/vorlagen">Spalten der Vorlage</a></p>
+  {% endif %}
+  <script>
+    (function () {
+      var file = document.getElementById("ss-file");
+      var wrap = document.getElementById("ss-upload-supplier-wrap");
+      var sel = document.getElementById("ss-upload-supplier");
+      var pull = document.getElementById("ss-pull-supplier");
+      var nameEl = document.querySelector(".file-picker-name");
+      var empty = "Keine Datei ausgewählt";
+      function sync() {
+        var hasFile = !!(file && file.files && file.files.length);
+        if (wrap) wrap.hidden = !hasFile;
+        if (sel) sel.required = hasFile;
+        if (pull && sel && sel.value) pull.value = sel.value;
+        if (nameEl) nameEl.textContent = hasFile ? file.files[0].name : empty;
+      }
+      if (file) file.addEventListener("change", sync);
+      if (sel) sel.addEventListener("change", sync);
+      sync();
+    })();
+  </script>
+{% endblock %}

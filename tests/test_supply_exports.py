@@ -189,6 +189,7 @@ def test_detail_uses_jspreadsheet_grid(user_client, db_session):
     assert response.status_code == 200
     assert 'id="supply-spreadsheet"' in response.text
     assert "supply_export_grid.js" in response.text
+    assert "jspreadsheet_common.js" in response.text
     assert "supply-grid-config" in response.text
     assert "supply-column-picker" in response.text
     assert "Pflichtfelder" in response.text

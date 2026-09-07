@@ -247,7 +247,7 @@ def test_active_jobs_banner_names_triggering_user(user_client, db_session):
     response = user_client.get("/jobs/aktiv")
     assert response.status_code == 200
     assert "Läuft: Testlauf (Christopher Kara)" in response.text
-    assert "weclapp-Lizenz bitte noch nicht übergeben" in response.text
+    assert "weclapp-Lizenz bitte noch nicht übergeben" not in response.text
 
 
 def test_active_jobs_banner_snapshot_is_in_bearbeitung(user_client, db_session):

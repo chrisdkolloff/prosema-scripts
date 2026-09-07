@@ -21,6 +21,7 @@ from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.supply_source_index import DuplicateSupplySourceError
 from app.models import UserWeclappToken
 from scripts.weclapp.client import WeclappClient, WeclappError
 from scripts.weclapp.config import WeclappConfig
@@ -70,9 +71,9 @@ LANDING_TOOLS: tuple[dict[str, object], ...] = (
         "refresh_needs_weclapp": True,
     },
     {
-        "name": "Bezugsquellenexport",
-        "href": "/bezugsquellen",
-        "description": "CSV-Datei für den Bezugsquellen-Import in weclapp erzeugen.",
+        "name": "Bezugsquellenregistrierung",
+        "href": "/bezugsquellen/neu",
+        "description": "Bezugsquellen prüfen, mit weclapp abgleichen und Preise schreiben oder als CSV für den Assistenten erzeugen.",
         "needs_weclapp": False,
         "refresh_needs_weclapp": True,
     },
@@ -291,12 +292,30 @@ def check_weclapp_access(db: Session, oid: str) -> WeclappAccess:
     )
 
 
+def is_weclapp_auth_failure(exc: BaseException) -> bool:
+    """True when weclapp cannot be reached because of token or licence."""
+    if isinstance(
+        exc,
+        (NoWeclappToken, WeclappTokenInvalid, WeclappLicenceMissing, WeclappTokenUnreadable),
+    ):
+        return True
+    if isinstance(exc, WeclappError):
+        mapped = map_weclapp_error(exc)
+        return mapped is not exc and isinstance(
+            mapped,
+            (NoWeclappToken, WeclappTokenInvalid, WeclappLicenceMissing, WeclappTokenUnreadable),
+        )
+    return False
+
+
 def job_error_message(exc: BaseException) -> str | None:
     """German job.error for token/licence failures; None means use a traceback."""
     if isinstance(
         exc,
         (NoWeclappToken, WeclappTokenInvalid, WeclappLicenceMissing, WeclappTokenUnreadable),
     ):
+        return str(exc)
+    if isinstance(exc, DuplicateSupplySourceError):
         return str(exc)
     if isinstance(exc, WeclappError):
         mapped = map_weclapp_error(exc)

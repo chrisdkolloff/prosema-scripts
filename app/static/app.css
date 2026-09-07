@@ -113,10 +113,23 @@
 }
 
 /* Body freeze stays below the header so rows tuck under it when scrolling down. */
-.batch-spreadsheet .jss_worksheet thead .jss_freezed,
-.batch-spreadsheet .jss_worksheet tbody .jss_freezed {
+.batch-spreadsheet .jss_worksheet thead .jss_freezed {
   position: sticky !important;
+  background-color: #f3f4f6 !important;
+  box-shadow: none !important;
+}
+
+.batch-spreadsheet .jss_worksheet tbody .jss_freezed {
+  position: relative !important;
   background-color: #fff !important;
+  box-shadow: none !important;
+}
+
+/* Bezugsquellen-Abgleich: hide CE nest/# so freeze starts at column 0. */
+#ss-spreadsheet .jss_worksheet > colgroup > col:first-child,
+#ss-spreadsheet .jss_selectall,
+#ss-spreadsheet .jss_row {
+  display: none !important;
 }
 
 .batch-spreadsheet .jss_worksheet thead .jss_freezed {
@@ -141,11 +154,15 @@
 }
 
 .batch-spreadsheet .jss_worksheet thead .jss_freezed-edge {
-  box-shadow: 2px 0 0 #d6d3d1, 0 -4px 0 #f3f4f6;
+  box-shadow: 2px 0 0 #d6d3d1, 0 -4px 0 #f3f4f6 !important;
 }
 
 .batch-spreadsheet .jss_worksheet tbody .jss_freezed-edge {
-  box-shadow: 2px 0 0 #d6d3d1;
+  box-shadow: 2px 0 0 #d6d3d1 !important;
+}
+
+.batch-spreadsheet .jss_worksheet tbody tr.ss-row-excluded > td.jss_freezed {
+  opacity: 0.55;
 }
 
 tr.batch-row-error > td {

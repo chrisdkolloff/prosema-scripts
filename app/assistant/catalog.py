@@ -314,7 +314,11 @@ COLUMNS: tuple[QueryableColumn, ...] = (
     _q(
         "Grundmaterial",
         type="text",
-        description_de="Custom-Attribut Grundmaterial.",
+        description_de=(
+            "Custom-Attribut Grundmaterial. Werte sind oft zusammengesetzt "
+            "(z. B. «Edelstahl V2A», nicht «Edelstahl»); deshalb contains, "
+            "nicht Gleichheit."
+        ),
     ),
     _q(
         "Oberfläche",

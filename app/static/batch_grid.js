@@ -331,78 +331,6 @@
       .catch(fail);
   }
 
-  function destroyExisting(el) {
-    if (!el || typeof jspreadsheet === "undefined") return;
-    try {
-      if (typeof jspreadsheet.destroy === "function") {
-        jspreadsheet.destroy(el, true);
-      }
-    } catch (err) {
-      /* already gone */
-    }
-    el.innerHTML = "";
-  }
-
-  /** CSS sticky freeze — CE's scrollLeft→style.left updater lags. */
-  function hardenFreeze(worksheet) {
-    var n = Number(worksheet && worksheet.options && worksheet.options.freezeColumns) || 0;
-    if (!n || !worksheet.headers) return;
-
-    var table =
-      worksheet.table ||
-      (worksheet.element && worksheet.element.querySelector
-        ? worksheet.element.querySelector("table")
-        : null);
-    if (!table) return;
-
-    var nest = table.querySelector("thead tr > td:first-child");
-    var left = nest ? nest.offsetWidth : 50;
-
-    table.querySelectorAll("thead tr > td:first-child").forEach(function (td) {
-      td.classList.add("jss_freezed");
-      td.style.setProperty("position", "sticky", "important");
-      td.style.setProperty("left", "0px", "important");
-      td.style.setProperty("top", "0px", "important");
-    });
-    table.querySelectorAll("tbody tr > td:first-child").forEach(function (td) {
-      td.classList.add("jss_freezed");
-      td.style.setProperty("position", "sticky", "important");
-      td.style.setProperty("left", "0px", "important");
-    });
-
-    for (var s = 0; s < n; s++) {
-      var header = worksheet.headers[s];
-      var last = s === n - 1;
-      if (header) {
-        header.classList.add("jss_freezed");
-        if (last) header.classList.add("jss_freezed-edge");
-        header.style.setProperty("position", "sticky", "important");
-        header.style.setProperty("left", left + "px", "important");
-        header.style.setProperty("top", "0px", "important");
-      }
-      if (worksheet.records) {
-        for (var r = 0; r < worksheet.records.length; r++) {
-          var cell = worksheet.records[r] && worksheet.records[r][s];
-          if (cell && cell.element) {
-            cell.element.classList.add("jss_freezed");
-            if (last) cell.element.classList.add("jss_freezed-edge");
-            cell.element.style.setProperty("position", "sticky", "important");
-            cell.element.style.setProperty("left", left + "px", "important");
-          }
-        }
-      }
-      var width = 100;
-      if (worksheet.options.columns && worksheet.options.columns[s] && worksheet.options.columns[s].width) {
-        width = parseInt(worksheet.options.columns[s].width, 10) || 100;
-      } else if (header && header.offsetWidth) {
-        width = header.offsetWidth;
-      }
-      left += width;
-    }
-
-    worksheet.options.freezeColumns = 0;
-  }
-
   function init(root) {
     var scope = root && root.querySelector ? root : document;
     var el = scope.querySelector ? scope.querySelector("#batch-spreadsheet") : $("batch-spreadsheet");
@@ -412,7 +340,7 @@
     config = JSON.parse(cfgEl.textContent);
     queue = [];
     flushing = false;
-    destroyExisting(el);
+    ProsemaSpreadsheet.destroy(el);
     attachUntergruppeFilter(config.columns);
 
     var worksheets = jspreadsheet(el, {
@@ -426,7 +354,7 @@
         {
           data: config.data,
           columns: config.columns,
-          freezeColumns: config.freezeColumns || 3,
+          freezeColumns: 0,
           filters: false,
           search: false,
           tableOverflow: true,
@@ -450,7 +378,9 @@
       ],
     });
     worksheet = worksheets && worksheets[0] ? worksheets[0] : worksheets;
-    hardenFreeze(worksheet);
+    ProsemaSpreadsheet.hardenFreeze(worksheet, {
+      freezeColumns: config.freezeColumns || 3,
+    });
     bindFillHandle(el);
     paintInitial();
     if (statusEl && !statusEl.textContent) setStatus(STATUS_SAVED, "is-saved");

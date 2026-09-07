@@ -243,80 +243,6 @@
       .catch(fail);
   }
 
-  function destroyExisting(el) {
-    if (!el || typeof jspreadsheet === "undefined") return;
-    try {
-      if (typeof jspreadsheet.destroy === "function") {
-        jspreadsheet.destroy(el, true);
-      }
-    } catch (err) {
-      /* already gone */
-    }
-    el.innerHTML = "";
-  }
-
-  /**
-   * Nest/# index is hidden via hideIndex + matching CSS (td AND col). Freeze
-   * data columns from left: 0 with configured widths — never measured
-   * offsetWidth (0 mid-layout) and never collapse the nest col to width 0
-   * while its cells are display:none (that maps Artikelnr. onto a 0-col).
-   */
-  function hardenFreeze(ws) {
-    var n = Number(ws && ws.options && ws.options.freezeColumns) || 0;
-    if (!n || !ws.headers) return;
-
-    var table =
-      ws.table ||
-      (ws.element && ws.element.querySelector ? ws.element.querySelector("table") : null);
-    if (!table) return;
-
-    if (typeof ws.hideIndex === "function") {
-      ws.hideIndex();
-    } else {
-      table.classList.add("jss_hidden_index");
-    }
-
-    var left = 0;
-    for (var s = 0; s < n; s++) {
-      var configured = 100;
-      if (ws.options.columns && ws.options.columns[s] && ws.options.columns[s].width) {
-        configured = parseInt(ws.options.columns[s].width, 10) || 100;
-      }
-      if (ws.cols && ws.cols[s] && ws.cols[s].colElement) {
-        ws.cols[s].colElement.setAttribute("width", String(configured));
-        ws.cols[s].colElement.style.setProperty("width", configured + "px", "important");
-        ws.cols[s].colElement.style.setProperty("min-width", configured + "px", "important");
-      }
-
-      var header = ws.headers[s];
-      var last = s === n - 1;
-      if (header) {
-        header.classList.add("jss_freezed");
-        if (last) header.classList.add("jss_freezed-edge");
-        header.style.setProperty("position", "sticky", "important");
-        header.style.setProperty("left", left + "px", "important");
-        header.style.setProperty("top", "0px", "important");
-        header.style.setProperty("min-width", configured + "px", "important");
-        header.style.setProperty("max-width", configured + "px", "important");
-      }
-      if (ws.records) {
-        for (var r = 0; r < ws.records.length; r++) {
-          var cell = ws.records[r] && ws.records[r][s];
-          if (cell && cell.element) {
-            cell.element.classList.add("jss_freezed");
-            if (last) cell.element.classList.add("jss_freezed-edge");
-            cell.element.style.setProperty("position", "sticky", "important");
-            cell.element.style.setProperty("left", left + "px", "important");
-            cell.element.style.setProperty("min-width", configured + "px", "important");
-            cell.element.style.setProperty("max-width", configured + "px", "important");
-          }
-        }
-      }
-      left += configured;
-    }
-    ws.options.freezeColumns = 0;
-  }
-
   function bindColumnPicker(scope) {
     var picker = scope.querySelector ? scope.querySelector("#supply-column-picker") : $("supply-column-picker");
     var toggle = scope.querySelector ? scope.querySelector("#supply-column-toggle") : $("supply-column-toggle");
@@ -392,7 +318,7 @@
       config = JSON.parse(cfgEl.textContent);
       queue = [];
       flushing = false;
-      destroyExisting(el);
+      ProsemaSpreadsheet.destroy(el);
 
       var worksheets = jspreadsheet(el, {
         parseFormulas: false,
@@ -405,7 +331,7 @@
           {
             data: config.data,
             columns: config.columns,
-            freezeColumns: config.freezeColumns || 0,
+            freezeColumns: 0,
             filters: false,
             search: false,
             tableOverflow: true,
@@ -429,7 +355,10 @@
         ],
       });
       worksheet = worksheets && worksheets[0] ? worksheets[0] : worksheets;
-      hardenFreeze(worksheet);
+      ProsemaSpreadsheet.hardenFreeze(worksheet, {
+        freezeColumns: config.freezeColumns || 2,
+        hideIndex: true,
+      });
       bindFillHandle(el);
       paintInitial();
       bindColumnPicker(scope);

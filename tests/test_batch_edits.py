@@ -396,6 +396,7 @@ def test_batch_grid_page_uses_vendored_jspreadsheet(user_client, db_session):
     assert response.status_code == 200
     html = response.text
     assert 'src="/static/jspreadsheet.js"' in html
+    assert "jspreadsheet_common.js" in html
     assert 'href="/static/jspreadsheet.css"' in html
     assert 'src="/static/jsuites.js"' in html
     assert 'href="/static/jsuites.css"' in html

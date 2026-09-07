@@ -57,6 +57,9 @@ JOB_TYPE_LABELS = {
     "noop": "Testlauf",
     "weclapp_article_snapshot": "Artikelabfrage",
     "weclapp_supply_source_export": "Bezugsquellenabfrage",
+    "weclapp_supply_source_index": "Bezugsquellen-Index",
+    "supply_source_resolve": "Bezugsquellenregistrierung",
+    "supply_source_apply": "Bezugsquellenregistrierung schreiben",
     "article_batch_submit": "Artikelregistrierung senden",
     "article_transform_preview": "Artikel-Transformation Vorschau",
     "article_transform_apply": "Artikel-Transformation anwenden",
@@ -131,6 +134,84 @@ def handle_weclapp_supply_source_export(
         if run is not None:
             message = job_error_message(exc) or "Abfrage fehlgeschlagen"
             fail_export(db, run, message)
+        raise
+
+
+@job_handler("weclapp_supply_source_index")
+def handle_weclapp_supply_source_index(
+    db: Session,
+    payload: dict,
+    oid: str,
+) -> dict:
+    from app.supply_source_index import pull_supply_source_index
+
+    supplier_raw = payload.get("supplier_id")
+    supplier_id = int(supplier_raw) if supplier_raw not in (None, "") else None
+    try:
+        return pull_supply_source_index(db, oid=oid, supplier_id=supplier_id)
+    except Exception:
+        db.rollback()
+        raise
+
+
+@job_handler("supply_source_resolve")
+def handle_supply_source_resolve(
+    db: Session,
+    payload: dict,
+    oid: str,
+) -> dict:
+    from app.models import SupplySourceRun
+    from app.supply_source_resolve import fail_run, run_resolve
+
+    run_id = int(payload["run_id"])
+    run = db.get(SupplySourceRun, run_id)
+    if run is None:
+        raise ValueError("Abgleich nicht gefunden")
+    try:
+        return run_resolve(db, run, oid=oid)
+    except Exception as exc:
+        db.rollback()
+        run = db.get(SupplySourceRun, run_id)
+        if run is not None:
+            message = job_error_message(exc) or "Abgleich fehlgeschlagen"
+            fail_run(db, run, message)
+        raise
+
+
+@job_handler("supply_source_apply")
+def handle_supply_source_apply(
+    db: Session,
+    payload: dict,
+    oid: str,
+) -> dict:
+    from app.models import SupplySourceRun
+    from app.supply_source_apply import apply_chunk
+    from app.weclapp import weclapp_client_for
+
+    run_id = int(payload["run_id"])
+    chunk_index = int(payload.get("chunk_index") or 0)
+    run = db.get(SupplySourceRun, run_id)
+    if run is None:
+        raise ValueError("Abgleich nicht gefunden")
+    actor_name = str(payload.get("actor_name") or "")
+    try:
+        client = weclapp_client_for(db, oid)
+        return apply_chunk(
+            db,
+            run,
+            oid=oid,
+            actor_name=actor_name or oid,
+            client=client,
+            chunk_index=chunk_index,
+        )
+    except Exception as exc:
+        db.rollback()
+        run = db.get(SupplySourceRun, run_id)
+        if run is not None:
+            message = job_error_message(exc) or "Schreiben fehlgeschlagen"
+            run.status = "failed"
+            run.error = message
+            db.commit()
         raise
 
 

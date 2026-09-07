@@ -1,0 +1,409 @@
+/* Supply-source resolve grid: idle-flush queue + bulk rates. Jspreadsheet CE v5. */
+(function () {
+  var STATUS_SAVED = "Gespeichert";
+  var STATUS_SAVING = "Wird gespeichert…";
+  var STATUS_ERROR = "Nicht gespeichert — Verbindung prüfen";
+  var applying = false;
+  var queue = [];
+  var timer = null;
+  var flushing = false;
+  var worksheet = null;
+  var config = null;
+  var statusEl = null;
+
+  function $(id) {
+    return document.getElementById(id);
+  }
+
+  function setStatus(text, kind) {
+    if (!statusEl) return;
+    statusEl.textContent = text;
+    statusEl.classList.remove("is-saving", "is-error", "is-saved");
+    statusEl.classList.add(kind);
+  }
+
+  function fieldAt(x) {
+    if (!config || !config.fields) return null;
+    return config.fields[x] || null;
+  }
+
+  function isQueuedField(field) {
+    if (!field || !config) return false;
+    var allowed = config.editableFields || [];
+    return allowed.indexOf(field) >= 0;
+  }
+
+  function queueChange(x, y, value) {
+    if (applying || !config || !config.editable) return;
+    var field = fieldAt(x);
+    if (!isQueuedField(field)) return;
+    var rowId = config.rowIds[y];
+    if (!rowId) return;
+    queue.push({ row_id: rowId, field: field, value: value == null ? "" : String(value) });
+    setStatus(STATUS_SAVING, "is-saving");
+    scheduleFlush();
+  }
+
+  function scheduleFlush() {
+    if (timer) window.clearTimeout(timer);
+    timer = window.setTimeout(function () {
+      timer = null;
+      flush(false);
+    }, config.idleMs || 400);
+  }
+
+  function onBeforeChange(el, cell, x, y) {
+    if (!config) return true;
+    var field = fieldAt(Number(x));
+    if (field === "unit_id") {
+      var locked = (config.unitLockedRows || []).indexOf(Number(y)) >= 0;
+      if (locked) {
+        setStatus(
+          config.unitLockedError ||
+            "Einheit einer bestehenden Bezugsquelle lässt sich nicht ändern — weclapp lehnt das ab. Nur bei «neu anlegen» und «zuordnen» ist die Einheit editierbar.",
+          "is-error"
+        );
+        return false;
+      }
+    }
+    return true;
+  }
+
+  function onEvent(event) {
+    if (event !== "onchange") return;
+    queueChange(Number(arguments[3]), Number(arguments[4]), arguments[5]);
+  }
+
+  function rowIsHidden(y) {
+    var row = worksheet.rows && worksheet.rows[y];
+    return !!(row && row.element && row.element.style.display === "none");
+  }
+
+  function visibleRowIds() {
+    var ids = [];
+    if (!worksheet || !config) return ids;
+    var last = config.rowIds.length;
+    for (var y = 0; y < last; y++) {
+      if (rowIsHidden(y)) continue;
+      ids.push(config.rowIds[y]);
+    }
+    return ids;
+  }
+
+  function fieldIndex(name) {
+    if (!config || !config.fields) return -1;
+    return config.fields.indexOf(name);
+  }
+
+  function markSanGroups() {
+    if (!worksheet || !config) return;
+    (config.sanGroups || []).forEach(function (alt, y) {
+      if (!alt) return;
+      var el = worksheet.rows && worksheet.rows[y] && worksheet.rows[y].element;
+      if (el) el.classList.add("ss-san-alt");
+    });
+    var hint = config.rateHint || "";
+    ["rabatt_1", "rabatt_2"].forEach(function (name) {
+      var x = fieldIndex(name);
+      if (x < 0) return;
+      for (var y = 0; y < (config.rowIds || []).length; y++) {
+        var cell = null;
+        try { cell = worksheet.getCell(x, y); } catch (err) { cell = null; }
+        if (cell && hint) cell.title = hint;
+      }
+    });
+  }
+
+  function markExcluded() {
+    if (!worksheet || !config) return;
+    (config.excludedRows || []).forEach(function (y) {
+      var el = worksheet.rows && worksheet.rows[y] && worksheet.rows[y].element;
+      if (el) el.classList.add("ss-row-excluded");
+    });
+  }
+
+  function markUnmatched() {
+    if (!worksheet || !config) return;
+    (config.unmatchedRows || []).forEach(function (y) {
+      var el = worksheet.rows && worksheet.rows[y] && worksheet.rows[y].element;
+      if (el) el.classList.add("ss-row-unmatched");
+    });
+  }
+
+  function markUnitLocked() {
+    if (!worksheet || !config) return;
+    var x = (config.fields || []).indexOf("unit_id");
+    if (x < 0) return;
+    var hint = config.unitLockedHint || "";
+    var descById = {};
+    (config.units || []).forEach(function (u) {
+      descById[u.id] = u.description || "";
+    });
+    var unknown = {};
+    (config.unitUnknownRows || []).forEach(function (y) { unknown[y] = true; });
+    var overwritten = {};
+    (config.unitOverwriteRows || []).forEach(function (y) { overwritten[y] = true; });
+    for (var y = 0; y < (config.rowIds || []).length; y++) {
+      var cell = null;
+      try {
+        cell = worksheet.getCell(x, y);
+      } catch (err) {
+        cell = null;
+      }
+      if (!cell) continue;
+      var uid = String((config.data[y] && config.data[y][x]) || "");
+      var parts = [];
+      if (descById[uid]) parts.push(descById[uid]);
+      if ((config.unitLockedRows || []).indexOf(y) >= 0) {
+        cell.classList.add("ss-unit-locked");
+        parts.push(hint);
+      }
+      if (unknown[y]) {
+        cell.classList.add("ss-unit-unknown");
+        var uTitle = (config.unitUnknownTitles || [])[y];
+        if (uTitle) parts.push(uTitle);
+      }
+      if (overwritten[y]) {
+        cell.classList.add("ss-unit-overwritten");
+        var oTitle = (config.unitOverwriteTitles || [])[y];
+        if (oTitle) parts.push(oTitle);
+      }
+      if (parts.length) cell.title = parts.join(" — ");
+    }
+    var xCur = (config.fields || []).indexOf("current_ek");
+    if (xCur < 0) return;
+    var curOver = {};
+    (config.currencyOverwriteRows || []).forEach(function (y) { curOver[y] = true; });
+    for (var y = 0; y < (config.rowIds || []).length; y++) {
+      if (!curOver[y]) continue;
+      var cell = null;
+      try { cell = worksheet.getCell(xCur, y); } catch (err) { cell = null; }
+      if (!cell) continue;
+      cell.classList.add("ss-currency-overwritten");
+      var cTitle = (config.currencyOverwriteTitles || [])[y];
+      if (cTitle) cell.title = cTitle;
+    }
+  }
+
+  function markDivergences() {
+    if (!worksheet || !config) return;
+    var titles = config.divergenceTitles || [];
+    var xName = (config.fields || []).indexOf("name");
+    for (var y = 0; y < titles.length; y++) {
+      if (!titles[y]) continue;
+      var el = worksheet.rows && worksheet.rows[y] && worksheet.rows[y].element;
+      if (el) el.classList.add("ss-divergent");
+      if (xName < 0) continue;
+      var cell = null;
+      try { cell = worksheet.getCell(xName, y); } catch (err) { cell = null; }
+      if (cell) {
+        cell.classList.add("ss-divergent");
+        cell.title = titles[y];
+      }
+    }
+  }
+
+  function replaceGrid(next) {
+    config = next;
+    var el = $("ss-spreadsheet");
+    if (typeof ProsemaSpreadsheet !== "undefined") {
+      ProsemaSpreadsheet.destroy(el);
+    } else if (el && typeof jspreadsheet.destroy === "function") {
+      try { jspreadsheet.destroy(el, true); } catch (err) {}
+    }
+    applying = true;
+    try {
+      var sheets = jspreadsheet(el, {
+        parseFormulas: false,
+        autoCasting: false,
+        toolbar: false,
+        about: false,
+        worksheets: [{
+          data: config.data,
+          columns: config.columns,
+          tableOverflow: true,
+          tableWidth: "100%",
+          tableHeight: "70vh",
+          freezeColumns: 0,
+          allowInsertRow: false,
+          allowDeleteRow: false,
+          allowInsertColumn: false,
+          allowDeleteColumn: false,
+          columnSorting: false,
+          filters: true,
+          onbeforechange: onBeforeChange,
+          onchange: onEvent,
+        }],
+      });
+      worksheet = sheets[0];
+    } finally {
+      applying = false;
+    }
+    if (typeof ProsemaSpreadsheet !== "undefined") {
+      ProsemaSpreadsheet.hardenFreeze(worksheet, {
+        freezeColumns: config.freezeColumns || 1,
+        hideIndex: true,
+      });
+    }
+    markUnmatched();
+    markUnitLocked();
+    markDivergences();
+    markSanGroups();
+    markExcluded();
+    var unset = $("ss-discount-unset");
+    if (unset && typeof config.discountUnset === "number") {
+      unset.textContent = String(config.discountUnset);
+    }
+    var approve = $("ss-approve");
+    if (approve && config.editable) {
+      approve.disabled = !config.canApprove;
+    }
+  }
+
+  function flush() {
+    if (flushing || !queue.length || !config) return;
+    flushing = true;
+    var batch = queue.slice();
+    queue = [];
+    fetch(config.editsUrl, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(batch),
+    })
+      .then(function (r) { return r.json().then(function (body) { return { ok: r.ok, body: body }; }); })
+      .then(function (res) {
+        flushing = false;
+        if (!res.ok) {
+          queue = batch.concat(queue);
+          setStatus((res.body && res.body.error) || STATUS_ERROR, "is-error");
+          return;
+        }
+        if (res.body.grid) replaceGrid(res.body.grid);
+        setStatus(STATUS_SAVED, "is-saved");
+        if (queue.length) scheduleFlush();
+      })
+      .catch(function () {
+        flushing = false;
+        queue = batch.concat(queue);
+        setStatus(STATUS_ERROR, "is-error");
+      });
+  }
+
+  function postBulk(body) {
+    if (!config) return;
+    fetch(config.bulkUrl, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+      .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
+      .then(function (res) {
+        var out = $("ss-bulk-result");
+        if (!res.ok) {
+          if (out) out.textContent = (res.body && res.body.error) || "Übernehmen fehlgeschlagen";
+          return;
+        }
+        if (out) {
+          var msg = res.body.applied + " Zeilen gesetzt";
+          if (body.rabattcode) {
+            msg = res.body.applied + " Zeilen für Rabattcode " + body.rabattcode + " gesetzt";
+          }
+          out.textContent = msg;
+        }
+        if (res.body.grid) replaceGrid(res.body.grid);
+      })
+      .catch(function () {
+        var out = $("ss-bulk-result");
+        if (out) out.textContent = "Übernehmen fehlgeschlagen";
+      });
+  }
+
+  function bind() {
+    var cfgEl = $("ss-grid-config");
+    var el = $("ss-spreadsheet");
+    statusEl = $("ss-save-status");
+    if (!cfgEl || !el || typeof jspreadsheet !== "function") return;
+    config = JSON.parse(cfgEl.textContent);
+    replaceGrid(config);
+    var applyBtn = $("ss-bulk-apply");
+    if (applyBtn) {
+      applyBtn.addEventListener("click", function () {
+        var code = ($("ss-bulk-code") && $("ss-bulk-code").value) || "";
+        if (!code) {
+          var out = $("ss-bulk-result");
+          if (out) out.textContent = "Rabattcode wählen.";
+          return;
+        }
+        postBulk({
+          rabattcode: code,
+          rabatt_1: ($("ss-bulk-r1") && $("ss-bulk-r1").value) || "",
+          rabatt_2: ($("ss-bulk-r2") && $("ss-bulk-r2").value) || "",
+          kein_rabatt: false,
+        });
+      });
+    }
+    var zeroBtn = $("ss-bulk-zero");
+    if (zeroBtn) {
+      zeroBtn.addEventListener("click", function () {
+        var code = ($("ss-bulk-code") && $("ss-bulk-code").value) || "";
+        if (!code) {
+          var out = $("ss-bulk-result");
+          if (out) out.textContent = "Rabattcode wählen.";
+          return;
+        }
+        postBulk({ rabattcode: code, kein_rabatt: true });
+      });
+    }
+    var tplBtn = $("ss-bulk-template");
+    if (tplBtn) {
+      tplBtn.addEventListener("click", function () {
+        var ids = visibleSelectedIds();
+        if (!ids.length) ids = visibleRowIds();
+        var url = config.templateBulkUrl;
+        if (!url) return;
+        fetch(url, {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ row_ids: ids }),
+        })
+          .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
+          .then(function (res) {
+            var out = $("ss-bulk-result");
+            if (!res.ok) {
+              if (out) out.textContent = (res.body && res.body.error) || "Übernehmen fehlgeschlagen";
+              return;
+            }
+            if (out) out.textContent = res.body.applied + " Zeilen: Vorlagenwert übernommen";
+            if (res.body.grid) replaceGrid(res.body.grid);
+          })
+          .catch(function () {
+            var out = $("ss-bulk-result");
+            if (out) out.textContent = "Übernehmen fehlgeschlagen";
+          });
+      });
+    }
+  }
+
+  function visibleSelectedIds() {
+    if (!worksheet || !config) return [];
+    var sel = worksheet.selectedCell;
+    if (!sel || sel.length < 4) return [];
+    var y1 = Math.min(Number(sel[1]), Number(sel[3]));
+    var y2 = Math.max(Number(sel[1]), Number(sel[3]));
+    var ids = [];
+    for (var y = y1; y <= y2; y++) {
+      if (rowIsHidden(y)) continue;
+      ids.push(config.rowIds[y]);
+    }
+    return ids;
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", bind);
+  } else {
+    bind();
+  }
+})();
