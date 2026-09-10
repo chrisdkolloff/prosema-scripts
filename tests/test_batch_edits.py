@@ -415,9 +415,17 @@ def test_batch_grid_page_uses_vendored_jspreadsheet(user_client, db_session):
     assert match is not None
     config = json.loads(match.group(1))
     assert config["parseFormulas"] is False
-    assert config["freezeColumns"] == 3
+    assert config["freezeColumns"] == 2
     by_name = {column["name"]: column for column in config["columns"]}
-    assert by_name["Prosema Artikelnummer"]["readOnly"] is True
+    assert "_zeile" not in by_name
+    assert "Zeile" not in {column["title"] for column in config["columns"]}
+    first_field = config["fields"][0]
+    assert first_field in ("Prosema-Artikelnummer", "Prosema Artikelnummer")
+    assert config["columns"][0]["title"] == "Prosema-Art.-Nr."
+    assert by_name[first_field]["readOnly"] is True
+    # Legacy key still present for older templates / dropdown coverage.
+    number_col = by_name.get("Prosema Artikelnummer") or by_name.get("Prosema-Artikelnummer")
+    assert number_col is not None and number_col["readOnly"] is True
     assert by_name["Einheit"]["type"] == "dropdown"
     assert "Stk." in by_name["Einheit"]["source"]
     assert by_name["Hauptgruppe"]["type"] == "dropdown"

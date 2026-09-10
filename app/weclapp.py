@@ -84,6 +84,20 @@ LANDING_TOOLS: tuple[dict[str, object], ...] = (
         "needs_weclapp": True,
         "refresh_needs_weclapp": False,
     },
+    {
+        "name": "Brutto-Netto-Rechner",
+        "href": "/brutto-netto-rechner",
+        "description": "Aus einem Bruttobetrag den Nettobetrag und die enthaltene Steuer berechnen.",
+        "needs_weclapp": False,
+        "refresh_needs_weclapp": False,
+    },
+    {
+        "name": "Signatur-Generator",
+        "href": "/signatur-generator",
+        "description": "E-Mail-Signatur mit Kontaktdaten erzeugen und übernehmen.",
+        "needs_weclapp": False,
+        "refresh_needs_weclapp": False,
+    },
 )
 
 

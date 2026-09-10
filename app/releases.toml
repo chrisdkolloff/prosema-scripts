@@ -1,7 +1,19 @@
 # PROSEMA release history — edit this file to bump the version and document changes.
 # The top-level `version` is shown in the site header; `[[releases]]` entries appear on /changelog.
 
-version = "1.3.0"
+version = "1.3.1"
+
+[[releases]]
+version = "1.3.1"
+date = "2026-09-10"
+summary = "Remove Brutto-Netto-Rechner and Signatur-Generator HTML files. Update routing and navigation to reflect the removal of these tools. Adjust related tests to ensure proper functionality and coverage for existing features. (+3 more)"
+changes = [
+  "Add Prosema Brutto-Netto-Rechner and Signatur-Generator HTML files",
+  "Refactor Jspreadsheet sticky header and body cell behavior for improved scrolling synchronization. Update comments for clarity on position handling and transform application, ensuring consistent behavior when nest visibility changes.",
+  "Refactor Jspreadsheet sticky header and body cell functionality to enhance scrolling performance. Replace scroll-driven positioning with CSS sticky for improved responsiveness. Update comments for clarity on the new implementation and remove outdated code related to previous freezing mechanisms.",
+  "Remove Brutto-Netto-Rechner and Signatur-Generator HTML files. Update routing and navigation to reflect the removal of these tools. Adjust related tests to ensure proper functionality and coverage for existing features.",
+]
+
 
 [[releases]]
 version = "1.3.0"

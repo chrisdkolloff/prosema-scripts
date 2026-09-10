@@ -1,19 +1,14 @@
-/* Shared Jspreadsheet CE freeze — same mechanism as Artikelübersicht.
+/* Shared Jspreadsheet CE freeze — CSS sticky, same as Artikelübersicht 1.1.10.
  *
- * Do not use position:sticky with a non-zero left on table cells. That is why
- * a frozen article number slides with the scroll and only "sticks" at the end.
- *
- * When the nest/# column is hidden, the first data column is at left:0 and
- * can use sticky with no per-scroll work (no lag). Extra frozen columns and
- * a visible nest still use one CSS variable + transform instead of writing
- * style.left on every body cell.
+ * CE freezes columns by writing style.left from scroll events (relative
+ * positioning). That lags. Replace with position:sticky and disable the CE
+ * freeze updater.
  *
  * Never enable CE freezeColumns so the hardcoded -51 updater does not run.
+ * hideIndex (Bezugsquellen / supply export) drops the nest/# column so the
+ * first frozen data column sticks at left:0.
  */
 (function (global) {
-  var FREEZE_TX =
-    "translate3d(calc(var(--jss-freeze-x, 0px) + var(--jss-freeze-off, 0px)), 0, 0)";
-
   function destroy(el) {
     if (!el || typeof jspreadsheet === "undefined") return;
     try {
@@ -39,35 +34,21 @@
   function nestWidth(table) {
     var nest =
       table.querySelector("thead td.jss_selectall") ||
-      table.querySelector("thead td.jss_row");
+      table.querySelector("thead td.jss_row") ||
+      table.querySelector("thead tr > td:first-child");
     if (nest && nest.offsetWidth) return nest.offsetWidth;
     return 0;
   }
 
-  function eachFrozen(worksheet, table, s, fn) {
-    var header = worksheet.headers && worksheet.headers[s];
-    if (header) fn(header, true);
-    table.querySelectorAll('thead [data-x="' + s + '"]').forEach(function (td) {
-      fn(td, true);
-    });
-    if (!worksheet.records) return;
-    for (var r = 0; r < worksheet.records.length; r++) {
-      var cell = worksheet.records[r] && worksheet.records[r][s];
-      if (cell && cell.element) fn(cell.element, false);
-    }
-  }
-
-  function pinSticky(el, leftPx) {
+  function pinSticky(el, leftPx, topPx) {
     el.style.setProperty("position", "sticky", "important");
     el.style.setProperty("left", leftPx + "px", "important");
+    if (topPx != null) {
+      el.style.setProperty("top", topPx + "px", "important");
+    }
     el.style.removeProperty("transform");
-  }
-
-  function pinTranslate(el, off) {
-    el.style.setProperty("position", "relative", "important");
-    el.style.left = "0px";
-    el.style.setProperty("--jss-freeze-off", off + "px");
-    el.style.setProperty("transform", FREEZE_TX, "important");
+    el.style.removeProperty("--jss-freeze-off");
+    el.style.removeProperty("--jss-freeze-x");
   }
 
   function hardenFreeze(worksheet, options) {
@@ -77,6 +58,7 @@
       n = Number(worksheet.options.freezeColumns) || 0;
     }
     if (!worksheet || !worksheet.options) return;
+    // Kill CE's scroll-driven left updater before we touch layout.
     worksheet.options.freezeColumns = 0;
     worksheet.updateFreezePosition = function () {};
     if (!n || !worksheet.headers) return;
@@ -86,8 +68,7 @@
       (worksheet.element && worksheet.element.querySelector
         ? worksheet.element.querySelector("table")
         : null);
-    var content = worksheet.content;
-    if (!table || !content) return;
+    if (!table) return;
 
     if (options.hideIndex) {
       if (typeof worksheet.hideIndex === "function") {
@@ -97,47 +78,54 @@
       }
     }
 
-    var nest = options.hideIndex ? 0 : nestWidth(table);
-    var offsets = [];
-    var acc = nest;
+    var left = options.hideIndex ? 0 : nestWidth(table);
     var s;
-    for (s = 0; s < n; s++) {
-      offsets[s] = acc;
-      acc += columnWidth(worksheet, s);
-    }
 
-    if (nest) {
-      table.querySelectorAll("thead td.jss_selectall, thead td.jss_row").forEach(function (td) {
+    if (!options.hideIndex && left) {
+      table.querySelectorAll("thead td.jss_selectall, thead td.jss_row, thead tr > td:first-child").forEach(function (td) {
+        td.classList.add("jss_freezed");
+        pinSticky(td, 0, 0);
+      });
+      table.querySelectorAll("tbody td.jss_selectall, tbody td.jss_row, tbody tr > td:first-child").forEach(function (td) {
         td.classList.add("jss_freezed");
         pinSticky(td, 0);
       });
-      table.querySelectorAll("tbody td.jss_selectall, tbody td.jss_row").forEach(function (td) {
-        td.classList.add("jss_freezed");
-        pinTranslate(td, 0);
-      });
     }
 
-    var needsScrollSync = !!nest;
     for (s = 0; s < n; s++) {
       var last = s === n - 1;
       var width = columnWidth(worksheet, s);
-      var stickyBody = nest === 0 && offsets[s] === 0;
-      if (!stickyBody) needsScrollSync = true;
-      eachFrozen(worksheet, table, s, function (el, isHeader) {
-        el.classList.add("jss_freezed");
-        if (last) el.classList.add("jss_freezed-edge");
-        el.style.setProperty("min-width", width + "px", "important");
-        el.style.setProperty("max-width", width + "px", "important");
-        if (isHeader || stickyBody) {
-          pinSticky(el, offsets[s]);
-        } else {
-          pinTranslate(el, offsets[s]);
-        }
+      var header = worksheet.headers[s];
+      if (header) {
+        header.classList.add("jss_freezed");
+        if (last) header.classList.add("jss_freezed-edge");
+        pinSticky(header, left, 0);
+        header.style.setProperty("min-width", width + "px", "important");
+        header.style.setProperty("max-width", width + "px", "important");
+      }
+      table.querySelectorAll('thead [data-x="' + s + '"]').forEach(function (td) {
+        if (td === header) return;
+        td.classList.add("jss_freezed");
+        if (last) td.classList.add("jss_freezed-edge");
+        pinSticky(td, left, 0);
       });
+      if (worksheet.records) {
+        for (var r = 0; r < worksheet.records.length; r++) {
+          var cell = worksheet.records[r] && worksheet.records[r][s];
+          if (cell && cell.element) {
+            cell.element.classList.add("jss_freezed");
+            if (last) cell.element.classList.add("jss_freezed-edge");
+            pinSticky(cell.element, left);
+            cell.element.style.setProperty("min-width", width + "px", "important");
+            cell.element.style.setProperty("max-width", width + "px", "important");
+          }
+        }
+      }
       if (worksheet.cols && worksheet.cols[s] && worksheet.cols[s].colElement) {
         worksheet.cols[s].colElement.setAttribute("width", String(width));
         worksheet.cols[s].colElement.style.setProperty("width", width + "px", "important");
       }
+      left += width;
     }
 
     var headerH = 0;
@@ -147,26 +135,6 @@
     table.querySelectorAll("thead tr:nth-child(2) [data-x]").forEach(function (td) {
       if (headerH) td.style.setProperty("top", headerH + "px", "important");
     });
-
-    if (!needsScrollSync) return;
-
-    var ticking = false;
-    function apply() {
-      ticking = false;
-      table.style.setProperty("--jss-freeze-x", (content.scrollLeft || 0) + "px");
-    }
-
-    content.addEventListener(
-      "scroll",
-      function () {
-        if (!ticking) {
-          ticking = true;
-          window.requestAnimationFrame(apply);
-        }
-      },
-      { passive: true }
-    );
-    apply();
   }
 
   global.ProsemaSpreadsheet = {

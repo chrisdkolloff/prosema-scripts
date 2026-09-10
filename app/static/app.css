@@ -112,17 +112,11 @@
   max-width: 200px;
 }
 
-/* Body freeze stays below the header so rows tuck under it when scrolling down. */
-.batch-spreadsheet .jss_worksheet thead .jss_freezed {
-  position: sticky !important;
-  background-color: #f3f4f6 !important;
-  box-shadow: none !important;
-}
-
+/* Sticky freeze (replaces CE's scroll-driven left updates — those lag). */
+.batch-spreadsheet .jss_worksheet thead .jss_freezed,
 .batch-spreadsheet .jss_worksheet tbody .jss_freezed {
-  position: relative !important;
+  position: sticky !important;
   background-color: #fff !important;
-  box-shadow: none !important;
 }
 
 /* Bezugsquellen-Abgleich: hide CE nest/# so freeze starts at column 0. */

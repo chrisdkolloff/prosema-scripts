@@ -82,12 +82,11 @@ EDITABLE_WHITELIST: frozenset[str] = frozenset(
     }
 )
 
-SYNTHETIC_FIELDS = ("_zeile", "_status")
+SYNTHETIC_FIELDS = ("_status",)
 
 _LABEL_RE = re.compile(r"^(.*?)\s*-\s*(\d{3})\s*$")
 
 COLUMN_WIDTHS: dict[str, int] = {
-    "_zeile": 70,
     ARTICLE_NUMBER_FIELD: 160,
     "Prosema Artikelnummer": 160,
     KURZTEXT_FIELD: 220,
@@ -136,7 +135,6 @@ COLUMN_WIDTHS: dict[str, int] = {
 }
 
 GRID_FIELD_ORDER: tuple[str, ...] = (
-    "_zeile",
     ARTICLE_NUMBER_FIELD,
     KURZTEXT_FIELD,
     "_status",
@@ -164,7 +162,7 @@ def grid_field_order_for_batch(batch: ArticleBatch) -> tuple[str, ...]:
     body = [label for label in labels if label and label not in _PINNED_KEYS]
     number_label = next((label for label in labels if label in _NUMBER_KEYS), ARTICLE_NUMBER_FIELD)
     name_label = next((label for label in labels if label in _NAME_KEYS), None)
-    ordered: list[str] = ["_zeile", number_label]
+    ordered: list[str] = [number_label]
     if name_label:
         ordered.append(name_label)
     ordered.append("_status")
@@ -174,7 +172,6 @@ def grid_field_order_for_batch(batch: ArticleBatch) -> tuple[str, ...]:
 
 
 COLUMN_TITLES: dict[str, str] = {
-    "_zeile": "Zeile",
     "_status": "Status",
     INCLUDE_FIELD: "Übernehmen",
 }
@@ -374,9 +371,7 @@ def grid_row_values(
     order = field_order if field_order is not None else GRID_FIELD_ORDER
     out: list[Any] = []
     for field_name in order:
-        if field_name == "_zeile":
-            out.append(row.position)
-        elif field_name == "_status":
+        if field_name == "_status":
             out.append(row.validation_error or "")
         elif field_name == INCLUDE_FIELD:
             out.append(bool(row.include))
@@ -706,7 +701,7 @@ def build_grid_config(
         "actionsUrl": f"/batches/{batch.id}/aktionen",
         "editable": editable,
         "parseFormulas": False,
-        "freezeColumns": 3,
+        "freezeColumns": 2,
         "idleMs": FLUSH_IDLE_MS,
         "columns": build_columns(
             db,

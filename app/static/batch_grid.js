@@ -32,7 +32,7 @@
   }
 
   function isQueuedField(field) {
-    return field && field !== "_zeile" && field !== "_status" && !isArticleNumberField(field);
+    return field && field !== "_status" && !isArticleNumberField(field);
   }
 
   function encodeValue(field, value) {
@@ -379,7 +379,7 @@
     });
     worksheet = worksheets && worksheets[0] ? worksheets[0] : worksheets;
     ProsemaSpreadsheet.hardenFreeze(worksheet, {
-      freezeColumns: config.freezeColumns || 3,
+      freezeColumns: config.freezeColumns || 2,
     });
     bindFillHandle(el);
     paintInitial();

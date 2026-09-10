@@ -57,6 +57,11 @@ def test_layout_includes_favicon_and_logos():
     assert 'href="https://prosemaag.sharepoint.com/sites/tools.prosema.ch"' in html
     assert 'target="_blank"' in html
     assert "FAQs" in html
+    assert "Verschiedenes" in html
+    assert 'href="/brutto-netto-rechner"' in html
+    assert "Brutto-Netto-Rechner" in html
+    assert 'href="/signatur-generator"' in html
+    assert "Signatur-Generator" in html
     assert "Fragen zur Artikelliste" not in html
     css = client.get("/static/css/prosema.css").text
     assert "--cui-primary: var(--prosema-tools-blue)" in css
@@ -65,6 +70,23 @@ def test_layout_includes_favicon_and_logos():
     assert "td.highlight" in css
     assert "header-account-link" in css
     assert "table-layout: fixed" in css
+
+
+def test_verschiedenes_tools_are_served():
+    app.dependency_overrides[get_current_user] = lambda: PLAIN_USER
+    client = TestClient(app)
+    try:
+        brutto = client.get("/brutto-netto-rechner")
+        signatur = client.get("/signatur-generator")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert brutto.status_code == 200
+    assert "text/html" in brutto.headers["content-type"]
+    assert "Brutto → Netto" in brutto.text
+    assert signatur.status_code == 200
+    assert "text/html" in signatur.headers["content-type"]
+    assert "Signatur" in signatur.text
 
 
 def test_root_favicon_is_public():
