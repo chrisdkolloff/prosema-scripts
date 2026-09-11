@@ -279,10 +279,10 @@ def test_create_unit_weclapp_failure_leaves_error(user_client, db_session):
     assert db_session.get(WeclappUnit, "Kaputt") is None
 
 
-def test_create_unit_rejects_non_draft(user_client, db_session):
+def test_create_unit_rejects_submitted(user_client, db_session):
     _store_token(db_session)
     batch, _row = _make_batch_with_unit(
-        db_session, einheit="X", status="approved"
+        db_session, einheit="X", status="submitted"
     )
     response = user_client.post(
         f"/batches/{batch.id}/einheit-anlegen",

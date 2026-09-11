@@ -27,8 +27,8 @@
   {% if empty_excluded %}
   <p class="text-body-secondary">{{ empty_excluded }} leere Zeilen wurden von der Übernahme ausgenommen.</p>
   {% endif %}
-  {% if not editable %}
-  <div class="alert alert-danger" role="alert">Stapel bereits genehmigt — keine Änderungen möglich</div>
+  {% if batch.status == "approved" %}
+  <div id="batch-approved-banner" class="alert alert-info" role="status">Batch wurde genehmigt. Daten können an weclapp gesendet werden.</div>
   {% endif %}
 
   {% include "batches/partials/action_bar.html" %}

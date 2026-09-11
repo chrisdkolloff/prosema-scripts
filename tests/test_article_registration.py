@@ -22,9 +22,9 @@ from app.batch_actions import (
     snapshot_age_warning,
     snapshot_banner_state,
 )
-from app.batch_submit import MSG_DRY_RUN_FAILED, run_batch_submit
+from app.batch_submit import MSG_ALREADY_EXISTS, MSG_DRY_RUN_FAILED, run_batch_submit
 from app.batch_upload import BatchUploadError, MAX_UPLOAD_ROWS, create_batch_from_upload, create_manual_batch
-from app.batches import CellEdit, apply_edits
+from app.batches import CellEdit, apply_edits, effective_values
 from app.db import engine, get_db
 from app.groups_service import create_hauptgruppe, create_untergruppe
 from app.main import app
@@ -261,6 +261,24 @@ def test_upload_csv_semicolon_delimiter(db_session):
     assert len(rows) == 1
 
 
+def test_upload_empty_steuersatz_defaults_to_standard(db_session):
+    haupt, unter = _make_groups(db_session)
+    h, u = _group_labels(haupt, unter)
+    result = create_batch_from_upload(
+        db_session,
+        filename="empty-tax.xlsx",
+        data=_xlsx_bytes([_row(h, u, Steuersatz="")]),
+        user=ACTOR,
+        confirmed=True,
+    )
+    db_session.flush()
+    row = db_session.scalars(
+        select(ArticleBatchRow).where(ArticleBatchRow.batch_id == result.batch.id)
+    ).one()
+    assert (row.edits or {}).get("Steuersatz") == "STANDARD"
+    assert effective_values(row)["Steuersatz"] == "STANDARD"
+
+
 def test_upload_missing_required_header_inserts_nothing(db_session):
     before_batches = db_session.scalar(select(ArticleBatch.id).limit(1))
     data = _xlsx_bytes(
@@ -460,6 +478,107 @@ def test_dry_run_collision_zero_posts(db_session):
                 actor_oid=ACTOR["oid"],
             )
     client.post.assert_not_called()
+    row = db_session.scalars(
+        select(ArticleBatchRow).where(ArticleBatchRow.batch_id == result.batch.id)
+    ).one()
+    assert row.write_error == MSG_ALREADY_EXISTS
+
+
+def test_dry_run_weclapp_400_is_row_error_not_licence(db_session):
+    haupt, unter = _make_groups(db_session)
+    _make_snapshot(db_session)
+    h, u = _group_labels(haupt, unter)
+    result = create_batch_from_upload(
+        db_session,
+        filename="api.xlsx",
+        data=_xlsx_bytes([_row(h, u)]),
+        user=ACTOR,
+        confirmed=True,
+    )
+    db_session.flush()
+    _approve(db_session, result.batch)
+    db_session.flush()
+
+    client = MagicMock()
+    client.get.side_effect = WeclappError(
+        "weclapp API Fehler 400 bei GET /article",
+        status_code=400,
+        detail={"errorDescription": "articleNumber: Ungültiges Format"},
+    )
+    with patch("app.batch_submit.weclapp_client_for", return_value=client):
+        with pytest.raises(ValueError, match="articleNumber: Ungültiges Format"):
+            run_batch_submit(
+                db_session,
+                batch_id=result.batch.id,
+                actor_oid=ACTOR["oid"],
+            )
+    client.post.assert_not_called()
+    row = db_session.scalars(
+        select(ArticleBatchRow).where(ArticleBatchRow.batch_id == result.batch.id)
+    ).one()
+    assert "Ungültiges Format" in (row.write_error or "")
+    assert db_session.get(ArticleBatch, result.batch.id).status == "approved"
+
+
+def test_submit_coerces_normal_tax_rate_to_standard(db_session):
+    haupt, unter = _make_groups(db_session)
+    _make_snapshot(db_session)
+    h, u = _group_labels(haupt, unter)
+    result = create_batch_from_upload(
+        db_session,
+        filename="tax.xlsx",
+        data=_xlsx_bytes([_row(h, u, Steuersatz="normal")]),
+        user=ACTOR,
+        confirmed=True,
+    )
+    db_session.flush()
+    _approve(db_session, result.batch)
+    db_session.flush()
+    row = db_session.scalars(
+        select(ArticleBatchRow).where(ArticleBatchRow.batch_id == result.batch.id)
+    ).one()
+    payload = dict(row.approved_payload or {})
+    payload["taxRateType"] = "NORMAL"
+    row.approved_payload = payload
+    db_session.flush()
+
+    client = MagicMock()
+    client.get.return_value = {"result": []}
+    client.post.return_value = {"id": "wc-new"}
+    with patch("app.batch_submit.weclapp_client_for", return_value=client):
+        run_batch_submit(
+            db_session,
+            batch_id=result.batch.id,
+            actor_oid=ACTOR["oid"],
+        )
+    client.post.assert_called_once()
+    sent = client.post.call_args.kwargs.get("json") or client.post.call_args[1].get("json")
+    assert sent["taxRateType"] == "STANDARD"
+
+
+def test_failed_submit_shows_error_on_batch_page(db_session, user_client):
+    batch = create_manual_batch(db_session, user=ACTOR, row_count=1)
+    batch.status = "approved"
+    row = db_session.scalars(
+        select(ArticleBatchRow).where(ArticleBatchRow.batch_id == batch.id)
+    ).one()
+    row.write_error = MSG_ALREADY_EXISTS
+    job = Job(
+        job_type="article_batch_submit",
+        payload={"batch_id": str(batch.id)},
+        status="failed",
+        created_by_oid=PLAIN_USER["oid"],
+        created_by_name=PLAIN_USER["name"],
+        error=f"{MSG_DRY_RUN_FAILED}\n999.999.001: {MSG_ALREADY_EXISTS}",
+    )
+    db_session.add(job)
+    db_session.flush()
+
+    page = user_client.get(f"/batches/{batch.id}")
+    assert page.status_code == 200
+    assert MSG_DRY_RUN_FAILED in page.text
+    assert MSG_ALREADY_EXISTS in page.text
+    assert f"/jobs/{job.id}" in page.text
 
 
 def test_submit_interrupted_retry_posts_remaining(db_session):
@@ -580,7 +699,7 @@ def test_edit_submitted_rejected_at_service(db_session):
     )
     db_session.add(row)
     db_session.flush()
-    with pytest.raises(Exception, match="genehmigt"):
+    with pytest.raises(Exception, match="nicht mehr bearbeitet"):
         apply_edits(
             db_session,
             batch,

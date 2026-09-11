@@ -9,12 +9,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.batches import (
+    EDITABLE_STATUSES,
+    MSG_BATCH_LOCKED,
     BatchEditError,
     RowEditResult,
     display_proposed_article_number,
     effective_values,
     load_batch_rows,
     lookups_for_db,
+    reopen_approved_batch,
     resolve_row_groups,
     validate_effective,
 )
@@ -29,7 +32,7 @@ from app.weclapp import (
 from app.weclapp_units import catalogue_unit_id, fold_unit_word
 from scripts.weclapp.client import WeclappError
 
-MSG_NOT_DRAFT = "Nur Entwürfe können Einheiten anlegen."
+MSG_NOT_EDITABLE = MSG_BATCH_LOCKED
 MSG_NAME_REQUIRED = "Einheit fehlt"
 MSG_NO_UNIT_ID = "weclapp lieferte keine Einheit-ID"
 
@@ -106,8 +109,9 @@ def create_unit_for_batch(
     Returns ``(unit, row_results, created)`` where ``created`` is True only when
     ``POST /unit`` ran.
     """
-    if batch.status != "draft":
-        raise BatchEditError(MSG_NOT_DRAFT, status_code=409)
+    if batch.status not in EDITABLE_STATUSES:
+        raise BatchEditError(MSG_NOT_EDITABLE, status_code=409)
+    reopen_approved_batch(db, batch)
     text = (name or "").strip()
     if not text:
         raise BatchEditError(MSG_NAME_REQUIRED, field="Einheit")

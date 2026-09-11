@@ -244,6 +244,45 @@
     }
   }
 
+  function clearApprovedBanner() {
+    var banner = document.getElementById("batch-approved-banner");
+    if (banner) banner.remove();
+  }
+
+  function refreshActionBar() {
+    if (!config || !config.actionsUrl) return;
+    fetch(config.actionsUrl, {
+      method: "GET",
+      headers: { Accept: "text/html" },
+      credentials: "same-origin",
+    })
+      .then(function (response) {
+        if (!response.ok) return null;
+        return response.text();
+      })
+      .then(function (html) {
+        if (!html) return;
+        var bar = document.getElementById("batch-action-bar");
+        if (!bar || !bar.parentNode) return;
+        var tmp = document.createElement("div");
+        tmp.innerHTML = html.trim();
+        var next = tmp.firstElementChild;
+        if (next) bar.parentNode.replaceChild(next, bar);
+        var scope = document.getElementById("batch-action-bar");
+        if (scope && window.htmx) {
+          htmx.process(scope);
+        }
+        if (scope && window.coreui && coreui.Modal) {
+          scope.querySelectorAll('[data-coreui-toggle="modal"]').forEach(function (el) {
+            coreui.Modal.getOrCreateInstance(el);
+          });
+        }
+      })
+      .catch(function () {
+        /* leave the bar as-is; next save retries */
+      });
+  }
+
   function createUnknownUnit(name) {
     if (!config || !config.createUnitUrl || !name || creatingUnit) {
       return Promise.resolve(null);
@@ -278,6 +317,10 @@
           (result.data && result.data.unit && result.data.unit.name) || name;
         addEinheitToDropdown(unitName);
         applyServerRows(result.data && result.data.rows);
+        if (result.data && result.data.reopened) {
+          clearApprovedBanner();
+        }
+        refreshActionBar();
         setStatus(STATUS_SAVED, "is-saved");
         refreshUnitBanner();
         return result.data;
@@ -396,6 +439,9 @@
     function succeed(data, options) {
       flushing = false;
       applyServerRows(data && data.rows);
+      if (data && data.reopened) {
+        clearApprovedBanner();
+      }
       if (!(options && options.skipActionBar)) {
         refreshActionBar();
       }
@@ -406,40 +452,6 @@
       } else {
         setStatus(STATUS_SAVED, "is-saved");
       }
-    }
-
-    function refreshActionBar() {
-      if (!config || !config.actionsUrl) return;
-      fetch(config.actionsUrl, {
-        method: "GET",
-        headers: { Accept: "text/html" },
-        credentials: "same-origin",
-      })
-        .then(function (response) {
-          if (!response.ok) return null;
-          return response.text();
-        })
-        .then(function (html) {
-          if (!html) return;
-          var bar = document.getElementById("batch-action-bar");
-          if (!bar || !bar.parentNode) return;
-          var tmp = document.createElement("div");
-          tmp.innerHTML = html.trim();
-          var next = tmp.firstElementChild;
-          if (next) bar.parentNode.replaceChild(next, bar);
-          var scope = document.getElementById("batch-action-bar");
-          if (scope && window.htmx) {
-            htmx.process(scope);
-          }
-          if (scope && window.coreui && coreui.Modal) {
-            scope.querySelectorAll('[data-coreui-toggle="modal"]').forEach(function (el) {
-              coreui.Modal.getOrCreateInstance(el);
-            });
-          }
-        })
-        .catch(function () {
-          /* leave the bar as-is; next save retries */
-        });
     }
 
     if (keepalive && navigator.sendBeacon) {

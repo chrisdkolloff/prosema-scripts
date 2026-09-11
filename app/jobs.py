@@ -505,7 +505,15 @@ def _execute_job(db: Session, job: Job) -> None:
     except Exception as exc:  # noqa: BLE001 — a handler raising must never kill the worker
         job.status = "failed"
         mapped = job_error_message(exc)
-        job.error = mapped if mapped is not None else traceback.format_exc()
+        if mapped is not None:
+            job.error = mapped
+        else:
+            job.error = traceback.format_exc()
+            logger.exception(
+                "job %s type=%s failed",
+                job.id,
+                job.job_type,
+            )
     job.finished_at = datetime.now(UTC)
     db.commit()
     duration = time.perf_counter() - started

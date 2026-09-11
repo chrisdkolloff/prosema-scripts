@@ -31,6 +31,7 @@ from app.batch_upload import (
     exclude_empty_rows,
 )
 from app.batches import (
+    EDITABLE_STATUSES,
     MSG_NUMBER_REASSIGNED,
     BatchEditError,
     CellEdit,
@@ -47,7 +48,7 @@ from app.db import get_db
 from app.jobs import enqueue
 from app.models import ArticleBatch, ArticleTemplate, Job
 from app.snapshots import create_snapshot_pull, excel_filename_timestamp
-from app.weclapp import SETTINGS_PATH, check_weclapp_access, get_token_meta
+from app.weclapp import SETTINGS_PATH, check_weclapp_access, get_token_meta, is_auth_job_error, public_job_error
 
 router = APIRouter()
 
@@ -104,18 +105,44 @@ def _filters(
     }
 
 
-def _active_submit_job(db: Session, batch_id: uuid.UUID) -> Job | None:
-    jobs = db.scalars(
-        select(Job).where(
-            Job.job_type == "article_batch_submit",
-            Job.status.in_(("queued", "running")),
-        )
-    )
+def _submit_job_state(db: Session, batch_id: uuid.UUID) -> dict[str, Any]:
     wanted = str(batch_id)
-    for job in jobs:
-        if str((job.payload or {}).get("batch_id") or "") == wanted:
-            return job
-    return None
+    matching = [
+        job
+        for job in db.scalars(
+            select(Job)
+            .where(Job.job_type == "article_batch_submit")
+            .order_by(Job.created_at.desc())
+        )
+        if str((job.payload or {}).get("batch_id") or "") == wanted
+    ]
+    latest = matching[0] if matching else None
+    running = any(job.status in {"queued", "running"} for job in matching)
+    submit_error = ""
+    submit_job_id = None
+    if latest is not None and latest.status == "failed":
+        submit_error = public_job_error(latest.error) or ""
+        submit_job_id = latest.id
+    return {
+        "submit_running": running,
+        "submit_error": submit_error,
+        "submit_job_id": submit_job_id,
+        "submit_error_is_auth": is_auth_job_error(submit_error),
+    }
+
+
+def _active_submit_job(db: Session, batch_id: uuid.UUID) -> Job | None:
+    state_jobs = [
+        job
+        for job in db.scalars(
+            select(Job).where(
+                Job.job_type == "article_batch_submit",
+                Job.status.in_(("queued", "running")),
+            )
+        )
+        if str((job.payload or {}).get("batch_id") or "") == str(batch_id)
+    ]
+    return state_jobs[0] if state_jobs else None
 
 
 def _load_batch(db: Session, batch_id: uuid.UUID) -> ArticleBatch | None:
@@ -184,7 +211,7 @@ def _page_context(
             weclapp_ok=_weclapp_writes_ok(db, user["oid"]),
             settings_path=SETTINGS_PATH,
         ),
-        "editable": batch.status == "draft",
+        "editable": batch.status in EDITABLE_STATUSES,
         "counts": counts,
         **banner,
         "action_error": request.query_params.get("error") or "",
@@ -198,6 +225,7 @@ def _page_context(
         "empty_excluded": request.query_params.get("empty_excluded") or "",
         "weclapp_ok": _weclapp_writes_ok(db, user["oid"]),
         "settings_path": SETTINGS_PATH,
+        **_submit_job_state(db, batch.id),
     }
 
 
@@ -232,6 +260,7 @@ def batch_actions_fragment(
             "manual_default_rows": DEFAULT_MANUAL_ROWS,
             "weclapp_ok": _weclapp_writes_ok(db, user["oid"]),
             "settings_path": SETTINGS_PATH,
+            **_submit_job_state(db, batch.id),
         },
         headers=_FRAGMENT_HEADERS,
     )
@@ -319,6 +348,7 @@ def batch_edits(
     batch = db.get(ArticleBatch, batch_id)
     if batch is None:
         return JSONResponse({"error": "Stapel nicht gefunden"}, status_code=404)
+    was_approved = batch.status == "approved"
     edits = [
         CellEdit(row_id=item.row_id, field=item.field, value=item.value) for item in payload
     ]
@@ -332,6 +362,8 @@ def batch_edits(
     db.commit()
     return JSONResponse(
         {
+            "status": batch.status,
+            "reopened": was_approved,
             "rows": [
                 {
                     "id": str(item.id),
@@ -358,6 +390,7 @@ def batch_create_unit(
     batch = db.get(ArticleBatch, batch_id)
     if batch is None:
         return JSONResponse({"error": "Stapel nicht gefunden"}, status_code=404)
+    was_approved = batch.status == "approved"
     try:
         unit, results, created = create_unit_for_batch(
             db, batch, name=payload.name, actor_oid=str(user["oid"])
@@ -372,6 +405,8 @@ def batch_create_unit(
         {
             "unit": {"id": unit.weclapp_id, "name": unit.name},
             "created": created,
+            "reopened": was_approved,
+            "status": batch.status,
             "rows": row_results_payload(results),
         }
     )

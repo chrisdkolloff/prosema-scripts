@@ -28,7 +28,7 @@ from app.batches import (
 from app.models import ArticleBatch, ArticleBatchRow, ArticleTemplate
 from app.numbering_high_water import assign_proposed_numbers, seed_high_water
 from core.article_fields import IMPORT_COLUMNS, find_field, normalize_label
-from core.article_payload import DEFAULTS, get_row_value, label_variants, label_variants
+from core.article_payload import DEFAULTS, coerce_tax_rate, get_row_value, label_variants
 
 MAX_UPLOAD_ROWS = 2000
 MAX_MANUAL_ROWS = 200
@@ -311,6 +311,9 @@ def _prepare_row(
         label = group_label(unter.name, unter.code)
         if values.get(UNTERGRUPPE_FIELD, "") != label:
             edits[UNTERGRUPPE_FIELD] = label
+    steuer = coerce_tax_rate(get_row_value(raw, "Steuersatz"))
+    if get_row_value(raw, "Steuersatz") != steuer:
+        edits["Steuersatz"] = steuer
     if edits:
         row.edits = edits
     row._resolved_haupt = haupt

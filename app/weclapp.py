@@ -13,8 +13,10 @@ Empty result sets are not used as a licence signal.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 from zoneinfo import ZoneInfo
 
 from cryptography.fernet import Fernet, InvalidToken
@@ -322,8 +324,28 @@ def is_weclapp_auth_failure(exc: BaseException) -> bool:
     return False
 
 
+def _weclapp_detail_text(detail: Any) -> str:
+    if detail is None:
+        return ""
+    if isinstance(detail, str):
+        return detail.strip()
+    if isinstance(detail, dict):
+        for key in ("errorDescription", "error_description", "message", "detail"):
+            value = detail.get(key)
+            if value:
+                return str(value).strip()
+        code = str(detail.get("error") or "").strip()
+        if code:
+            return code
+        try:
+            return json.dumps(detail, ensure_ascii=False)
+        except TypeError:
+            return str(detail)
+    return str(detail).strip()
+
+
 def job_error_message(exc: BaseException) -> str | None:
-    """German job.error for token/licence failures; None means use a traceback."""
+    """User-facing job.error. None means store a traceback instead."""
     if isinstance(
         exc,
         (NoWeclappToken, WeclappTokenInvalid, WeclappLicenceMissing, WeclappTokenUnreadable),
@@ -335,16 +357,48 @@ def job_error_message(exc: BaseException) -> str | None:
         mapped = map_weclapp_error(exc)
         if mapped is not exc:
             return str(mapped)
-        if exc.status_code:
-            return f"weclapp API Fehler {exc.status_code}"
-        return "weclapp API Fehler"
+        prefix = (
+            f"weclapp API Fehler {exc.status_code}"
+            if exc.status_code
+            else "weclapp API Fehler"
+        )
+        detail = _weclapp_detail_text(exc.detail)
+        if detail:
+            return f"{prefix} — {detail}"
+        text = str(exc).strip()
+        return text or prefix
+    if isinstance(exc, ValueError):
+        text = str(exc).strip()
+        return text or None
     return None
 
 
 def public_job_error(error: str | None) -> str | None:
-    if not error or error.startswith("Traceback"):
+    """Message shown on the job status page. Tracebacks are reduced to the last line."""
+    if not error:
         return None
-    return error
+    text = error.strip()
+    if not text.startswith("Traceback"):
+        return text
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if not lines:
+        return None
+    last = lines[-1]
+    if ": " in last:
+        extracted = last.split(": ", 1)[1].strip()
+        if extracted:
+            return extracted
+    return last
+
+
+def is_auth_job_error(error: str | None) -> bool:
+    text = (error or "").strip()
+    if not text:
+        return False
+    return any(
+        text == msg or text.startswith(msg)
+        for msg in (MSG_NO_TOKEN, MSG_INVALID, MSG_NO_LICENCE, MSG_UNREADABLE)
+    )
 
 
 def landing_tool_states(access: WeclappAccess) -> list[dict[str, object]]:

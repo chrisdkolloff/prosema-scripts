@@ -20,7 +20,8 @@ from app.groups_service import (
     snapshot_untergruppe,
 )
 from app.models import ArticleBatch, ArticleBatchRow
-from app.weclapp import job_error_message, weclapp_client_for
+from app.weclapp import is_weclapp_auth_failure, job_error_message, weclapp_client_for
+from core.article_payload import resolve_tax_rate
 from core.numbering import parse_group_codes
 from scripts.paths import DATA_DIR
 from scripts.weclapp.client import WeclappError
@@ -42,6 +43,12 @@ class LicenceAbort(Exception):
 def _load_create_schema() -> dict[str, Any]:
     path = DATA_DIR / "weclapp_article_create_schema.json"
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _payload_for_create(payload: dict[str, Any]) -> dict[str, Any]:
+    out = copy.deepcopy(payload)
+    out["taxRateType"] = resolve_tax_rate(out.get("taxRateType"))
+    return out
 
 
 def _validate_payload_against_schema(payload: dict[str, Any], schema: dict[str, Any]) -> str | None:
@@ -93,6 +100,23 @@ def _all_included(db: Session, batch_id: Any) -> list[ArticleBatchRow]:
             .order_by(ArticleBatchRow.position)
         )
     )
+
+
+def _row_error_lines(rows: list[ArticleBatchRow]) -> list[str]:
+    lines: list[str] = []
+    for row in rows:
+        if not row.write_error:
+            continue
+        number = ""
+        if isinstance(row.approved_payload, dict):
+            number = str(row.approved_payload.get("articleNumber") or "").strip()
+        label = number or f"Zeile {row.position}"
+        lines.append(f"{label}: {row.write_error}")
+    return lines
+
+
+def _weclapp_write_error(exc: WeclappError) -> str:
+    return job_error_message(exc) or str(exc)
 
 
 def _lock_groups_if_needed(
@@ -169,16 +193,22 @@ def run_batch_submit(
             row.write_error = MSG_PAYLOAD_INVALID.format(detail="fehlt")
             dry_failed = True
             continue
+        try:
+            payload = _payload_for_create(payload)
+        except ValueError as exc:
+            row.write_error = MSG_PAYLOAD_INVALID.format(detail=str(exc))
+            dry_failed = True
+            continue
         number = str(payload.get("articleNumber") or "").strip()
         try:
             existing = _article_exists(client, number)
         except WeclappError as exc:
-            mapped = job_error_message(exc)
-            if mapped:
+            if is_weclapp_auth_failure(exc):
+                mapped = job_error_message(exc) or str(exc)
                 db.commit()
                 _return_to_approved(db, batch)
                 raise LicenceAbort(mapped) from exc
-            row.write_error = str(exc)
+            row.write_error = _weclapp_write_error(exc)
             dry_failed = True
             continue
         if existing is not None:
@@ -195,7 +225,7 @@ def run_batch_submit(
     if dry_failed:
         db.commit()
         _return_to_approved(db, batch)
-        raise ValueError(MSG_DRY_RUN_FAILED)
+        raise ValueError("\n".join([MSG_DRY_RUN_FAILED] + _row_error_lines(pending)))
 
     # Phase 2 — write, one row per transaction
     succeeded = 0
@@ -207,12 +237,17 @@ def run_batch_submit(
                 continue
             payload = copy.deepcopy(row.approved_payload or {})
             try:
+                payload = _payload_for_create(payload)
+            except ValueError as exc:
+                row.write_error = MSG_PAYLOAD_INVALID.format(detail=str(exc))
+                db.commit()
+                continue
+            try:
                 response = client.post("/article", json=payload)
             except WeclappError as exc:
-                mapped = job_error_message(exc)
-                if mapped:
-                    raise LicenceAbort(mapped) from exc
-                row.write_error = str(exc)
+                if is_weclapp_auth_failure(exc):
+                    raise LicenceAbort(job_error_message(exc) or str(exc)) from exc
+                row.write_error = _weclapp_write_error(exc)
                 db.commit()
                 continue
             article_id = str((response or {}).get("id") or "")
@@ -274,7 +309,7 @@ def run_batch_submit(
     )
     db.commit()
     if not job_ok:
-        raise ValueError(summary)
+        raise ValueError("\n".join([summary] + _row_error_lines(included)))
     return {
         "succeeded": written,
         "failed": total - written,

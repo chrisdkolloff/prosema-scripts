@@ -25,7 +25,9 @@ from app.weclapp import (
     WeclappTokenInvalid,
     decrypt_token,
     encrypt_token,
+    job_error_message,
     map_weclapp_error,
+    public_job_error,
     store_token,
     weclapp_client_for,
 )
@@ -104,6 +106,77 @@ def test_store_then_client_decrypts_original(db_session):
     store_token(db_session, PLAIN_USER["oid"], SECRET_TOKEN)
     client = weclapp_client_for(db_session, PLAIN_USER["oid"])
     assert client.config.api_token == SECRET_TOKEN
+
+
+def test_job_error_message_includes_weclapp_detail():
+    exc = WeclappError(
+        "weclapp API Fehler 400 bei POST /article",
+        status_code=400,
+        detail={"error": "VALIDATION_ERROR", "errorDescription": "unitId: Ungültiger Wert"},
+    )
+    assert job_error_message(exc) == "weclapp API Fehler 400 — unitId: Ungültiger Wert"
+
+
+def test_public_job_error_extracts_traceback_message():
+    stored = (
+        "Traceback (most recent call last):\n"
+        '  File "app/jobs.py", line 1, in _execute_job\n'
+        "ValueError: Probelauf fehlgeschlagen — es wurde nichts geschrieben."
+    )
+    assert (
+        public_job_error(stored)
+        == "Probelauf fehlgeschlagen — es wurde nichts geschrieben."
+    )
+    assert public_job_error("Probelauf fehlgeschlagen") == "Probelauf fehlgeschlagen"
+    assert public_job_error(None) is None
+
+
+def test_execute_job_stores_valueerror_message(db_session):
+    name = "raises_valueerror"
+
+    @job_handler(name)
+    def handler(_db, _payload):
+        raise ValueError("Probelauf fehlgeschlagen — es wurde nichts geschrieben.")
+
+    job = Job(
+        id=uuid.uuid4(),
+        job_type=name,
+        payload={},
+        status="running",
+        created_by_oid="oid-1",
+        created_by_name="Test",
+    )
+    db_session.add(job)
+    db_session.flush()
+    try:
+        _execute_job(db_session, job)
+        assert job.status == "failed"
+        assert job.error == "Probelauf fehlgeschlagen — es wurde nichts geschrieben."
+        assert "Traceback" not in (job.error or "")
+    finally:
+        HANDLERS.pop(name, None)
+
+
+def test_failed_job_page_shows_stored_error(user_client, db_session):
+    job = Job(
+        id=uuid.uuid4(),
+        job_type="noop",
+        payload={},
+        status="failed",
+        created_by_oid=PLAIN_USER["oid"],
+        created_by_name=PLAIN_USER["name"],
+        error=(
+            "Traceback (most recent call last):\n"
+            '  File "app/jobs.py", line 1, in _execute_job\n'
+            "ValueError: Probelauf fehlgeschlagen — es wurde nichts geschrieben."
+        ),
+    )
+    db_session.add(job)
+    db_session.flush()
+    response = user_client.get(f"/jobs/{job.id}")
+    assert response.status_code == 200
+    assert "Probelauf fehlgeschlagen — es wurde nichts geschrieben." in response.text
+    assert "Der Auftrag ist fehlgeschlagen." not in response.text
 
 
 def test_job_without_token_fails_without_killing_worker(db_session):

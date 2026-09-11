@@ -27,6 +27,7 @@ from core.article_payload import (
     DEFAULTS,
     LONG_TEXT_FIELD,
     NUMBER_PLACEHOLDER,
+    coerce_tax_rate,
     get_row_value,
     label_variants,
     row_to_payload,
@@ -46,8 +47,9 @@ PRESENCE_TTL = timedelta(seconds=20)
 FLUSH_IDLE_MS = 400
 
 MSG_FIELD_NOT_EDITABLE = "Feld nicht bearbeitbar"
-MSG_BATCH_APPROVED = "Stapel bereits genehmigt — keine Änderungen möglich"
+MSG_BATCH_LOCKED = "Stapel kann nicht mehr bearbeitet werden"
 MSG_NUMBER_REASSIGNED = "Artikelnummer wurde neu vergeben."
+EDITABLE_STATUSES = frozenset({"draft", "approved"})
 MSG_UNKNOWN_HAUPT = "Unbekannte Hauptgruppe"
 MSG_UNKNOWN_UNTER = "Unbekannte Untergruppe"
 MSG_MISSING_HAUPT = "Hauptgruppe fehlt"
@@ -250,6 +252,8 @@ def effective_values(row: ArticleBatchRow) -> dict[str, str]:
             merged[column] = original
         else:
             merged[column] = DEFAULTS.get(column, "")
+        if column == "Steuersatz":
+            merged[column] = coerce_tax_rate(merged[column])
     merged[ARTICLE_NUMBER_FIELD] = row.proposed_article_number or merged.get(
         ARTICLE_NUMBER_FIELD, ""
     )
@@ -385,7 +389,7 @@ def grid_row_values(
     out: list[Any] = []
     for field_name in order:
         if field_name == "_status":
-            out.append(row.validation_error or "")
+            out.append(row.write_error or row.validation_error or "")
         elif field_name == INCLUDE_FIELD:
             out.append(bool(row.include))
         elif field_name in _NUMBER_KEYS:
@@ -565,17 +569,36 @@ def _canonical_group_edits(row: ArticleBatchRow) -> dict[str, str]:
     return corrected
 
 
+def reopen_approved_batch(db: Session, batch: ArticleBatch) -> bool:
+    """Revert an approved batch to draft so edits require a fresh Freigabe.
+
+    Clears approval metadata and frozen payloads. Returns True when status changed.
+    """
+    if batch.status != "approved":
+        return False
+    batch.status = "draft"
+    batch.approved_at = None
+    batch.approved_by_oid = None
+    batch.approved_by_name = None
+    batch.updated_at = datetime.now(UTC)
+    for row in load_batch_rows(db, batch.id):
+        row.approved_payload = None
+    return True
+
+
 def apply_edits(
     db: Session,
     batch: ArticleBatch,
     edits: list[CellEdit],
 ) -> list[RowEditResult]:
-    if batch.status != "draft":
-        raise BatchEditError(MSG_BATCH_APPROVED)
+    if batch.status not in EDITABLE_STATUSES:
+        raise BatchEditError(MSG_BATCH_LOCKED)
 
     for edit in edits:
         if edit.field not in EDITABLE_WHITELIST:
             raise BatchEditError(MSG_FIELD_NOT_EDITABLE, field=edit.field)
+
+    reopen_approved_batch(db, batch)
 
     rows = list(
         db.scalars(
@@ -657,7 +680,9 @@ def row_matches(
     aktiv: str = "",
     nur_fehler: bool = False,
 ) -> bool:
-    if nur_fehler and not (row.validation_error or "").strip():
+    if nur_fehler and not (
+        (row.validation_error or "").strip() or (row.write_error or "").strip()
+    ):
         return False
     values = effective_values(row)
     needle = query.strip().lower()
@@ -717,7 +742,7 @@ def build_grid_config(
     weclapp_ok: bool = False,
     settings_path: str = "/einstellungen",
 ) -> dict[str, Any]:
-    editable = batch.status == "draft"
+    editable = batch.status in EDITABLE_STATUSES
     field_order = grid_field_order_for_batch(batch)
     group_sources = group_dropdowns(db)
     _haupt, unter_by_haupt = group_sources
@@ -741,7 +766,7 @@ def build_grid_config(
         "rowIds": [str(row.id) for row in rows],
         "rowState": [
             {
-                "validation_error": row.validation_error or "",
+                "validation_error": row.write_error or row.validation_error or "",
                 "include": bool(row.include),
             }
             for row in rows

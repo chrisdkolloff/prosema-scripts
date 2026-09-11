@@ -17,7 +17,7 @@ from app.jobs import (
     list_active_jobs,
 )
 from app.models import Job
-from app.weclapp import SETTINGS_PATH, public_job_error
+from app.weclapp import SETTINGS_PATH, is_auth_job_error, public_job_error
 
 router = APIRouter()
 
@@ -43,6 +43,7 @@ def _job_status_context(user: SessionUser, job: Job) -> dict[str, object]:
         "status_label": STATUS_LABELS.get(job.status, job.status),
         "polling": job.status not in TERMINAL_STATUSES,
         "error_message": error_message,
+        "show_settings_link": is_auth_job_error(error_message),
         "can_retry": job.status == "failed" and job.created_by_oid == user["oid"],
         "settings_path": SETTINGS_PATH,
         "job_label": job_type_label(job.job_type),

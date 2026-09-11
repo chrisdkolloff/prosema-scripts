@@ -12,6 +12,10 @@
   hx-get="/batches/{{ batch.id }}/aktionen?nach_aktualisierung=1"
   hx-trigger="every 3s"
   hx-swap="outerHTML"
+  {% elif submit_running %}
+  hx-get="/batches/{{ batch.id }}/aktionen"
+  hx-trigger="every 2s"
+  hx-swap="outerHTML"
   {% endif %}
 >
   <div class="card mb-4">
@@ -57,6 +61,9 @@
   {% endif %}
   {% if action_error %}
   <div class="alert alert-danger" role="alert">{{ action_error }}</div>
+  {% endif %}
+  {% if submit_error %}
+  <div class="alert alert-danger" role="alert" style="white-space: pre-wrap;">{{ submit_error }}{% if submit_error_is_auth %} <a href="{{ settings_path }}">weclapp-Einstellungen</a>{% endif %}{% if submit_job_id %} <a href="/jobs/{{ submit_job_id }}">Auftrag</a>{% endif %}</div>
   {% endif %}
 
   <div class="card mb-4">
@@ -143,7 +150,9 @@ Dieser Schritt kann nicht rückgängig gemacht werden."
 
       {% elif batch.status == "approved" %}
       <div class="d-flex flex-wrap gap-2 align-items-center">
-        {% if weclapp_ok %}
+        {% if submit_running %}
+        <span class="text-body-secondary">Wird gesendet…</span>
+        {% elif weclapp_ok %}
         <form method="post" action="/batches/{{ batch.id }}/senden" class="d-inline">
           <button type="submit" class="btn btn-primary">An weclapp senden</button>
         </form>
@@ -158,7 +167,7 @@ Dieser Schritt kann nicht rückgängig gemacht werden."
         <span class="text-body-secondary small">Diese Nummern existieren noch nicht in weclapp.</span>
       </div>
 
-      {% elif batch.status == "submitting" %}
+      {% elif batch.status == "submitting" or submit_running %}
       <span class="text-body-secondary">Wird gesendet…</span>
 
       {% elif batch.status == "submitted" %}

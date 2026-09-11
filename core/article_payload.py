@@ -76,6 +76,29 @@ DEFAULTS: dict[str, str] = {
     "Gewichtseinheit": "kg",
 }
 
+# weclapp POST /article taxRateType enum (weclapp_article_create_schema.json).
+TAX_RATE_ALLOWED: frozenset[str] = frozenset(
+    {"ZERO", "SUPER_REDUCED", "REDUCED", "STANDARD", "SLIGHTLY_REDUCED"}
+)
+TAX_RATE_ALIASES: dict[str, str] = {
+    "": "STANDARD",
+    "standard": "STANDARD",
+    "normal": "STANDARD",
+    "normalsteuersatz": "STANDARD",
+    "mwst": "STANDARD",
+    "ust": "STANDARD",
+    "zero": "ZERO",
+    "null": "ZERO",
+    "0": "ZERO",
+    "reduced": "REDUCED",
+    "ermässigt": "REDUCED",
+    "ermaessigt": "REDUCED",
+    "super_reduced": "SUPER_REDUCED",
+    "super-reduced": "SUPER_REDUCED",
+    "slightly_reduced": "SLIGHTLY_REDUCED",
+    "slightly-reduced": "SLIGHTLY_REDUCED",
+}
+
 TRUE_VALUES = {"ja", "true", "1", "yes", "x"}
 FALSE_VALUES = {"nein", "false", "0", "no", ""}
 
@@ -129,6 +152,26 @@ def _parse_bool(value: object, *, default: bool | None = None) -> bool | None:
     raise ValueError(f"Ungültiger Ja/Nein-Wert: {value!r}")
 
 
+def coerce_tax_rate(value: object) -> str:
+    """Empty and colloquial names become the weclapp default ``STANDARD``."""
+    text = _norm(value)
+    alias = TAX_RATE_ALIASES.get(text.casefold())
+    if alias:
+        return alias
+    upper = text.upper().replace(" ", "_").replace("-", "_")
+    if upper in TAX_RATE_ALLOWED:
+        return upper
+    return text
+
+
+def resolve_tax_rate(value: object) -> str:
+    resolved = coerce_tax_rate(value)
+    if resolved not in TAX_RATE_ALLOWED:
+        allowed = ", ".join(sorted(TAX_RATE_ALLOWED))
+        raise ValueError(f"Ungültiger Steuersatz: {value!r}. Erlaubt: {allowed}")
+    return resolved
+
+
 def _row_value(row: dict[str, str], column: str) -> str:
     raw = get_row_value(row, column)
     if raw:
@@ -173,7 +216,7 @@ def row_to_payload(row: dict[str, str], lookups: LookupTablesProtocol) -> dict[s
         "name": name,
         "articleType": _row_value(row, "Artikeltyp").upper() or "STORABLE",
         "unitId": lookups.unit_id(unit_value),
-        "taxRateType": _row_value(row, "Steuersatz").upper() or "STANDARD",
+        "taxRateType": resolve_tax_rate(_row_value(row, "Steuersatz")),
         "active": _parse_bool(_row_value(row, "Aktiv"), default=True),
         "availableInSale": _parse_bool(_row_value(row, "Im Verkauf"), default=True),
     }

@@ -334,15 +334,42 @@ def test_grid_reload_clears_stale_weclapp_group_list_error(user_client, db_sessi
     assert "Hauptwarengruppe" not in (row.validation_error or "")
 
 
-def test_edits_rejects_approved_batch(user_client, db_session):
+def test_edits_reopens_approved_batch(user_client, db_session):
     batch, rows = _make_batch(db_session, status="approved")
+    row = rows[0]
+    row.approved_payload = {"articleNumber": "130.020.0010"}
+    batch.approved_at = batch.created_at
+    batch.approved_by_oid = "approver"
+    batch.approved_by_name = "Approver"
+    db_session.flush()
+
+    response = user_client.post(
+        f"/batches/{batch.id}/edits",
+        json=[{"row_id": str(row.id), "field": "PROSEMA Kurztext", "value": "Neu"}],
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["reopened"] is True
+    assert body["status"] == "draft"
+    db_session.refresh(batch)
+    db_session.refresh(row)
+    assert batch.status == "draft"
+    assert batch.approved_at is None
+    assert batch.approved_by_oid is None
+    assert batch.approved_by_name is None
+    assert row.approved_payload is None
+    assert row.edits.get("PROSEMA Kurztext") == "Neu"
+
+
+def test_edits_rejects_submitted_batch(user_client, db_session):
+    batch, rows = _make_batch(db_session, status="submitted")
     row = rows[0]
     response = user_client.post(
         f"/batches/{batch.id}/edits",
         json=[{"row_id": str(row.id), "field": "PROSEMA Kurztext", "value": "Nope"}],
     )
     assert response.status_code == 400
-    assert response.json()["error"] == "Stapel bereits genehmigt — keine Änderungen möglich"
+    assert response.json()["error"] == "Stapel kann nicht mehr bearbeitet werden"
     db_session.refresh(row)
     assert row.edits == {}
 

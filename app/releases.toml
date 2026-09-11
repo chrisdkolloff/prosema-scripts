@@ -1,7 +1,17 @@
 # PROSEMA release history — edit this file to bump the version and document changes.
 # The top-level `version` is shown in the site header; `[[releases]]` entries appear on /changelog.
 
-version = "1.3.3"
+version = "1.3.4"
+
+[[releases]]
+version = "1.3.4"
+date = "2026-09-11"
+summary = "Refactor batch editing logic to support reopening approved batches. Introduce `reopen_approved_batch` function to revert batch status from approved to draft, allowing edits. Update related error messages and conditions for batch editability. Enhance tests to validate new behavior and ensure proper handling of batch statuses during edits. (+1 more)"
+changes = [
+  "Enhance batch submission and upload processes by introducing tax rate coercion and error handling improvements. Implement `coerce_tax_rate` and `resolve_tax_rate` functions for consistent tax rate management. Update error messaging in batch submission to provide clearer feedback on Weclapp API errors. Refactor related tests to validate new functionality and ensure proper handling of tax rates and error scenarios.",
+  "Refactor batch editing logic to support reopening approved batches. Introduce `reopen_approved_batch` function to revert batch status from approved to draft, allowing edits. Update related error messages and conditions for batch editability. Enhance tests to validate new behavior and ensure proper handling of batch statuses during edits.",
+]
+
 
 [[releases]]
 version = "1.3.3"
