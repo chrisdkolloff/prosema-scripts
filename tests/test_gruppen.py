@@ -482,6 +482,20 @@ def test_create_hauptgruppe_with_untergruppe_helper(db_session):
     assert parent.code == code
     assert child.hauptgruppe_id == parent.id
     assert child.code == "010"
+    assert parent.locked_at is not None
+    assert child.locked_at is not None
+
+
+def test_create_untergruppe_locks_code(admin_client, db_session):
+    parent = _make_hauptgruppe(db_session)
+    child = _make_untergruppe(db_session, parent, code="050", name="Neu")
+    db_session.flush()
+    assert child.locked_at is not None
+    response = admin_client.get(f"/gruppen/{parent.id}")
+    assert response.status_code == 200
+    assert "Code ist festgelegt" in response.text
+    assert f'action="/untergruppen/{child.id}/code"' not in response.text
+    assert "Es befinden sich Artikel in dieser Untergruppe" not in response.text
 
 
 def test_rename_hauptgruppe_on_tools_host_puts_weclapp(admin_client, db_session):
@@ -851,22 +865,20 @@ def test_delete_untergruppe_refused_from_weclapp_count(admin_client, db_session)
     assert child.deleted_at is None
 
 
-def test_delete_untergruppe_refused_when_locked_and_no_snapshot(
+def test_delete_untergruppe_allowed_when_locked_and_no_snapshot(
     admin_client, db_session
 ):
-    from app.group_usage import MSG_NO_SNAPSHOT
-
+    """locked_at is set at create; without a snapshot or weclapp hit, delete proceeds."""
     parent = _make_hauptgruppe(db_session, name="LockHG")
     child = _make_untergruppe(db_session, parent, code="020", name="LockUG")
-    child.locked_at = datetime.now(UTC)
     db_session.flush()
+    assert child.locked_at is not None
     with patch("app.group_usage.snapshot_for_query", return_value=None):
         response = admin_client.post(
             f"/untergruppen/{child.id}/loeschen",
             follow_redirects=False,
         )
-    assert response.status_code == 400
-    assert MSG_NO_SNAPSHOT in response.text
+    assert response.status_code == 303
     db_session.refresh(child)
-    assert child.deleted_at is None
+    assert child.deleted_at is not None
 

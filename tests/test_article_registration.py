@@ -607,7 +607,8 @@ def test_freigeben_without_snapshot_refused(db_session):
 
 def test_first_write_locks_group_and_audits(db_session):
     haupt, unter = _make_groups(db_session)
-    assert haupt.locked_at is None
+    assert haupt.locked_at is not None
+    assert unter.locked_at is not None
     _make_snapshot(db_session)
     h, u = _group_labels(haupt, unter)
     result = create_batch_from_upload(
@@ -641,7 +642,9 @@ def test_first_write_locks_group_and_audits(db_session):
             select(GruppenAudit).where(GruppenAudit.entity_id == haupt.id)
         )
     ]
-    assert "locked_by_registration" in actions
+    # Already locked at create; registration does not emit a second lock audit.
+    assert "locked_by_registration" not in actions
+    assert "created" in actions
 
 
 def test_stub_text_gone(user_client):

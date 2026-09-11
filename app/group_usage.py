@@ -10,12 +10,6 @@ from app.groups_service import GroupRegistryError
 from app.models import ArticleSnapshotRow, Hauptgruppe, Untergruppe
 from scripts.weclapp.client import WeclappClient, WeclappError
 
-MSG_NO_SNAPSHOT = (
-    "Diese Gruppe kann nicht gelöscht werden: Es sind bereits Artikelnummern "
-    "darunter vergeben, aber keine aktuelle Artikelübersicht zum Prüfen. "
-    "Bitte zuerst eine Artikelübersicht abfragen und die Artikel umhängen."
-)
-
 
 def noah_reassign_prompt(number_prefix: str) -> str:
     return (
@@ -70,7 +64,6 @@ def refuse_delete_if_articles_remain(
     db: Session,
     *,
     number_prefix: str,
-    locked: bool,
     kind: str,
     group_name: str,
     weclapp_count: int | None = None,
@@ -82,8 +75,9 @@ def refuse_delete_if_articles_remain(
         db, number_prefix=number_prefix, group_name=group_name, kind=kind
     )
     if snapshot_count is None:
-        if locked:
-            raise GroupRegistryError(MSG_NO_SNAPSHOT)
+        # No overview to check; allow. Callers with a weclapp client already
+        # passed weclapp_count. locked_at is set at create and is not evidence
+        # that article numbers exist under this group.
         return
     _refuse(snapshot_count, number_prefix=number_prefix, kind=kind)
 
@@ -126,7 +120,6 @@ def refuse_untergruppe_delete(
     refuse_delete_if_articles_remain(
         db,
         number_prefix=f"{parent.code}.{group.code}",
-        locked=group.locked_at is not None,
         kind="untergruppe",
         group_name=group.name,
         weclapp_count=_weclapp_unter_count(client, group),
@@ -139,7 +132,6 @@ def refuse_hauptgruppe_delete(
     refuse_delete_if_articles_remain(
         db,
         number_prefix=group.code,
-        locked=group.locked_at is not None,
         kind="hauptgruppe",
         group_name=group.name,
         weclapp_count=_weclapp_haupt_count(client, group),

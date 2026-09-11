@@ -20,14 +20,14 @@ from app.models import GruppenAlias, GruppenAudit, Hauptgruppe, Untergruppe
 CODE_RE = re.compile(r"^[0-9]{3}$")
 _WHITESPACE_RE = re.compile(r"\s+")
 
-MSG_CODE_LOCKED = "Code gesperrt: bereits von Artikeln verwendet"
+MSG_CODE_LOCKED = "Code gesperrt"
 MSG_CODE_TAKEN = "Code bereits vergeben"
 MSG_CODE_FORMAT = "Code muss aus genau drei Ziffern bestehen"
 MSG_CHILDREN_FIRST = "Untergruppen müssen zuerst gelöscht werden"
 MSG_ALIAS_TAKEN = "Alias bereits vergeben"
 MSG_ALIAS_EMPTY = "Alias darf nicht leer sein"
 MSG_NAME_EMPTY = "Bezeichnung darf nicht leer sein"
-MSG_PARENT_LOCKED = "Zuordnung zur Hauptgruppe gesperrt: bereits von Artikeln verwendet"
+MSG_PARENT_LOCKED = "Zuordnung zur Hauptgruppe gesperrt"
 
 
 class AmbiguousGroupMatch(ValueError):
@@ -284,7 +284,11 @@ def flush_registry(db: Session) -> None:
 
 
 def create_hauptgruppe(db: Session, *, code: str, name: str, actor: Mapping[str, Any]) -> Hauptgruppe:
-    group = Hauptgruppe(code=_require_code(code), name=_require_name(name))
+    group = Hauptgruppe(
+        code=_require_code(code),
+        name=_require_name(name),
+        locked_at=datetime.now(UTC),
+    )
     db.add(group)
     flush_registry(db)
     record_audit(
@@ -404,6 +408,7 @@ def create_untergruppe(
         hauptgruppe_id=parent.id,
         code=_require_code(code),
         name=_require_name(name),
+        locked_at=datetime.now(UTC),
     )
     db.add(group)
     flush_registry(db)

@@ -9,15 +9,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import engine
-from app.groups_service import create_hauptgruppe, create_untergruppe
-from app.models import GruppenAudit, Hauptgruppe
+from app.models import GruppenAudit, Hauptgruppe, Untergruppe
 from core.numbering import parse_group_codes
 from scripts.lock_groups_from_weclapp import (
     apply_locks,
     collect_locks,
 )
-
-ACTOR = {"oid": "test-oid", "name": "Test User"}
 
 
 @pytest.fixture
@@ -56,13 +53,21 @@ def test_parse_group_codes():
 
 
 def test_collect_locks_referenced_groups_and_unresolved(db_session):
-    haupt = create_hauptgruppe(
-        db_session, code=_unused_code(db_session), name="Lock-Haupt", actor=ACTOR
+    # Insert unlocked rows directly: create_* now locks on insert, but the
+    # backfill script still needs unlocked legacy rows to exercise.
+    haupt = Hauptgruppe(code=_unused_code(db_session), name="Lock-Haupt", locked_at=None)
+    db_session.add(haupt)
+    db_session.flush()
+    other = Hauptgruppe(code=_unused_code(db_session), name="Unreferenziert", locked_at=None)
+    db_session.add(other)
+    db_session.flush()
+    unter = Untergruppe(
+        hauptgruppe_id=haupt.id,
+        code="010",
+        name="Lock-Unter",
+        locked_at=None,
     )
-    other = create_hauptgruppe(
-        db_session, code=_unused_code(db_session), name="Unreferenziert", actor=ACTOR
-    )
-    unter = create_untergruppe(db_session, haupt, code="010", name="Lock-Unter", actor=ACTOR)
+    db_session.add(unter)
     db_session.flush()
 
     articles = [

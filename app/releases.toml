@@ -1,7 +1,16 @@
 # PROSEMA release history — edit this file to bump the version and document changes.
 # The top-level `version` is shown in the site header; `[[releases]]` entries appear on /changelog.
 
-version = "1.3.2"
+version = "1.3.3"
+
+[[releases]]
+version = "1.3.3"
+date = "2026-09-11"
+summary = "Refactor group locking mechanism and update related templates. Remove unnecessary locked state checks in deletion logic, ensuring groups are locked upon creation. Update messages in templates to reflect the new locking behavior. Enhance tests to validate locking functionality during group creation and deletion scenarios."
+changes = [
+  "Refactor group locking mechanism and update related templates. Remove unnecessary locked state checks in deletion logic, ensuring groups are locked upon creation. Update messages in templates to reflect the new locking behavior. Enhance tests to validate locking functionality during group creation and deletion scenarios.",
+]
+
 
 [[releases]]
 version = "1.3.2"

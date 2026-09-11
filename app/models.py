@@ -100,8 +100,8 @@ class Hauptgruppe(Base):
     )
     code: Mapped[str] = mapped_column(Text, nullable=False)
     name: Mapped[str] = mapped_column(Text, nullable=False)
-    # Set by article registration (week 3) the first time a number is issued
-    # under this group. Nothing in week 2 writes this column.
+    # Set at create time so codes cannot change after the group is saved.
+    # Registration and the weclapp backfill script are no-ops when already set.
     locked_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
     deleted_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -147,8 +147,8 @@ class Untergruppe(Base):
     )
     code: Mapped[str] = mapped_column(Text, nullable=False)
     name: Mapped[str] = mapped_column(Text, nullable=False)
-    # Set by article registration (week 3) the first time a number is issued
-    # under this group. Nothing in week 2 writes this column.
+    # Set at create time so codes cannot change after the group is saved.
+    # Registration and the weclapp backfill script are no-ops when already set.
     locked_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
     deleted_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
