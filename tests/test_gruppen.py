@@ -493,7 +493,6 @@ def test_create_untergruppe_locks_code(admin_client, db_session):
     assert child.locked_at is not None
     response = admin_client.get(f"/gruppen/{parent.id}")
     assert response.status_code == 200
-    assert "Code ist festgelegt" in response.text
     assert f'action="/untergruppen/{child.id}/code"' not in response.text
     assert "Es befinden sich Artikel in dieser Untergruppe" not in response.text
 

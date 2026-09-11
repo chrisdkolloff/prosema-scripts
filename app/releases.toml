@@ -1,7 +1,16 @@
 # PROSEMA release history — edit this file to bump the version and document changes.
 # The top-level `version` is shown in the site header; `[[releases]]` entries appear on /changelog.
 
-version = "1.3.4"
+version = "1.3.5"
+
+[[releases]]
+version = "1.3.5"
+date = "2026-09-11"
+summary = "Refactor group code display in templates by removing redundant messages indicating that the code is locked. Update related tests to ensure they reflect the new template behavior."
+changes = [
+  "Refactor group code display in templates by removing redundant messages indicating that the code is locked. Update related tests to ensure they reflect the new template behavior.",
+]
+
 
 [[releases]]
 version = "1.3.4"

@@ -25,8 +25,7 @@
     <div class="card-header">Code</div>
     <div class="card-body">
       {% if group.locked_at %}
-      <p class="mb-1"><code>{{ group.code }}</code></p>
-      <p class="text-body-secondary small mb-0">Code ist festgelegt</p>
+      <p class="mb-0"><code>{{ group.code }}</code></p>
       {% elif is_admin and not group.deleted_at %}
       <form method="post" action="/gruppen/{{ group.id }}/code" class="row g-3 align-items-end">
         <div class="col-auto">
