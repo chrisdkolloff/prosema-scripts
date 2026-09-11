@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import csv
 import json
 import re
@@ -105,16 +106,7 @@ class LookupTables:
         lookups = schema.get("lookups") or {}
         self.units_by_key: dict[str, str] = {}
         self.unit_names: list[str] = []
-        for unit in lookups.get("units") or []:
-            unit_id = str(unit.get("id") or "")
-            name = _norm(unit.get("name"))
-            if name:
-                self.unit_names.append(name)
-            for key in (unit.get("name"), unit.get("description"), unit_id):
-                text = _norm(key).lower()
-                if text:
-                    self.units_by_key[text] = unit_id
-        self.unit_names = sorted(set(self.unit_names), key=str.lower)
+        self.replace_units(lookups.get("units") or [])
 
         self.categories_by_name: dict[str, str] = {}
         self.category_names: list[str] = []
@@ -131,6 +123,27 @@ class LookupTables:
             label = _norm(attr.get("label"))
             if label:
                 self.attrs_by_label[label] = attr
+
+    def replace_units(self, units: list[dict[str, Any]]) -> None:
+        """Rebuild name/description/id → unitId maps from a unit catalogue."""
+        self.units_by_key = {}
+        self.unit_names = []
+        for unit in units:
+            unit_id = str(unit.get("id") or "")
+            name = _norm(unit.get("name"))
+            if name:
+                self.unit_names.append(name)
+            for key in (unit.get("name"), unit.get("description"), unit_id):
+                text = _norm(key).lower()
+                if text:
+                    self.units_by_key[text] = unit_id
+        self.unit_names = sorted(set(self.unit_names), key=str.lower)
+
+    def with_units(self, units: list[dict[str, Any]]) -> LookupTables:
+        """Shallow copy with a different unit catalogue (categories/attrs shared)."""
+        clone = copy.copy(self)
+        clone.replace_units(units)
+        return clone
 
     def unit_id(self, value: str) -> str:
         key = _norm(value).lower()

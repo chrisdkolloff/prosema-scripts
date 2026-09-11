@@ -21,6 +21,7 @@ from app.batches import (
     UNTERGRUPPE_FIELD,
     effective_values,
     group_label,
+    lookups_for_db,
     resolve_row_groups,
     validate_effective,
 )
@@ -372,7 +373,9 @@ def create_batch_from_upload(
     for row in created_rows:
         values = effective_values(row)
         row.validation_error = validate_effective(
-            values, getattr(row, "_group_error", None)
+            values,
+            getattr(row, "_group_error", None),
+            lookups=lookups_for_db(db),
         )
 
     notices: list[str] = []
@@ -438,7 +441,9 @@ def create_manual_batch(
         row._resolved_haupt = haupt
         row._resolved_unter = unter
         row._group_error = group_error
-        row.validation_error = validate_effective(effective_values(row), group_error)
+        row.validation_error = validate_effective(
+            effective_values(row), group_error, lookups=lookups_for_db(db)
+        )
         created_rows.append(row)
         db.add(row)
 
@@ -484,7 +489,9 @@ def append_empty_rows(
         row.resolved_hauptgruppe_id = haupt.id if haupt is not None else None
         row.resolved_untergruppe_id = unter.id if unter is not None else None
         row.validation_error = validate_effective(
-            {**values, ARTICLE_NUMBER_FIELD: ""}, group_error
+            {**values, ARTICLE_NUMBER_FIELD: ""},
+            group_error,
+            lookups=lookups_for_db(db),
         )
         db.add(row)
 

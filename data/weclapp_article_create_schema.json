@@ -194,19 +194,19 @@
         "description": "Beutel"
       },
       {
-        "id": "4303",
-        "name": "Karton",
-        "description": "Karton"
+        "id": "400994",
+        "name": "Dose",
+        "description": "Dose"
       },
       {
-        "id": "4305",
-        "name": "Paar",
-        "description": "Paar"
+        "id": "400991",
+        "name": "Eimer",
+        "description": "Eimer"
       },
       {
-        "id": "3566",
-        "name": "Stk.",
-        "description": "Stück"
+        "id": "400995",
+        "name": "Flasche",
+        "description": "Flasche"
       },
       {
         "id": "3564",
@@ -214,9 +214,24 @@
         "description": "Gramm"
       },
       {
+        "id": "400992",
+        "name": "Gebinde",
+        "description": "Gebinde"
+      },
+      {
         "id": "3567",
         "name": "h",
         "description": "Stunde"
+      },
+      {
+        "id": "400993",
+        "name": "Kanister",
+        "description": "Kanister"
+      },
+      {
+        "id": "4303",
+        "name": "Karton",
+        "description": "Karton"
       },
       {
         "id": "3563",
@@ -239,9 +254,39 @@
         "description": "Millimeter"
       },
       {
+        "id": "4305",
+        "name": "Paar",
+        "description": "Paar"
+      },
+      {
+        "id": "400432",
+        "name": "pausch",
+        "description": "Pauschal"
+      },
+      {
         "id": "4304",
         "name": "qm",
         "description": "Quadratmeter"
+      },
+      {
+        "id": "400990",
+        "name": "Rolle",
+        "description": "Rolle"
+      },
+      {
+        "id": "393767",
+        "name": "Sack",
+        "description": "Sack"
+      },
+      {
+        "id": "3566",
+        "name": "Stk.",
+        "description": "Stück"
+      },
+      {
+        "id": "400996",
+        "name": "t",
+        "description": "Tonne"
       }
     ],
     "currencies": [

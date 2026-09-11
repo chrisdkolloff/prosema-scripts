@@ -33,6 +33,15 @@
 
   {% include "batches/partials/action_bar.html" %}
 
+  <div
+    id="batch-unknown-unit-banner"
+    class="alert alert-warning d-none mb-4"
+    role="status"
+    hidden
+  >
+    <div id="batch-unknown-unit-list" class="d-flex flex-column gap-2"></div>
+  </div>
+
   <div class="card mb-4">
     <div class="card-body">
       <form class="row g-3 align-items-end" method="get" action="/batches/{{ batch.id }}">

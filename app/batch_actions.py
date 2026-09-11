@@ -15,6 +15,7 @@ from app.batches import (
     ARTICLE_NUMBER_FIELD,
     effective_values,
     load_batch_rows,
+    lookups_for_db,
     refresh_draft_validation,
 )
 from app.excel_export import TEXT_EXCEL_COLUMNS, workbook_bytes, write_cell
@@ -23,7 +24,6 @@ from app.numbering_high_water import latest_completed_snapshot
 from app.snapshots import format_snapshot_timestamp, running_snapshot
 from core.article_fields import IMPORT_COLUMNS
 from core.article_payload import row_to_payload
-from scripts.weclapp.article_import import LookupTables, _load_schema
 
 MSG_NOT_DRAFT = "Nur Entwürfe können freigegeben werden."
 MSG_HAS_ERRORS = "Freigabe nicht möglich: {n} Zeilen mit Fehlern"
@@ -52,10 +52,6 @@ class BatchActionError(Exception):
         self.message = message
         self.status_code = status_code
         super().__init__(message)
-
-
-def _lookups() -> LookupTables:
-    return LookupTables(_load_schema())
 
 
 def batch_counts(rows: list[ArticleBatchRow]) -> dict[str, int]:
@@ -137,7 +133,7 @@ def approve_batch(
     if any(not number for number in numbers) or len(numbers) != len(set(numbers)):
         raise BatchActionError(MSG_NULL_OR_DUP_NUMBER)
 
-    lookups = _lookups()
+    lookups = lookups_for_db(db)
     for row in included:
         values = effective_values(row)
         payload = row_to_payload(values, lookups)

@@ -3,6 +3,7 @@
   var STATUS_SAVED = "Gespeichert";
   var STATUS_SAVING = "Wird gespeichert…";
   var STATUS_ERROR = "Nicht gespeichert — Verbindung prüfen";
+  var UNKNOWN_UNIT_RE = /Unbekannte Einheit:\s*(.+)$/;
   var applying = false;
   var queue = [];
   var timer = null;
@@ -10,6 +11,7 @@
   var worksheet = null;
   var config = null;
   var statusEl = null;
+  var creatingUnit = false;
 
   function $(id) {
     return document.getElementById(id);
@@ -41,6 +43,19 @@
     }
     if (value == null) return "";
     return String(value);
+  }
+
+  function foldUnit(name) {
+    return String(name || "")
+      .trim()
+      .toLocaleLowerCase();
+  }
+
+  function parseUnknownUnit(error) {
+    var match = UNKNOWN_UNIT_RE.exec(String(error || "").trim());
+    if (!match) return null;
+    var name = String(match[1] || "").trim();
+    return name || null;
   }
 
   function queueChange(x, y, value) {
@@ -215,12 +230,144 @@
     }
   }
 
+  function addEinheitToDropdown(name) {
+    if (!config || !name) return;
+    var idx = colIndex("Einheit");
+    if (idx < 0 || !config.columns || !config.columns[idx]) return;
+    var col = config.columns[idx];
+    var source = col.source ? col.source.slice() : [];
+    if (source.indexOf(name) >= 0) return;
+    source.push(name);
+    col.source = source;
+    if (worksheet && worksheet.options && worksheet.options.columns && worksheet.options.columns[idx]) {
+      worksheet.options.columns[idx].source = source;
+    }
+  }
+
+  function createUnknownUnit(name) {
+    if (!config || !config.createUnitUrl || !name || creatingUnit) {
+      return Promise.resolve(null);
+    }
+    if (!config.weclappOk) {
+      setStatus("Anlegen braucht weclapp-Zugriff", "is-error");
+      return Promise.resolve(null);
+    }
+    creatingUnit = true;
+    refreshUnitBanner();
+    setStatus(STATUS_SAVING, "is-saving");
+    return fetch(config.createUnitUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ name: name }),
+    })
+      .then(function (response) {
+        return response.json().then(function (data) {
+          return { ok: response.ok, data: data };
+        });
+      })
+      .then(function (result) {
+        creatingUnit = false;
+        if (!result.ok) {
+          var message = (result.data && result.data.error) || STATUS_ERROR;
+          setStatus(message, "is-error");
+          refreshUnitBanner();
+          return null;
+        }
+        var unitName =
+          (result.data && result.data.unit && result.data.unit.name) || name;
+        addEinheitToDropdown(unitName);
+        applyServerRows(result.data && result.data.rows);
+        setStatus(STATUS_SAVED, "is-saved");
+        refreshUnitBanner();
+        return result.data;
+      })
+      .catch(function () {
+        creatingUnit = false;
+        setStatus(STATUS_ERROR, "is-error");
+        refreshUnitBanner();
+        return null;
+      });
+  }
+
+  function collectUnknownUnits() {
+    var names = [];
+    var seen = {};
+    if (!config || !config.rowState) return names;
+    for (var y = 0; y < config.rowState.length; y++) {
+      var raw = parseUnknownUnit(
+        config.rowState[y] && config.rowState[y].validation_error
+      );
+      if (!raw) continue;
+      var key = foldUnit(raw);
+      if (!key || seen[key]) continue;
+      seen[key] = true;
+      names.push(raw);
+    }
+    return names;
+  }
+
+  function refreshUnitBanner() {
+    var banner = $("batch-unknown-unit-banner");
+    var list = $("batch-unknown-unit-list");
+    if (!banner || !list) return;
+    list.innerHTML = "";
+    if (!config || !config.editable) {
+      banner.classList.add("d-none");
+      banner.hidden = true;
+      return;
+    }
+    var names = collectUnknownUnits();
+    if (!names.length) {
+      banner.classList.add("d-none");
+      banner.hidden = true;
+      return;
+    }
+    banner.classList.remove("d-none");
+    banner.hidden = false;
+    var weclappOk = !!config.weclappOk;
+    var settingsPath = config.settingsPath || "/einstellungen";
+    names.forEach(function (name) {
+      var row = document.createElement("div");
+      row.className = "d-flex flex-wrap align-items-center gap-3";
+      var text = document.createElement("span");
+      text.textContent =
+        "Einheit «" + name + "» existiert noch nicht in weclapp.";
+      row.appendChild(text);
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "btn btn-sm btn-outline-warning";
+      button.textContent = creatingUnit ? "Wird angelegt…" : "Anlegen";
+      button.disabled = !weclappOk || creatingUnit;
+      if (weclappOk) {
+        button.addEventListener("click", function () {
+          createUnknownUnit(name);
+        });
+      } else {
+        button.title = "Anlegen braucht weclapp-Zugriff";
+      }
+      row.appendChild(button);
+      if (!weclappOk) {
+        var hint = document.createElement("span");
+        hint.className = "small";
+        hint.innerHTML =
+          "Anlegen braucht weclapp-Zugriff. " +
+          '<a href="' +
+          settingsPath +
+          '">weclapp-Einstellungen</a>';
+        row.appendChild(hint);
+      }
+      list.appendChild(row);
+    });
+  }
+
   function paintInitial() {
     if (!config || !config.rowState) return;
     for (var y = 0; y < config.rowState.length; y++) {
       var state = config.rowState[y];
       applyRowState(y, state.include, state.validation_error);
     }
+    refreshUnitBanner();
   }
 
   function flush(keepalive) {
@@ -252,6 +399,7 @@
       if (!(options && options.skipActionBar)) {
         refreshActionBar();
       }
+      refreshUnitBanner();
       if (queue.length) {
         setStatus(STATUS_SAVING, "is-saving");
         scheduleFlush();
@@ -340,6 +488,7 @@
     config = JSON.parse(cfgEl.textContent);
     queue = [];
     flushing = false;
+    creatingUnit = false;
     ProsemaSpreadsheet.destroy(el);
     attachUntergruppeFilter(config.columns);
 

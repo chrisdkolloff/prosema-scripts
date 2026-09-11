@@ -1,7 +1,18 @@
 # PROSEMA release history — edit this file to bump the version and document changes.
 # The top-level `version` is shown in the site header; `[[releases]]` entries appear on /changelog.
 
-version = "1.3.1"
+version = "1.3.2"
+
+[[releases]]
+version = "1.3.2"
+date = "2026-09-11"
+summary = "Enhance retention test for article snapshots. Update `test_retention_keeps_snapshot_within_day_floor_outside_newest_20` to include a scenario where a 16-day-old snapshot is deleted due to a newer monthly keeper in the same UTC month. Ensure assertions validate the correct retention behavior of snapshots based on the new logic. (+2 more)"
+changes = [
+  "Refactor batch processing to integrate unit handling and improve validation. Introduce `lookups_for_db` for unit lookups in batch actions and uploads. Enhance dropdowns and validation logic to support new unit creation. Update schema and unit handling in Weclapp integration. Add tests for new functionality and ensure proper error handling for unknown units.",
+  "Enhance batch grid configuration and unit creation handling. Introduce `weclapp_ok` and `settings_path` parameters in `build_grid_config` to manage Weclapp access and settings. Update JavaScript to reflect these changes, including a new banner for unknown units and improved user feedback during unit creation. Add tests to validate new functionality and ensure proper integration with existing features.",
+  "Enhance retention test for article snapshots. Update `test_retention_keeps_snapshot_within_day_floor_outside_newest_20` to include a scenario where a 16-day-old snapshot is deleted due to a newer monthly keeper in the same UTC month. Ensure assertions validate the correct retention behavior of snapshots based on the new logic.",
+]
+
 
 [[releases]]
 version = "1.3.1"

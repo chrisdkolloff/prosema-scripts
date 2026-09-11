@@ -265,10 +265,10 @@ def display_proposed_article_number(row: ArticleBatchRow) -> str:
 
 
 _LOOKUPS: LookupTables | None = None
-_DROPDOWN_CACHE: dict[str, list[str]] | None = None
 
 
-def _cached_lookups() -> LookupTables:
+def _schema_lookups() -> LookupTables:
+    """Categories/attrs (and fallback units) from the committed create schema."""
     global _LOOKUPS
     if _LOOKUPS is None:
         from scripts.weclapp.article_import import _load_schema
@@ -277,18 +277,28 @@ def _cached_lookups() -> LookupTables:
     return _LOOKUPS
 
 
-def schema_dropdowns() -> dict[str, list[str]]:
+def lookups_for_db(db: Session) -> LookupTables:
+    """Schema lookups with units overlaid from ``weclapp_units`` when present."""
+    from app.weclapp_units import units_as_lookup_dicts
+
+    base = _schema_lookups()
+    db_units = units_as_lookup_dicts(db)
+    if not db_units:
+        return base
+    return base.with_units(db_units)
+
+
+def schema_dropdowns(db: Session | None = None) -> dict[str, list[str]]:
     """weclapp schema dropdowns — never Hauptgruppe/Untergruppe.
 
     Those columns are filled by ``group_dropdowns`` from Gruppenverwaltung.
+    When ``db`` is given, Einheit comes from ``weclapp_units``.
     """
-    global _DROPDOWN_CACHE
-    if _DROPDOWN_CACHE is None:
-        options = dropdown_options(_cached_lookups())
-        options.pop(HAUPTGRUPPE_FIELD, None)
-        options.pop(UNTERGRUPPE_FIELD, None)
-        _DROPDOWN_CACHE = options
-    return _DROPDOWN_CACHE
+    lookups = lookups_for_db(db) if db is not None else _schema_lookups()
+    options = dropdown_options(lookups)
+    options.pop(HAUPTGRUPPE_FIELD, None)
+    options.pop(UNTERGRUPPE_FIELD, None)
+    return options
 
 
 def group_dropdowns(db: Session) -> tuple[list[str], dict[str, list[str]]]:
@@ -323,7 +333,7 @@ def build_columns(
     field_order: tuple[str, ...] | None = None,
     group_sources: tuple[list[str], dict[str, list[str]]] | None = None,
 ) -> list[dict[str, Any]]:
-    schema_sources = schema_dropdowns()
+    schema_sources = schema_dropdowns(db)
     if group_sources is None:
         haupt, unter_by_haupt = group_dropdowns(db)
     else:
@@ -358,6 +368,9 @@ def build_columns(
             column["source"] = source
             if len(source) > 12:
                 column["autocomplete"] = True
+            if field_name == "Einheit":
+                column["autocomplete"] = True
+                column["newOptions"] = True
         columns.append(column)
     return columns
 
@@ -423,12 +436,17 @@ def resolve_row_groups(
     return haupt, unter, None
 
 
-def validate_effective(values: dict[str, str], group_error: str | None) -> str:
+def validate_effective(
+    values: dict[str, str],
+    group_error: str | None,
+    *,
+    lookups: LookupTables | None = None,
+) -> str:
     messages: list[str] = []
     if group_error:
         messages.append(group_error)
     try:
-        row_to_payload(values, _cached_lookups())
+        row_to_payload(values, lookups if lookups is not None else _schema_lookups())
     except ValueError as exc:
         text = str(exc)
         if text not in messages:
@@ -442,7 +460,7 @@ def recompute_row_validation(db: Session, row: ArticleBatchRow) -> bool:
     haupt, unter, group_error = resolve_row_groups(db, values)
     row.resolved_hauptgruppe_id = haupt.id if haupt is not None else None
     row.resolved_untergruppe_id = unter.id if unter is not None else None
-    error = validate_effective(values, group_error)
+    error = validate_effective(values, group_error, lookups=lookups_for_db(db))
     if (row.validation_error or "") != (error or ""):
         row.validation_error = error
         return True
@@ -611,7 +629,11 @@ def apply_edits(
         if row.id in cleared_unter:
             corrected[UNTERGRUPPE_FIELD] = ""
         values = effective_values(row)
-        row.validation_error = validate_effective(values, getattr(row, "_group_error", None))
+        row.validation_error = validate_effective(
+            values,
+            getattr(row, "_group_error", None),
+            lookups=lookups_for_db(db),
+        )
         results.append(
             RowEditResult(
                 id=row.id,
@@ -691,6 +713,9 @@ def build_grid_config(
     db: Session,
     batch: ArticleBatch,
     rows: list[ArticleBatchRow],
+    *,
+    weclapp_ok: bool = False,
+    settings_path: str = "/einstellungen",
 ) -> dict[str, Any]:
     editable = batch.status == "draft"
     field_order = grid_field_order_for_batch(batch)
@@ -699,6 +724,9 @@ def build_grid_config(
     return {
         "editsUrl": f"/batches/{batch.id}/edits",
         "actionsUrl": f"/batches/{batch.id}/aktionen",
+        "createUnitUrl": f"/batches/{batch.id}/einheit-anlegen",
+        "weclappOk": bool(weclapp_ok),
+        "settingsPath": settings_path,
         "editable": editable,
         "parseFormulas": False,
         "freezeColumns": 2,

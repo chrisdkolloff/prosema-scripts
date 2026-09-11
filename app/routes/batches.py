@@ -23,6 +23,7 @@ from app.batch_actions import (
     discard_batch,
     snapshot_banner_state,
 )
+from app.batch_units import create_unit_for_batch, row_results_payload
 from app.batch_upload import (
     DEFAULT_MANUAL_ROWS,
     BatchUploadError,
@@ -73,6 +74,12 @@ class CellEditIn(BaseModel):
     row_id: uuid.UUID
     field: str
     value: Any = Field(default="")
+
+
+class CreateUnitIn(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    name: str = Field(default="")
 
 
 def _filters(
@@ -131,7 +138,7 @@ def _page_context(
         db.commit()
     page_rows, total, pages = filtered_rows(all_rows, **filters)
     haupt, _unter_by_haupt = group_dropdowns(db)
-    categories = schema_dropdowns().get("Kategorie") or []
+    categories = schema_dropdowns(db).get("Kategorie") or []
     query_params = []
     if filters["query"]:
         query_params.append(("q", filters["query"]))
@@ -170,7 +177,13 @@ def _page_context(
         "page": filters["page"],
         "hauptgruppen": haupt,
         "kategorien": categories,
-        "grid_config": build_grid_config(db, batch, page_rows),
+        "grid_config": build_grid_config(
+            db,
+            batch,
+            page_rows,
+            weclapp_ok=_weclapp_writes_ok(db, user["oid"]),
+            settings_path=SETTINGS_PATH,
+        ),
         "editable": batch.status == "draft",
         "counts": counts,
         **banner,
@@ -331,6 +344,35 @@ def batch_edits(
                 }
                 for item in results
             ]
+        }
+    )
+
+
+@router.post("/batches/{batch_id}/einheit-anlegen")
+def batch_create_unit(
+    batch_id: uuid.UUID,
+    payload: CreateUnitIn,
+    user: SessionUser = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> JSONResponse:
+    batch = db.get(ArticleBatch, batch_id)
+    if batch is None:
+        return JSONResponse({"error": "Stapel nicht gefunden"}, status_code=404)
+    try:
+        unit, results, created = create_unit_for_batch(
+            db, batch, name=payload.name, actor_oid=str(user["oid"])
+        )
+    except BatchEditError as exc:
+        body: dict[str, Any] = {"error": exc.message}
+        if exc.field:
+            body["field"] = exc.field
+        return JSONResponse(body, status_code=exc.status_code)
+    db.commit()
+    return JSONResponse(
+        {
+            "unit": {"id": unit.weclapp_id, "name": unit.name},
+            "created": created,
+            "rows": row_results_payload(results),
         }
     )
 

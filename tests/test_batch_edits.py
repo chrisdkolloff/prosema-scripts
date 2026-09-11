@@ -416,6 +416,15 @@ def test_batch_grid_page_uses_vendored_jspreadsheet(user_client, db_session):
     config = json.loads(match.group(1))
     assert config["parseFormulas"] is False
     assert config["freezeColumns"] == 2
+    assert config["createUnitUrl"] == f"/batches/{batch.id}/einheit-anlegen"
+    assert "weclappOk" in config
+    assert config["settingsPath"]
+    assert 'id="batch-unknown-unit-banner"' in html
+    assert 'id="batch-unknown-unit-list"' in html
+    js_grid = user_client.get("/static/batch_grid.js")
+    assert js_grid.status_code == 200
+    assert "window.confirm" not in js_grid.text
+    assert "batch-unknown-unit-banner" in js_grid.text
     by_name = {column["name"]: column for column in config["columns"]}
     assert "_zeile" not in by_name
     assert "Zeile" not in {column["title"] for column in config["columns"]}
@@ -428,6 +437,8 @@ def test_batch_grid_page_uses_vendored_jspreadsheet(user_client, db_session):
     assert number_col is not None and number_col["readOnly"] is True
     assert by_name["Einheit"]["type"] == "dropdown"
     assert "Stk." in by_name["Einheit"]["source"]
+    assert by_name["Einheit"].get("newOptions") is True
+    assert by_name["Einheit"].get("autocomplete") is True
     assert by_name["Hauptgruppe"]["type"] == "dropdown"
     js = user_client.get("/static/jspreadsheet.js")
     css = user_client.get("/static/jspreadsheet.css")

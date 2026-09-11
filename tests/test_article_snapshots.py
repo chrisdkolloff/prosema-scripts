@@ -744,6 +744,8 @@ def test_retention_keeps_snapshot_within_day_floor_outside_newest_20(db_session)
     """Keep a 10-day-old complete snapshot that sits outside the newest 20.
 
     (Prompt said 15-day-old; with RETENTION_KEEP_DAYS=14 that would be deleted.)
+    A 16-day-old peer in the same UTC month as a newer monthly keeper must go —
+    otherwise keep_monthly alone would retain it.
     """
     base = datetime.now(UTC).replace(hour=12, minute=0, second=0, microsecond=0)
     for index in range(20):
@@ -762,6 +764,12 @@ def test_retention_keeps_snapshot_within_day_floor_outside_newest_20(db_session)
         created_at=base - timedelta(days=16),
         number="outside-floor-16",
     )
+    # Newer peer in the same calendar month claims the monthly keep slot.
+    monthly_keeper = _add_complete_snapshot(
+        db_session,
+        created_at=base - timedelta(days=15),
+        number="monthly-keep-same-month",
+    )
     db_session.commit()
 
     from app.snapshots import apply_retention
@@ -771,6 +779,7 @@ def test_retention_keeps_snapshot_within_day_floor_outside_newest_20(db_session)
 
     assert within_floor.id not in deleted
     assert db_session.get(ArticleSnapshot, within_floor.id) is not None
+    assert monthly_keeper.id not in deleted
     assert outside_floor.id in deleted
     assert db_session.get(ArticleSnapshot, outside_floor.id) is None
 

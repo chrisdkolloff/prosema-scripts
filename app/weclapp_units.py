@@ -88,6 +88,23 @@ def resolve_upload_unit(
     return alias_unit_id(db, supplier_id=supplier_id, raw=text)
 
 
+def units_as_lookup_dicts(db: Session) -> list[dict[str, str]]:
+    """Catalogue rows as LookupTables unit dicts (id/name/description).
+
+    Empty when the mirror has not been indexed yet — callers keep schema JSON.
+    """
+    rows = list(db.scalars(select(WeclappUnit)).all())
+    return [
+        {
+            "id": u.weclapp_id,
+            "name": u.name or "",
+            "description": u.description or "",
+        }
+        for u in rows
+        if (u.weclapp_id or "").strip()
+    ]
+
+
 def units_for_dropdown(db: Session) -> list[dict[str, str]]:
     """All catalogue units, usage-desc so unused names fall to the bottom."""
     counts = dict(
