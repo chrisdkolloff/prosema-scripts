@@ -242,7 +242,7 @@ def test_upload_csv_comma_delimiter(db_session):
         select(ArticleBatchRow).where(ArticleBatchRow.batch_id == result.batch.id)
     ).all()
     assert len(rows) == 1
-    assert rows[0].raw_data["PROSEMA Kurztext"] == "Testartikel"
+    assert rows[0].raw_data["Prosema-Artikelname"] == "Testartikel"
 
 
 def test_upload_csv_semicolon_delimiter(db_session):

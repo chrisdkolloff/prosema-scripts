@@ -733,7 +733,7 @@ def test_gruppen_list_warns_when_weclapp_is_out_of_sync(admin_client, db_session
             "description": "030",
             "parentCategoryId": "p1",
         },
-        {"id": "p2", "name": "Hilfsartikel", "description": "990", "parentCategoryId": None},
+        {"id": "p2", "name": "Nur in weclapp", "description": "880", "parentCategoryId": None},
     ]
     with (
         patch("app.routes.gruppen.weclapp_category_writes_allowed", return_value=True),
@@ -744,7 +744,7 @@ def test_gruppen_list_warns_when_weclapp_is_out_of_sync(admin_client, db_session
     assert MSG_SYNC_BANNER in response.text
     assert "alert-warning" in response.text
     assert "Werkzeug alt" in response.text
-    assert "Hilfsartikel fehlt in den Tools" in response.text
+    assert "Hauptgruppe 880 Nur in weclapp fehlt in den Tools." in response.text
     assert "manuell aktualisiert" in response.text
 
 

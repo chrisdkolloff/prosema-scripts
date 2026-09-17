@@ -316,19 +316,42 @@ class RenumberKandidatenArgs(BaseModel):
 
 
 class RenumberVorschlagenArgs(BaseModel):
-    """Propose admin renumber for one article. No target number — allocator only."""
+    """Propose admin renumber. Single article or eligible mismatches in a group slice."""
 
     model_config = {"extra": "forbid"}
 
-    article_identifier: str
+    article_identifier: str | None = None
+    quellgruppe: str | None = None
+    zielgruppe: str | None = None
 
-    @field_validator("article_identifier")
+    @field_validator("quellgruppe", "zielgruppe")
     @classmethod
-    def require_identifier(cls, value: str) -> str:
+    def normalize_gruppe_pair(cls, value: str | None) -> str | None:
+        from app.group_assign import parse_ziel_gruppe
+
+        if value is None:
+            return None
         cleaned = str(value).strip()
         if not cleaned:
-            raise ValueError("Artikelnummer oder weclapp-ID darf nicht leer sein.")
-        return cleaned
+            return None
+        haupt, unter = parse_ziel_gruppe(cleaned)
+        return f"{haupt}.{unter}"
+
+    @model_validator(mode="after")
+    def validate_target(self) -> RenumberVorschlagenArgs:
+        ident = (self.article_identifier or "").strip()
+        has_slice = bool(self.quellgruppe or self.zielgruppe)
+        if ident and has_slice:
+            raise ValueError(
+                "article_identifier darf nicht zusammen mit quellgruppe/zielgruppe gesetzt werden."
+            )
+        if not ident and not has_slice:
+            raise ValueError(
+                "article_identifier oder mindestens quellgruppe/zielgruppe ist erforderlich."
+            )
+        if ident:
+            object.__setattr__(self, "article_identifier", ident)
+        return self
 
 
 class GruppenZuordnenArgs(BaseModel):

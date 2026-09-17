@@ -220,9 +220,11 @@ RENUMBER_KANDIDATEN_SPEC = _ToolSpec(
 RENUMBER_VORSCHLAGEN_SPEC = _ToolSpec(
     "renumber_vorschlagen",
     (
-        "Propose admin renumber for one article (ArticleRenumberSpec). Does not "
-        "preview, enqueue, or write. Takes article_identifier only — never a target "
-        "number. Refuses when eligibility fails or the user is not admin."
+        "Propose admin renumber (ArticleRenumberSpec). Does not preview, enqueue, "
+        "or write. Either article_identifier for one article, or quellgruppe and/or "
+        "zielgruppe (MMM.SSS) to include all currently eligible mismatches in that "
+        "slice. Never a target number. Refuses when nothing is eligible or the user "
+        "is not admin."
     ),
     RenumberVorschlagenArgs,
     renumber_vorschlagen,

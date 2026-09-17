@@ -155,10 +155,17 @@ def _minimal_row(haupt, unter) -> dict[str, str]:
 
 def test_seeded_v1_active_and_partial_unique(db_session):
     active = get_active_template(db_session)
-    assert active.version == 1
     assert active.is_active is True
-    assert active.created_by_name == "System"
-    assert len(active.columns) == len(FIELDS)
+    seeded_v1 = db_session.scalars(
+        select(ArticleTemplate).where(ArticleTemplate.version == 1)
+    ).one()
+    assert seeded_v1.created_by_name == "System"
+    assert len(seeded_v1.columns) == len(FIELDS)
+    actives = list(
+        db_session.scalars(select(ArticleTemplate).where(ArticleTemplate.is_active.is_(True)))
+    )
+    assert len(actives) == 1
+    assert actives[0].id == active.id
 
     with pytest.raises(IntegrityError), db_session.begin_nested():
         db_session.execute(
@@ -179,13 +186,14 @@ def test_seeded_v1_active_and_partial_unique(db_session):
 
     still = get_active_template(db_session)
     assert still.is_active is True
-    assert still.version == 1
+    assert still.id == active.id
 
 
 # --- 2–5 template replace ---------------------------------------------------
 
 
 def test_unknown_header_rejected(db_session):
+    before = get_active_template(db_session).version
     headers = _full_headers() + ["Erfundene Spalte"]
     data = _xlsx_from_headers(headers)
     with pytest.raises(Exception, match="Unbekannte Spalten"):
@@ -196,7 +204,7 @@ def test_unknown_header_rejected(db_session):
             data=data,
             note="Versuch",
         )
-    assert get_active_template(db_session).version == 1
+    assert get_active_template(db_session).version == before
 
 
 def test_hyphenated_prosema_headers_are_catalogue_fields():
@@ -289,6 +297,16 @@ def test_first_post_never_activates_only_bestaetigt(db_session):
     headers = [f.label for f in FIELDS if f.label != drop]
     data = _xlsx_from_headers(headers)
     before = get_active_template(db_session).version
+    audits_before = len(
+        list(
+            db_session.scalars(
+                select(AuditLog).where(
+                    AuditLog.entity_type == "article_template",
+                    AuditLog.action == "activated",
+                )
+            )
+        )
+    )
 
     pending = prepare_template_replacement(
         db_session,
@@ -326,10 +344,11 @@ def test_first_post_never_activates_only_bestaetigt(db_session):
             )
         )
     )
-    assert len(audits) == 1
-    assert audits[0].detail["from_version"] == before
-    assert audits[0].detail["to_version"] == activated.version
-    assert drop in audits[0].detail["removed"]
+    assert len(audits) == audits_before + 1
+    audit = next(a for a in audits if a.detail.get("to_version") == activated.version)
+    assert audit.detail["from_version"] == before
+    assert audit.detail["to_version"] == activated.version
+    assert drop in audit.detail["removed"]
 
 
 # --- 6–8 / 12 batch pinning -------------------------------------------------

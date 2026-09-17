@@ -82,3 +82,17 @@
   notes: >
     Control: unscoped all_mismatches; total_count should reflect full catalogue
     mismatch set (order ~90+ on current prod), not the 020.120 slice.
+
+- id: scoped-020120-040050-propose
+  frage: >
+    Erstelle einen Vorschlag zur Umnummerierung für alle Artikel, deren Nummer
+    mit 020.120 beginnt und die zur weclapp-Kategorie 040.050 gehören — damit
+    die Artikelnummer zur Kategorie passt.
+  expect:
+    outcome: answered
+    tool: renumber_vorschlagen
+    quellgruppe: "020.120"
+    zielgruppe: "040.050"
+  notes: >
+    Must call renumber_vorschlagen with quellgruppe/zielgruppe in the same turn;
+    must not ask «Soll ich …?» — preview button is the confirmation path.

@@ -1,7 +1,18 @@
 # PROSEMA release history — edit this file to bump the version and document changes.
 # The top-level `version` is shown in the site header; `[[releases]]` entries appear on /changelog.
 
-version = "1.3.8"
+version = "1.3.9"
+
+[[releases]]
+version = "1.3.9"
+date = "2026-09-17"
+summary = "Update tests for article registration and templates to reflect changes in header names and assertions. Modify test cases to ensure accurate validation of article template attributes and active states, enhancing clarity and reliability in test outcomes. (+2 more)"
+changes = [
+  "Update pull-prod-db.sh to add --skip-firewall option, enhancing flexibility in database pull operations. Modify usage instructions and ensure firewall updates are conditional based on the new flag. Improve compatibility with older PostgreSQL versions by removing unnecessary commands from the dump process.",
+  "Enhance renumbering functionality by allowing `renumber_vorschlagen` to accept both `article_identifier` for single articles and `quellgruppe`/`zielgruppe` for scoped batch proposals. Update related schemas and prompts to reflect these changes, ensuring proper handling of eligibility checks and user notifications. Modify tests to validate new behavior and improve clarity in user interactions during renumbering requests.",
+  "Update tests for article registration and templates to reflect changes in header names and assertions. Modify test cases to ensure accurate validation of article template attributes and active states, enhancing clarity and reliability in test outcomes.",
+]
+
 
 [[releases]]
 version = "1.3.8"

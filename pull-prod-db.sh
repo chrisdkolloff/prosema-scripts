@@ -10,8 +10,10 @@
 #   ./pull-prod-db.sh              # interactive confirm
 #   ./pull-prod-db.sh --yes        # skip confirmation
 #   ./pull-prod-db.sh --dry-run    # show URLs and exit
+#   ./pull-prod-db.sh --skip-firewall
 #
-# Requires: pg_dump, psql (PostgreSQL client tools)
+# Requires: pg_dump, psql (PostgreSQL client tools; pg_dump must be >= prod major).
+# Updates Azure Postgres firewall (./scripts/allow_my_ip.sh) before connecting.
 
 set -euo pipefail
 
@@ -21,14 +23,16 @@ cd "${ROOT}"
 ENV_FILE="${ENV_FILE:-${ROOT}/.env}"
 CONFIRM=yes
 DRY_RUN=false
+SKIP_FIREWALL=false
 
 usage() {
   cat <<'EOF'
-Usage: ./pull-prod-db.sh [--yes] [--dry-run]
+Usage: ./pull-prod-db.sh [--yes] [--dry-run] [--skip-firewall]
 
-  --yes       Skip the confirmation prompt (still runs safety checks).
-  --dry-run   Print source/target and exit without copying.
-  -h, --help  Show this help.
+  --yes             Skip the confirmation prompt (still runs safety checks).
+  --dry-run         Print source/target and exit without copying.
+  --skip-firewall   Do not update the Azure Postgres firewall rule.
+  -h, --help        Show this help.
 
 Environment (from .env unless overridden):
   PRODUCTION_DATABASE_URL   Source (production Postgres). Required.
@@ -41,6 +45,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --yes) CONFIRM=no ;;
     --dry-run) DRY_RUN=true ;;
+    --skip-firewall) SKIP_FIREWALL=true ;;
     -h|--help)
       usage
       exit 0
@@ -98,6 +103,10 @@ looks_production() {
   [[ "$url" == *azure* || "$url" == *tools.prosema* || "$url" == *prod* ]]
 }
 
+# shellcheck source=scripts/pg_client_tools.sh
+source "${ROOT}/scripts/pg_client_tools.sh"
+ensure_pg_client_on_path
+
 need_cmd pg_dump
 need_cmd psql
 
@@ -153,6 +162,13 @@ if [[ "$DRY_RUN" == true ]]; then
   exit 0
 fi
 
+if [[ "$SKIP_FIREWALL" != true && "${SKIP_FIREWALL_ALLOW:-}" != "1" ]]; then
+  echo "Allowing this machine's public IP on Azure Postgres firewall…"
+  "${ROOT}/scripts/allow_my_ip.sh"
+fi
+
+require_pg_dump_new_enough_for_server "$PROD_URL"
+
 if [[ "$CONFIRM" == yes ]]; then
   cat <<'EOF'
 
@@ -169,8 +185,12 @@ fi
 
 echo "Dumping production and restoring into local database…"
 # pg_dump from PG17+ emits SET transaction_timeout; older local servers reject it.
+# PG18 dumps may include \\restrict / \\unrestrict (ignored by older psql).
 pg_dump "$PROD_URL" --no-owner --no-acl --clean --if-exists \
-  | sed -E '/^SET transaction_timeout /d' \
+  | sed -E \
+    -e '/^SET transaction_timeout /d' \
+    -e '/^\\restrict /d' \
+    -e '/^\\unrestrict /d' \
   | psql "$LOCAL_URL" -v ON_ERROR_STOP=1 -q
 
 echo "Done. Local database now matches production."

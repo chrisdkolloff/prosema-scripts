@@ -812,16 +812,6 @@ def renumber_vorschlagen(session: Session, args: Any) -> ToolResult:
     if snapshot is None:
         return _empty_result(hinweis="Kein abgeschlossener Artikel-Snapshot vorhanden.")
 
-    row = _snapshot_row_for_identifier(session, snapshot, args.article_identifier)
-    if row is None or not row.weclapp_id or not row.article_number:
-        return ToolResult(
-            rows=[],
-            total_count=0,
-            datenstand=snapshot.created_at,
-            datenstand_hinweis_de=_datenstand_hinweis(snapshot),
-            hinweis_de=f"Artikel «{args.article_identifier}» ist nicht im Snapshot.",
-        )
-
     try:
         client = _weclapp_client_for_assistant(session)
     except ValueError as exc:
@@ -831,6 +821,73 @@ def renumber_vorschlagen(session: Session, args: Any) -> ToolResult:
             datenstand=snapshot.created_at,
             datenstand_hinweis_de=_datenstand_hinweis(snapshot),
             hinweis_de=str(exc),
+        )
+
+    if args.quellgruppe or args.zielgruppe:
+        from app.article_renumber import list_mismatch_candidates
+
+        try:
+            mismatches = list_mismatch_candidates(
+                session,
+                client,
+                snapshot=snapshot,
+                quellgruppe=args.quellgruppe,
+                zielgruppe=args.zielgruppe,
+            )
+        except Exception as exc:
+            return ToolResult(
+                rows=[],
+                total_count=0,
+                datenstand=snapshot.created_at,
+                datenstand_hinweis_de=_datenstand_hinweis(snapshot),
+                hinweis_de=str(exc) or "Abfrage fehlgeschlagen.",
+            )
+        eligible = [item for item in mismatches if item["eligibility"].ok]
+        total_mismatch = len(mismatches)
+        if not eligible:
+            return ToolResult(
+                rows=[],
+                total_count=total_mismatch,
+                datenstand=snapshot.created_at,
+                datenstand_hinweis_de=_datenstand_hinweis(snapshot),
+                hinweis_de=(
+                    f"Kein Vorschlag möglich: {total_mismatch} Artikel mit Mismatch "
+                    f"in diesem Bereich, 0 derzeit umnummerierbar."
+                ),
+            )
+        numbers = sorted(item["article_number"] for item in eligible)
+        spec = ArticleRenumberSpec(
+            scope=TransformScope(article_numbers=numbers),
+        )
+        ss_count = sum(
+            1 for item in eligible if item["eligibility"].supply_source_warning
+        )
+        hinweis = (
+            f"Vorschlag für {len(numbers)} Artikel (Nummern leitet der Allocator ab). "
+            "Du kannst die Vorschau öffnen."
+        )
+        if ss_count:
+            hinweis += (
+                f" Achtung: {ss_count} Artikel mit aktiver Bezugsquelle — "
+                "in der Vorschau ist eine Admin-Bestätigung nötig."
+            )
+        return ToolResult(
+            rows=[{"spec": spec.model_dump(mode="json"), "eligible_count": len(numbers)}],
+            total_count=len(numbers),
+            datenstand=snapshot.created_at,
+            datenstand_hinweis_de=_datenstand_hinweis(snapshot),
+            hinweis_de=hinweis,
+        )
+
+    ident = args.article_identifier or ""
+    row = _snapshot_row_for_identifier(session, snapshot, ident)
+    if row is None or not row.weclapp_id or not row.article_number:
+        return ToolResult(
+            rows=[],
+            total_count=0,
+            datenstand=snapshot.created_at,
+            datenstand_hinweis_de=_datenstand_hinweis(snapshot),
+            hinweis_de=f"Artikel «{ident}» ist nicht im Snapshot.",
         )
 
     candidate = ScopeCandidate(
