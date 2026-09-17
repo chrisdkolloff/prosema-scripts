@@ -23,7 +23,7 @@ DOCUMENT_ITEM_ENTITIES = (
     "quotationItem",
 )
 
-REASON_SUPPLY_SOURCE = "ineligible_supply_source"
+REASON_SUPPLY_SOURCE = "warning_supply_source"
 REASON_STOCK = "ineligible_stock"
 REASON_MOVEMENT = "ineligible_movement"
 REASON_DOCUMENT = "ineligible_document"
@@ -32,7 +32,7 @@ REASON_NO_CHANGE = "ineligible_no_change"
 REASON_ALIAS = "ineligible_alias_row"
 
 REASON_LABELS_DE: dict[str, str] = {
-    REASON_SUPPLY_SOURCE: "Bezugsquelle vorhanden",
+    REASON_SUPPLY_SOURCE: "Bezugsquelle vorhanden (Warnung)",
     REASON_STOCK: "Lagerbestand vorhanden",
     REASON_MOVEMENT: "Lagerbewegung vorhanden",
     REASON_DOCUMENT: "In Belegpositionen referenziert",
@@ -43,16 +43,27 @@ REASON_LABELS_DE: dict[str, str] = {
 
 
 @dataclass(frozen=True)
+class SupplySourceWarningLine:
+    supplier_name: str
+    supplier_number: str
+    supplier_article_number: str
+
+
+@dataclass(frozen=True)
 class EligibilityResult:
     ok: bool
     reason_code: str | None
     checks: dict[str, bool]
+    supply_source_warning: tuple[SupplySourceWarningLine, ...] = ()
 
     @staticmethod
-    def from_checks(checks: dict[str, bool]) -> EligibilityResult:
+    def from_checks(
+        checks: dict[str, bool],
+        *,
+        supply_source_warning: tuple[SupplySourceWarningLine, ...] = (),
+    ) -> EligibilityResult:
         order = (
             ("no_mismatch", REASON_NO_CHANGE),
-            ("no_supply_source", REASON_SUPPLY_SOURCE),
             ("no_alias_row", REASON_ALIAS),
             ("no_stock", REASON_STOCK),
             ("no_movement", REASON_MOVEMENT),
@@ -61,8 +72,18 @@ class EligibilityResult:
         )
         for key, code in order:
             if not checks.get(key, False):
-                return EligibilityResult(ok=False, reason_code=code, checks=checks)
-        return EligibilityResult(ok=True, reason_code=None, checks=checks)
+                return EligibilityResult(
+                    ok=False,
+                    reason_code=code,
+                    checks=checks,
+                    supply_source_warning=supply_source_warning,
+                )
+        return EligibilityResult(
+            ok=True,
+            reason_code=None,
+            checks=checks,
+            supply_source_warning=supply_source_warning,
+        )
 
 
 @dataclass
@@ -200,6 +221,100 @@ def registry_blocks_destination(
     return False
 
 
+def has_manual_alias(
+    *,
+    weclapp_id: str,
+    article_number: str,
+    ctx: RenumberPrefetch,
+) -> bool:
+    return (
+        weclapp_id in ctx.manual_alias_weclapp_ids
+        or article_number in ctx.manual_alias_article_numbers
+    )
+
+
+def has_live_supply_source_alias(
+    *,
+    weclapp_id: str,
+    article_number: str,
+    ctx: RenumberPrefetch,
+) -> bool:
+    return (
+        weclapp_id in ctx.live_supply_source_alias_weclapp_ids
+        or article_number in ctx.live_supply_source_alias_article_numbers
+    )
+
+
+def collect_supply_source_warning_lines(
+    db: Session,
+    *,
+    weclapp_id: str,
+    article_number: str,
+    article: dict[str, Any],
+    ctx: RenumberPrefetch,
+) -> tuple[SupplySourceWarningLine, ...]:
+    """Supplier + SAN lines for preview warning (live SS and/or supply_source aliases)."""
+    from app.models import Supplier, SupplierArticleAlias, WeclappSupplySource
+
+    if not live_has_supply_source(article) and not has_live_supply_source_alias(
+        weclapp_id=weclapp_id,
+        article_number=article_number,
+        ctx=ctx,
+    ):
+        return ()
+
+    seen: set[tuple[str, str]] = set()
+    lines: list[SupplySourceWarningLine] = []
+
+    def add_line(name: str, number: str, san: str) -> None:
+        key = (number.strip(), san.strip())
+        if not san.strip() or key in seen:
+            return
+        seen.add(key)
+        lines.append(
+            SupplySourceWarningLine(
+                supplier_name=(name or number).strip(),
+                supplier_number=number.strip(),
+                supplier_article_number=san.strip(),
+            )
+        )
+
+    ss_ids: list[str] = []
+    for item in article.get("supplySources") or []:
+        if isinstance(item, dict):
+            sid = str(item.get("articleSupplySourceId") or "").strip()
+            if sid:
+                ss_ids.append(sid)
+    primary = str(article.get("primarySupplySourceId") or "").strip()
+    if primary:
+        ss_ids.append(primary)
+    for ss_id in dict.fromkeys(ss_ids):
+        ss = db.get(WeclappSupplySource, ss_id)
+        if ss is None:
+            continue
+        supplier = db.scalars(
+            select(Supplier).where(Supplier.weclapp_party_id == ss.supplier_party_id)
+        ).first()
+        name = supplier.name if supplier is not None else ss.supplier_number
+        add_line(name, ss.supplier_number, ss.supplier_article_number)
+
+    for alias in db.scalars(
+        select(SupplierArticleAlias).where(
+            SupplierArticleAlias.source == "supply_source",
+            SupplierArticleAlias.weclapp_article_id == weclapp_id,
+            SupplierArticleAlias.article_number == article_number,
+        )
+    ):
+        supplier = db.get(Supplier, alias.supplier_id)
+        if supplier is None:
+            continue
+        add_line(supplier.name, supplier.supplier_number, alias.supplier_article_number)
+
+    if not lines and live_has_supply_source(article):
+        add_line("—", "—", "—")
+    return tuple(lines)
+
+
 def live_has_supply_source(article: dict[str, Any]) -> bool:
     sources = article.get("supplySources")
     if isinstance(sources, list) and len(sources) > 0:
@@ -213,6 +328,7 @@ def evaluate_eligibility(
     article: dict[str, Any],
     weclapp_id: str,
     ctx: RenumberPrefetch,
+    db: Session | None = None,
 ) -> EligibilityResult:
     number = str(article.get("articleNumber") or "").strip()
     number_pair = parse_group_codes(number)
@@ -226,22 +342,27 @@ def evaluate_eligibility(
         category_pair is not None
         and not registry_blocks_destination(ctx, category_pair)
     )
-    has_alias = (
-        weclapp_id in ctx.manual_alias_weclapp_ids
-        or number in ctx.manual_alias_article_numbers
-        or weclapp_id in ctx.live_supply_source_alias_weclapp_ids
-        or number in ctx.live_supply_source_alias_article_numbers
+    has_manual = has_manual_alias(
+        weclapp_id=weclapp_id, article_number=number, ctx=ctx
     )
     checks = {
         "no_mismatch": mismatch,
-        "no_supply_source": not live_has_supply_source(article),
-        "no_alias_row": not has_alias,
+        "no_alias_row": not has_manual,
         "no_stock": weclapp_id not in ctx.stock_article_ids,
         "no_movement": weclapp_id not in ctx.movement_article_ids,
         "no_document": weclapp_id not in ctx.document_article_ids,
         "registry_ok": registry_ok,
     }
-    return EligibilityResult.from_checks(checks)
+    warning_lines: tuple[SupplySourceWarningLine, ...] = ()
+    if db is not None:
+        warning_lines = collect_supply_source_warning_lines(
+            db,
+            weclapp_id=weclapp_id,
+            article_number=number,
+            article=article,
+            ctx=ctx,
+        )
+    return EligibilityResult.from_checks(checks, supply_source_warning=warning_lines)
 
 
 def destination_pair_for_article(

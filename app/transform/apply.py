@@ -41,6 +41,7 @@ def approve_chunk(
     chunk_index: int,
     approver_oid: str,
     selected_row_ids: list[uuid.UUID] | None = None,
+    supply_source_warning_acknowledged: bool = False,
 ) -> TransformChunk:
     """Record that a person approved one slice of CHANGED rows.
 
@@ -109,7 +110,10 @@ def approve_chunk(
     from app.article_renumber import freeze_renumber_rows, is_article_renumber_spec
 
     if is_article_renumber_spec(run.spec):
-        freeze_renumber_rows(chosen)
+        freeze_renumber_rows(
+            chosen,
+            supply_source_warning_acknowledged=supply_source_warning_acknowledged,
+        )
     chunk = TransformChunk(
         run_id=run.id,
         chunk_index=chunk_index,
@@ -267,6 +271,14 @@ def apply_chunk(
                     ),
                     destination_pair=destination,
                     shopify_sku_match=bool(payload.get("shopify_sku_match")),
+                    supply_source_warning_ack=(
+                        {
+                            "confirmed": True,
+                            "lines": payload.get("supply_source_warning_lines") or [],
+                        }
+                        if payload.get("supply_source_warning_acknowledged")
+                        else None
+                    ),
                     prefetch_ctx=renumber_ctx,
                     snapshot_id=run.snapshot_id,
                     transform_run_id=run_id,

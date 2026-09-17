@@ -621,7 +621,6 @@ def gruppen_zuordnen(session: Session, args: Any) -> ToolResult:
 
 RENUMBER_CHECK_KEYS = (
     "no_mismatch",
-    "no_supply_source",
     "no_alias_row",
     "no_stock",
     "no_movement",
@@ -637,6 +636,9 @@ def _renumber_row_payload(item: dict[str, Any]) -> dict[str, Any]:
     checks = dict(eligibility.checks)
     failed = [key for key in RENUMBER_CHECK_KEYS if not checks.get(key, False)]
     reason_code = eligibility.reason_code
+    from app.article_renumber import supply_source_warning_to_dict
+
+    ss_lines = supply_source_warning_to_dict(eligibility.supply_source_warning)
     return {
         "weclapp_id": item["weclapp_id"],
         "article_number": item["article_number"],
@@ -647,6 +649,8 @@ def _renumber_row_payload(item: dict[str, Any]) -> dict[str, Any]:
         "failed_checks": failed,
         "reason_code": reason_code,
         "reason_de": REASON_LABELS_DE.get(reason_code or "", reason_code or ""),
+        "supply_source_warning": bool(ss_lines),
+        "supply_source_warning_lines": ss_lines,
     }
 
 
@@ -868,6 +872,7 @@ def renumber_vorschlagen(session: Session, args: Any) -> ToolResult:
         article=article,
         weclapp_id=candidate.weclapp_id,
         ctx=ctx,
+        db=session,
     )
     destination = destination_pair_for_article(article, ctx)
     payload = _renumber_row_payload(
@@ -889,12 +894,10 @@ def renumber_vorschlagen(session: Session, args: Any) -> ToolResult:
             REASON_NO_CHANGE,
             REASON_REGISTRY,
             REASON_STOCK,
-            REASON_SUPPLY_SOURCE,
         )
 
         check_to_reason = {
             "no_mismatch": REASON_NO_CHANGE,
-            "no_supply_source": REASON_SUPPLY_SOURCE,
             "no_alias_row": REASON_ALIAS,
             "no_stock": REASON_STOCK,
             "no_movement": REASON_MOVEMENT,
@@ -918,13 +921,25 @@ def renumber_vorschlagen(session: Session, args: Any) -> ToolResult:
     spec = ArticleRenumberSpec(
         scope=TransformScope(article_numbers=[number]),
     )
+    hinweis = (
+        "Vorschlag für Artikelnummer neu vergeben (Nummer leitet der Allocator ab). "
+        "Du kannst die Vorschau öffnen."
+    )
+    if payload.get("supply_source_warning"):
+        lines = payload.get("supply_source_warning_lines") or []
+        parts = [
+            f"{row.get('supplier_name') or '—'} / {row.get('supplier_article_number') or '—'}"
+            for row in lines[:3]
+        ]
+        detail = "; ".join(parts) if parts else "Bezugsquelle aktiv"
+        hinweis += (
+            f" Achtung: aktive Bezugsquelle ({detail}) — in der Vorschau "
+            "ist eine Admin-Bestätigung nötig."
+        )
     return ToolResult(
         rows=[{"spec": spec.model_dump(mode="json"), "eligibility": payload}],
         total_count=1,
         datenstand=snapshot.created_at,
         datenstand_hinweis_de=_datenstand_hinweis(snapshot),
-        hinweis_de=(
-            "Vorschlag für Artikelnummer neu vergeben (Nummer leitet der Allocator ab). "
-            "Du kannst die Vorschau öffnen."
-        ),
+        hinweis_de=hinweis,
     )

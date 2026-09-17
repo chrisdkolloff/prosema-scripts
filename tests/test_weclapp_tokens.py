@@ -8,6 +8,7 @@ from unittest.mock import patch
 import pytest
 from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
@@ -306,7 +307,16 @@ def test_landing_lists_every_tool(user_client):
     )
 
 
+def _terminalize_active_jobs(db_session: Session) -> None:
+    for existing in db_session.scalars(
+        select(Job).where(Job.status.in_(("queued", "running")))
+    ):
+        existing.status = "succeeded"
+    db_session.flush()
+
+
 def test_active_jobs_banner_names_triggering_user(user_client, db_session):
+    _terminalize_active_jobs(db_session)
     job = Job(
         id=uuid.uuid4(),
         job_type="noop",
@@ -324,6 +334,7 @@ def test_active_jobs_banner_names_triggering_user(user_client, db_session):
 
 
 def test_active_jobs_banner_snapshot_is_in_bearbeitung(user_client, db_session):
+    _terminalize_active_jobs(db_session)
     job = Job(
         id=uuid.uuid4(),
         job_type="weclapp_article_snapshot",

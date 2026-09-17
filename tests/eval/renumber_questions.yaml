@@ -24,21 +24,21 @@
     tool: renumber_kandidaten
     scope: single
     article_identifier: "020.060.0010"
-    reason_contains: Bezugsquelle
   notes: >
-    Live mismatch with supply source. Tool should name UI label
-    «Bezugsquelle vorhanden» or equivalent reason_de.
+    Supply source alone is a warning, not a hard block — answer must cite any
+    remaining hard check (stock, movement, document, registry, manual alias).
 
-- id: refuse-live-supply-source
+- id: propose-with-live-supply-source
   frage: >
     Bitte nummeriere den Artikel 020.060.0010 neu, damit die Nummer zur
     Kategorie passt.
   expect:
-    outcome: refused
+    outcome: answered
     tool: renumber_vorschlagen
-    reason_contains: Bezugsquelle
+    answer_contains: Bezugsquelle
   notes: >
-    Must not return article_renumber spec; refusal cites supply source.
+    Should return article_renumber spec when only supply source would have
+    blocked before; hinweis_de mentions Bezugsquellen-Warnung / Bestätigung.
 
 - id: refuse-target-number
   frage: >
@@ -64,10 +64,11 @@
     total_count: 20
     answer_contains: "20"
     answer_excludes: "1 derzeit umnummerierbar"
-    reason_contains: Bezugsquelle
   notes: >
     Must pass quellgruppe/zielgruppe — not unscoped all_mismatches (99 / cap 50).
-    Mismatch count 20 in prod ground truth; all ineligible_supply_source today.
+    Mismatch count 20 in prod ground truth; most were supply-source-only blocks
+    before — expect many umnummerierbar with Bezugsquellen-Warnung, or name other
+    hard blocks if present.
     Must not answer with the global eligible-only figure (1).
 
 - id: global-mismatch-control

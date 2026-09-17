@@ -36,8 +36,17 @@ MSG_SHOPIFY_WARNING = (
     "bisherigen Artikelnummer. PROSEMA ändert die SKU nicht — bitte manuell "
     "in Shopify nachziehen."
 )
+MSG_SUPPLY_SOURCE_WARNING = (
+    "Achtung: {count} Artikel haben eine aktive Bezugsquelle (Lieferant/SAN: "
+    "{examples}). Die Umnummerierung ist in weclapp möglich; PROSEMA aktualisiert "
+    "die lokalen Bezugsquellen-Spiegel — bitte bestätigen, bevor Sie freigeben."
+)
 MSG_ACK_REQUIRED = (
     "Bitte die Shopify-Warnung bestätigen, bevor die Umnummerierung freigegeben wird."
+)
+MSG_SUPPLY_SOURCE_ACK_REQUIRED = (
+    "Bitte die Bezugsquellen-Warnung bestätigen, bevor die Umnummerierung "
+    "freigegeben wird."
 )
 MSG_ADMIN_ONLY = "Nur Administratoren dürfen Artikel umnummerieren."
 
@@ -66,11 +75,46 @@ def is_article_renumber_spec(raw: Any) -> bool:
     return isinstance(raw, dict) and raw.get("kind") == KIND
 
 
+def _supply_warning_examples(
+    lines: list[tuple[str, str, str]],
+    *,
+    limit: int = 3,
+) -> str:
+    parts: list[str] = []
+    for name, _number, san in lines[:limit]:
+        label = f"{name} / {san}" if name and name != "—" else san
+        parts.append(label)
+    extra = len(lines) - limit
+    if extra > 0:
+        parts.append(f"… +{extra} weitere")
+    return "; ".join(parts) if parts else "—"
+
+
+def supply_source_warning_to_dict(
+    lines: tuple[Any, ...],
+) -> list[dict[str, str]]:
+    out: list[dict[str, str]] = []
+    for line in lines:
+        if hasattr(line, "supplier_name"):
+            out.append(
+                {
+                    "supplier_name": line.supplier_name,
+                    "supplier_number": line.supplier_number,
+                    "supplier_article_number": line.supplier_article_number,
+                }
+            )
+        elif isinstance(line, dict):
+            out.append(dict(line))
+    return out
+
+
 def format_article_renumber_summary_de(
     *,
     eligible: int,
     rejected: int,
     shopify_warnings: int,
+    supply_source_warnings: int = 0,
+    supply_source_examples: list[tuple[str, str, str]] | None = None,
 ) -> str:
     lines = [
         "Artikelnummer neu vergeben (weclapp-Nummer an die Kategorie anpassen).",
@@ -78,6 +122,14 @@ def format_article_renumber_summary_de(
     ]
     if shopify_warnings:
         lines.append(MSG_SHOPIFY_WARNING.format(count=shopify_warnings))
+    if supply_source_warnings:
+        examples = _supply_warning_examples(supply_source_examples or [])
+        lines.append(
+            MSG_SUPPLY_SOURCE_WARNING.format(
+                count=supply_source_warnings,
+                examples=examples,
+            )
+        )
     return "\n".join(lines)
 
 
@@ -98,7 +150,11 @@ def approved_number_from_row(row: TransformRow) -> str:
     return frozen
 
 
-def freeze_renumber_rows(rows: list[TransformRow]) -> None:
+def freeze_renumber_rows(
+    rows: list[TransformRow],
+    *,
+    supply_source_warning_acknowledged: bool = False,
+) -> None:
     """Freeze proposed numbers into the approval artefact at approve time."""
     for row in rows:
         payload = _payload_from_row(row)
@@ -108,6 +164,8 @@ def freeze_renumber_rows(rows: list[TransformRow]) -> None:
         if not proposed:
             continue
         payload = {**payload, "approved_number": proposed}
+        if payload.get("supply_source_warning") and supply_source_warning_acknowledged:
+            payload["supply_source_warning_acknowledged"] = True
         row.operations_fired = [payload]
 
 
@@ -216,6 +274,8 @@ def run_article_renumber_preview(
     eligible_count = 0
     rejected_count = 0
     shopify_warning_count = 0
+    supply_source_warning_count = 0
+    supply_example_lines: list[tuple[str, str, str]] = []
     changed = 0
 
     for candidate in live_candidates:
@@ -242,11 +302,25 @@ def run_article_renumber_preview(
 
         number = str(article.get("articleNumber") or candidate.article_number)
         version = str(article.get("version") or "")
-        eligibility = evaluate_eligibility(article=article, weclapp_id=weclapp_id, ctx=ctx)
+        eligibility = evaluate_eligibility(
+            article=article, weclapp_id=weclapp_id, ctx=ctx, db=db
+        )
         destination = destination_pair_for_article(article, ctx)
         shopify_match = bool(shopify_skus is not None and number in shopify_skus)
         if shopify_match:
             shopify_warning_count += 1
+        ss_warning = eligibility.supply_source_warning
+        ss_warning_dicts = supply_source_warning_to_dict(ss_warning)
+        if ss_warning_dicts:
+            supply_source_warning_count += 1
+            for item in ss_warning_dicts:
+                supply_example_lines.append(
+                    (
+                        item.get("supplier_name") or "",
+                        item.get("supplier_number") or "",
+                        item.get("supplier_article_number") or "",
+                    )
+                )
 
         proposed = ""
         row_status = "REFUSED"
@@ -273,6 +347,8 @@ def run_article_renumber_preview(
             "reason_code": reason_code,
             "reason_de": REASON_LABELS_DE.get(reason_code or "", reason_code or ""),
             "shopify_sku_match": shopify_match,
+            "supply_source_warning": bool(ss_warning_dicts),
+            "supply_source_warning_lines": ss_warning_dicts,
         }
         db.add(
             TransformRow(
@@ -297,10 +373,13 @@ def run_article_renumber_preview(
             "eligible": eligible_count,
             "rejected": rejected_count,
             "shopify_sku_warnings": shopify_warning_count,
+            "supply_source_warnings": supply_source_warning_count,
             "summary_de": format_article_renumber_summary_de(
                 eligible=eligible_count,
                 rejected=rejected_count,
                 shopify_warnings=shopify_warning_count,
+                supply_source_warnings=supply_source_warning_count,
+                supply_source_examples=supply_example_lines,
             ),
         }
     }
@@ -366,7 +445,7 @@ def list_mismatch_candidates(
         if zielgruppe and category_label != zielgruppe:
             continue
         eligibility = evaluate_eligibility(
-            article=article, weclapp_id=candidate.weclapp_id, ctx=ctx
+            article=article, weclapp_id=candidate.weclapp_id, ctx=ctx, db=db
         )
         mismatches.append(
             {
@@ -390,7 +469,6 @@ def summarize_mismatch_eligibility(
     mismatches = list_mismatch_candidates(db, client, snapshot=snapshot)
     check_keys = (
         "no_mismatch",
-        "no_supply_source",
         "no_alias_row",
         "no_stock",
         "no_movement",
@@ -398,16 +476,21 @@ def summarize_mismatch_eligibility(
         "registry_ok",
     )
     per_check_failures = {key: 0 for key in check_keys}
+    supply_source_warning_count = 0
     eligible = 0
     for item in mismatches:
         eligibility: EligibilityResult = item["eligibility"]
         if eligibility.ok:
             eligible += 1
+        if eligibility.supply_source_warning:
+            supply_source_warning_count += 1
         for key in check_keys:
             if not eligibility.checks.get(key, False):
                 per_check_failures[key] += 1
     return {
         "mismatch_total": len(mismatches),
+        "eligible_hard_checks": eligible,
         "eligible_all_five": eligible,
+        "supply_source_warnings": supply_source_warning_count,
         "per_check_failures": per_check_failures,
     }

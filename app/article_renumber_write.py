@@ -7,17 +7,15 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.article_renumber_eligibility import (
-    EligibilityResult,
-    evaluate_eligibility,
-    live_has_supply_source,
-)
+from app.article_renumber_eligibility import EligibilityResult, evaluate_eligibility
 from app.article_write import ArticleWriteOutcome, ArticleWriteResult, _from_weclapp_error, _unavailable
 from app.audit import record_audit_log
 from app.models import (
     ArticleSnapshotRow,
     RetiredArticleNumber,
+    SupplierArticleAlias,
     WeclappArticle,
+    WeclappSupplySourceLink,
 )
 from app.weclapp import map_weclapp_error
 from core.article_payload import ARTICLE_NUMBER_FIELD, LABEL_ALIASES
@@ -28,7 +26,12 @@ ACTION_RENUMBER = "article_renumbered"
 
 
 def build_article_number_put(*, version: str, article_number: str) -> dict[str, str]:
-    """Narrow payload: version + articleNumber only."""
+    """Narrow payload: version + articleNumber only.
+
+    Live probe (Phase A): with a supply source attached, this PUT preserves
+    ``supplySources`` / ``primarySupplySourceId`` on the article — echoing a
+    GET snapshot is not required for a safe renumber.
+    """
     return {"version": str(version).strip(), "articleNumber": str(article_number).strip()}
 
 
@@ -71,6 +74,21 @@ def _update_local_mirrors(
             data = dict(row.data or {})
             _set_snapshot_row_number(data, new_number)
             row.data = data
+    for link in db.scalars(
+        select(WeclappSupplySourceLink).where(
+            WeclappSupplySourceLink.weclapp_article_id == weclapp_id,
+            WeclappSupplySourceLink.article_number == old_number,
+        )
+    ):
+        link.article_number = new_number
+    for alias in db.scalars(
+        select(SupplierArticleAlias).where(
+            SupplierArticleAlias.weclapp_article_id == weclapp_id,
+            SupplierArticleAlias.article_number == old_number,
+            SupplierArticleAlias.source == "supply_source",
+        )
+    ):
+        alias.article_number = new_number
 
 
 def update_article_number(
@@ -84,6 +102,7 @@ def update_article_number(
     eligibility: EligibilityResult,
     destination_pair: tuple[str, str],
     shopify_sku_match: bool,
+    supply_source_warning_ack: dict[str, Any] | None = None,
     prefetch_ctx: Any,
     snapshot_id: Any = None,
     transform_run_id: str | None = None,
@@ -119,7 +138,7 @@ def update_article_number(
 
     old_number = str(article.get("articleNumber") or "").strip()
     live_eligibility = evaluate_eligibility(
-        article=article, weclapp_id=article_id, ctx=prefetch_ctx
+        article=article, weclapp_id=article_id, ctx=prefetch_ctx, db=db
     )
     if not live_eligibility.ok:
         return ArticleWriteResult(
@@ -129,18 +148,6 @@ def update_article_number(
             message=live_eligibility.reason_code or "ineligible",
             weclapp_detail={
                 "reason_code": live_eligibility.reason_code,
-                "eligibility": live_eligibility.checks,
-            },
-        )
-
-    if live_has_supply_source(article):
-        return ArticleWriteResult(
-            outcome=ArticleWriteOutcome.REJECTED,
-            article_id=article_id,
-            article_number=old_number,
-            message="ineligible_supply_source",
-            weclapp_detail={
-                "reason_code": "ineligible_supply_source",
                 "eligibility": live_eligibility.checks,
             },
         )
@@ -209,14 +216,6 @@ def update_article_number(
                 message="409 retry: refetch failed",
                 weclapp_detail=detail,
             )
-        if live_has_supply_source(article):
-            return ArticleWriteResult(
-                outcome=ArticleWriteOutcome.REJECTED,
-                article_id=article_id,
-                article_number=old_number,
-                message="ineligible_supply_source",
-                weclapp_detail={"reason_code": "ineligible_supply_source"},
-            )
         retry_version = str(article.get("version") or "").strip()
         if not retry_version:
             return ArticleWriteResult(
@@ -273,6 +272,7 @@ def update_article_number(
         "destination_pair": f"{haupt}.{unter}",
         "eligibility": live_eligibility.checks,
         "shopify_sku_match": shopify_sku_match,
+        "supply_source_warning_acknowledged": supply_source_warning_ack,
         "transform_run_id": transform_run_id,
         "transform_chunk_id": transform_chunk_id,
     }

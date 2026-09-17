@@ -342,8 +342,13 @@ async def confirm_chunk(
         raise HTTPException(status_code=404, detail="Transform-Lauf nicht gefunden")
     _require_transform_allowed(db, db.get(ArticleSnapshot, run.snapshot_id))
     form = await request.form()
-    from app.article_renumber import MSG_ACK_REQUIRED, is_article_renumber_spec
+    from app.article_renumber import (
+        MSG_ACK_REQUIRED,
+        MSG_SUPPLY_SOURCE_ACK_REQUIRED,
+        is_article_renumber_spec,
+    )
 
+    supply_source_ack = False
     if is_article_renumber_spec(run.spec):
         if "admin" not in user.get("roles", []):
             raise HTTPException(status_code=403)
@@ -351,6 +356,14 @@ async def confirm_chunk(
         if int(meta.get("shopify_sku_warnings") or 0) > 0:
             if str(form.get("shopify_warnung_bestaetigt") or "") not in {"1", "on", "true"}:
                 raise HTTPException(status_code=400, detail=MSG_ACK_REQUIRED)
+        if int(meta.get("supply_source_warnings") or 0) > 0:
+            if str(form.get("supply_source_warnung_bestaetigt") or "") not in {
+                "1",
+                "on",
+                "true",
+            }:
+                raise HTTPException(status_code=400, detail=MSG_SUPPLY_SOURCE_ACK_REQUIRED)
+            supply_source_ack = True
     selected = [uuid.UUID(str(v)) for v in form.getlist("zeile") if str(v).strip()]
     if not selected:
         raise HTTPException(status_code=400, detail=MSG_NO_SELECTION)
@@ -363,6 +376,7 @@ async def confirm_chunk(
             chunk_index=chunk_index,
             approver_oid=str(user["oid"]),
             selected_row_ids=selected,
+            supply_source_warning_acknowledged=supply_source_ack,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

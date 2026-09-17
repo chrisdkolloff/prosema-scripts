@@ -61,6 +61,13 @@
   </div>
   {% endif %}
 
+  {% if is_article_renumber and renumber_meta and renumber_meta.supply_source_warnings %}
+  <div class="alert alert-warning" role="alert">
+    <strong>Bezugsquellen:</strong> {{ renumber_meta.supply_source_warnings }} Artikel haben eine aktive Bezugsquelle.
+    Die Umnummerierung ist in weclapp möglich; PROSEMA aktualisiert die lokalen Bezugsquellen-Spiegel bei erfolgreicher Anwendung.
+  </div>
+  {% endif %}
+
   {% if preview_summary %}
   <div class="card mb-4">
     <div class="card-header">Zusammenfassung</div>
@@ -106,6 +113,14 @@
       <input class="form-check-input" type="checkbox" name="shopify_warnung_bestaetigt" value="1" id="shopify-warnung">
       <label class="form-check-label" for="shopify-warnung">
         Ich habe die Shopify-SKU-Warnung gelesen und werde betroffene SKUs manuell anpassen.
+      </label>
+    </div>
+    {% endif %}
+    {% if is_article_renumber and renumber_meta and renumber_meta.supply_source_warnings %}
+    <div class="form-check mb-3">
+      <input class="form-check-input" type="checkbox" name="supply_source_warnung_bestaetigt" value="1" id="supply-source-warnung">
+      <label class="form-check-label" for="supply-source-warnung">
+        Ich habe die Bezugsquellen-Warnung gelesen und bestätige die Umnummerierung trotz aktiver Bezugsquelle(n).
       </label>
     </div>
     {% endif %}

@@ -52,6 +52,10 @@ def preview_summary(run: TransformRun, *, changed_rows: int | None = None) -> st
                 lines.append(
                     f"Shopify-SKU-Warnung: {meta['shopify_sku_warnings']} Artikel."
                 )
+            if meta.get("supply_source_warnings"):
+                lines.append(
+                    f"Bezugsquellen-Warnung: {meta['supply_source_warnings']} Artikel."
+                )
         elif not is_group_assign_spec(run.spec):
             spec = TransformSpec.model_validate(run.spec)
             lines.extend(spec.idempotency_warnings)

@@ -1,7 +1,17 @@
 # PROSEMA release history — edit this file to bump the version and document changes.
 # The top-level `version` is shown in the site header; `[[releases]]` entries appear on /changelog.
 
-version = "1.3.7"
+version = "1.3.8"
+
+[[releases]]
+version = "1.3.8"
+date = "2026-09-17"
+summary = "Introduce `_terminalize_active_jobs` function to update job statuses in tests. Modify `test_active_jobs_banner_names_triggering_user` and `test_active_jobs_banner_snapshot_is_in_bearbeitung` to call this new function, ensuring active jobs are marked as succeeded before running tests. This change improves test reliability by resetting job states. (+1 more)"
+changes = [
+  "Update article renumbering logic to incorporate supply source warnings. Rename `REASON_SUPPLY_SOURCE` to `warning_supply_source` and adjust related labels for clarity. Introduce `SupplySourceWarningLine` data class to encapsulate supplier information. Enhance eligibility evaluation to include supply source warnings and update related functions to handle these warnings appropriately. Modify templates and prompts to reflect new warning messages and acknowledgment requirements during renumbering processes.",
+  "Introduce `_terminalize_active_jobs` function to update job statuses in tests. Modify `test_active_jobs_banner_names_triggering_user` and `test_active_jobs_banner_snapshot_is_in_bearbeitung` to call this new function, ensuring active jobs are marked as succeeded before running tests. This change improves test reliability by resetting job states.",
+]
+
 
 [[releases]]
 version = "1.3.7"
