@@ -707,7 +707,13 @@ def renumber_kandidaten(session: Session, args: Any) -> ToolResult:
         )
 
     try:
-        mismatches = list_mismatch_candidates(session, client, snapshot=snapshot)
+        mismatches = list_mismatch_candidates(
+            session,
+            client,
+            snapshot=snapshot,
+            quellgruppe=args.quellgruppe,
+            zielgruppe=args.zielgruppe,
+        )
     except Exception as exc:
         return ToolResult(
             rows=[],

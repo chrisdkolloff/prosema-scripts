@@ -1278,6 +1278,11 @@ class RenumberExpect:
     tool: str | None = None
     scope: str | None = None
     article_identifier: str | None = None
+    quellgruppe: str | None = None
+    zielgruppe: str | None = None
+    total_count: int | None = None
+    answer_contains: str | None = None
+    answer_excludes: str | None = None
     reason_contains: str | None = None
     forbid_spec: bool = False
 
@@ -1298,9 +1303,20 @@ class RenumberScore:
     reason: Mark
     verified: Mark
     forbid_spec: Mark
+    total_count: Mark
+    answer: Mark
 
     def overall(self) -> Mark:
-        marks = [self.tool, self.scope, self.outcome, self.reason, self.verified, self.forbid_spec]
+        marks = [
+            self.tool,
+            self.scope,
+            self.outcome,
+            self.reason,
+            self.verified,
+            self.forbid_spec,
+            self.total_count,
+            self.answer,
+        ]
         scored = [m for m in marks if m != "n/a"]
         return "pass" if scored and all(m == "pass" for m in scored) else "fail"
 
@@ -1312,6 +1328,8 @@ class RenumberScore:
             ("reason", self.reason),
             ("verified", self.verified),
             ("forbid_spec", self.forbid_spec),
+            ("total_count", self.total_count),
+            ("answer", self.answer),
         ]
         return [name for name, mark in pairs if mark == "fail"]
 
@@ -1357,6 +1375,31 @@ def load_renumber_questions(path: Path) -> list[RenumberQuestion]:
                         if expect_raw.get("article_identifier")
                         else None
                     ),
+                    quellgruppe=(
+                        str(expect_raw["quellgruppe"]).strip()
+                        if expect_raw.get("quellgruppe")
+                        else None
+                    ),
+                    zielgruppe=(
+                        str(expect_raw["zielgruppe"]).strip()
+                        if expect_raw.get("zielgruppe")
+                        else None
+                    ),
+                    total_count=(
+                        int(expect_raw["total_count"])
+                        if expect_raw.get("total_count") is not None
+                        else None
+                    ),
+                    answer_contains=(
+                        str(expect_raw["answer_contains"])
+                        if expect_raw.get("answer_contains") is not None
+                        else None
+                    ),
+                    answer_excludes=(
+                        str(expect_raw["answer_excludes"])
+                        if expect_raw.get("answer_excludes") is not None
+                        else None
+                    ),
                     reason_contains=(
                         str(expect_raw["reason_contains"])
                         if expect_raw.get("reason_contains") is not None
@@ -1387,6 +1430,7 @@ def score_renumber_question(
     ask_outcome: str,
     answer_de: str | None,
     hinweis_de: str | None,
+    total_count: int | None,
 ) -> RenumberScore:
     expect = question.expect
     prose = f"{answer_de or ''}\n{hinweis_de or ''}"
@@ -1397,7 +1441,12 @@ def score_renumber_question(
         tool_mark = "pass" if expect.tool in names else "fail"
 
     scope_mark: Mark = "n/a"
-    if expect.scope or expect.article_identifier:
+    if (
+        expect.scope
+        or expect.article_identifier
+        or expect.quellgruppe
+        or expect.zielgruppe
+    ):
         args = None
         for call in tool_calls:
             if call.get("name") == (expect.tool or "renumber_kandidaten"):
@@ -1411,7 +1460,11 @@ def score_renumber_question(
                 not expect.article_identifier
                 or args.get("article_identifier") == expect.article_identifier
             )
-            scope_mark = "pass" if scope_ok and ident_ok else "fail"
+            quell_ok = (
+                not expect.quellgruppe or args.get("quellgruppe") == expect.quellgruppe
+            )
+            ziel_ok = not expect.zielgruppe or args.get("zielgruppe") == expect.zielgruppe
+            scope_mark = "pass" if scope_ok and ident_ok and quell_ok and ziel_ok else "fail"
 
     if expect.forbid_spec:
         forbid_mark: Mark = "pass" if spec is None else "fail"
@@ -1432,6 +1485,19 @@ def score_renumber_question(
 
     verified_mark: Mark = "pass" if ask_outcome != "answered_unverified" else "fail"
 
+    total_count_mark: Mark = "n/a"
+    if expect.total_count is not None:
+        total_count_mark = (
+            "pass" if total_count == expect.total_count else "fail"
+        )
+
+    answer_mark: Mark = "n/a"
+    if expect.answer_contains or expect.answer_excludes:
+        text = answer_de or ""
+        contains_ok = not expect.answer_contains or expect.answer_contains in text
+        excludes_ok = not expect.answer_excludes or expect.answer_excludes not in text
+        answer_mark = "pass" if contains_ok and excludes_ok else "fail"
+
     return RenumberScore(
         tool=tool_mark,
         scope=scope_mark,
@@ -1439,6 +1505,8 @@ def score_renumber_question(
         reason=reason_mark,
         verified=verified_mark,
         forbid_spec=forbid_mark,
+        total_count=total_count_mark,
+        answer=answer_mark,
     )
 
 
@@ -1459,6 +1527,7 @@ def run_renumber_question(session, question: RenumberQuestion) -> RenumberQuesti
         ask_outcome=result.outcome,
         answer_de=result.answer_de,
         hinweis_de=result.hinweis_de,
+        total_count=result.total_count,
     )
     return RenumberQuestionResult(
         question=question,
@@ -1494,8 +1563,8 @@ def render_renumber_report(
         f"- snapshot_id: `{snapshot_id or '(none)'}`",
         f"- repeat: {repeat}",
         "",
-        "| id | run | tool | scope | outcome | reason | verified | forbid | overall |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+        "| id | run | tool | scope | outcome | reason | verified | forbid | count | answer | overall |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     by_id: dict[str, list[RenumberQuestionResult]] = {}
     for item in results:
@@ -1505,7 +1574,8 @@ def render_renumber_report(
             s = item.score
             lines.append(
                 f"| {qid} | {index}/{len(runs)} | {s.tool} | {s.scope} | {s.outcome} | "
-                f"{s.reason} | {s.verified} | {s.forbid_spec} | {s.overall()} |"
+                f"{s.reason} | {s.verified} | {s.forbid_spec} | {s.total_count} | "
+                f"{s.answer} | {s.overall()} |"
             )
     lines.append("")
     for qid, runs in by_id.items():

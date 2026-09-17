@@ -285,6 +285,21 @@ class RenumberKandidatenArgs(BaseModel):
 
     scope: Literal["all_mismatches", "eligible_only", "single"]
     article_identifier: str | None = None
+    quellgruppe: str | None = None
+    zielgruppe: str | None = None
+
+    @field_validator("quellgruppe", "zielgruppe")
+    @classmethod
+    def normalize_gruppe_pair(cls, value: str | None) -> str | None:
+        from app.group_assign import parse_ziel_gruppe
+
+        if value is None:
+            return None
+        cleaned = str(value).strip()
+        if not cleaned:
+            return None
+        haupt, unter = parse_ziel_gruppe(cleaned)
+        return f"{haupt}.{unter}"
 
     @model_validator(mode="after")
     def validate_scope(self) -> RenumberKandidatenArgs:

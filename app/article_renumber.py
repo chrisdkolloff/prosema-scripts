@@ -324,13 +324,22 @@ def list_mismatch_candidates(
     client: WeclappClient,
     *,
     snapshot: ArticleSnapshot,
+    quellgruppe: str | None = None,
+    zielgruppe: str | None = None,
 ) -> list[dict[str, Any]]:
-    """All snapshot articles whose number pair differs from live category pair."""
+    """All snapshot articles whose number pair differs from live category pair.
+
+    Optional ``quellgruppe`` / ``zielgruppe`` are ``MMM.SSS`` pairs; filters apply
+    while building the mismatch list (before any assistant row cap).
+    """
     from app.transform.scope import ScopeCandidate
 
-    rows = db.scalars(
-        select(ArticleSnapshotRow).where(ArticleSnapshotRow.snapshot_id == snapshot.id)
-    )
+    row_query = select(ArticleSnapshotRow).where(ArticleSnapshotRow.snapshot_id == snapshot.id)
+    if quellgruppe:
+        row_query = row_query.where(
+            ArticleSnapshotRow.article_number.like(f"{quellgruppe}.%")
+        )
+    rows = db.scalars(row_query)
     candidates = [
         ScopeCandidate(
             article_number=row.article_number,
@@ -350,6 +359,12 @@ def list_mismatch_candidates(
         category_pair = destination_pair_for_article(article, ctx)
         if number_pair is None or category_pair is None or number_pair == category_pair:
             continue
+        number_label = f"{number_pair[0]}.{number_pair[1]}"
+        category_label = f"{category_pair[0]}.{category_pair[1]}"
+        if quellgruppe and number_label != quellgruppe:
+            continue
+        if zielgruppe and category_label != zielgruppe:
+            continue
         eligibility = evaluate_eligibility(
             article=article, weclapp_id=candidate.weclapp_id, ctx=ctx
         )
@@ -357,8 +372,8 @@ def list_mismatch_candidates(
             {
                 "weclapp_id": candidate.weclapp_id,
                 "article_number": str(article.get("articleNumber") or candidate.article_number),
-                "number_pair": f"{number_pair[0]}.{number_pair[1]}",
-                "category_pair": f"{category_pair[0]}.{category_pair[1]}",
+                "number_pair": number_label,
+                "category_pair": category_label,
                 "eligibility": eligibility,
             }
         )

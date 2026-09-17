@@ -1,7 +1,16 @@
 # PROSEMA release history — edit this file to bump the version and document changes.
 # The top-level `version` is shown in the site header; `[[releases]]` entries appear on /changelog.
 
-version = "1.3.6"
+version = "1.3.7"
+
+[[releases]]
+version = "1.3.7"
+date = "2026-09-17"
+summary = "Enhance article renumbering functionality by introducing optional filters for `quellgruppe` and `zielgruppe` in the `list_mismatch_candidates` function. Update related schemas and prompts to support these new parameters, allowing for more precise article mismatch queries. Modify tests to validate the new filtering capabilities and ensure accurate reporting of mismatch counts and eligibility. This update improves the usability of the renumbering tool by enabling targeted searches based on specific number and category pairs."
+changes = [
+  "Enhance article renumbering functionality by introducing optional filters for `quellgruppe` and `zielgruppe` in the `list_mismatch_candidates` function. Update related schemas and prompts to support these new parameters, allowing for more precise article mismatch queries. Modify tests to validate the new filtering capabilities and ensure accurate reporting of mismatch counts and eligibility. This update improves the usability of the renumbering tool by enabling targeted searches based on specific number and category pairs.",
+]
+
 
 [[releases]]
 version = "1.3.6"

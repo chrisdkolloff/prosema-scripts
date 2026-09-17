@@ -209,7 +209,9 @@ RENUMBER_KANDIDATEN_SPEC = _ToolSpec(
     (
         "List articles whose Prosema number pair differs from the live weclapp "
         "category pair, with eligibility checks (read-only). scope: all_mismatches, "
-        "eligible_only, or single (requires article_identifier)."
+        "eligible_only, or single (requires article_identifier). Optional quellgruppe "
+        "and zielgruppe (MMM.SSS) narrow by number pair and/or live category pair "
+        "before results are capped."
     ),
     RenumberKandidatenArgs,
     renumber_kandidaten,

@@ -48,3 +48,36 @@
     forbid_spec: true
   notes: >
     User-named target must be refused or ignored — no proposal carrying 110.020.0150.
+
+- id: scoped-020120-040050-renumber-backlog
+  frage: >
+    Ordne allen Artikeln in 040.050 neue Artikelnummern zu, damit die Nummer
+    zur weclapp-Kategorie passt. Die Artikel, die betroffen sind, starten mit
+    020.120. Wie viele sind das, und warum können sie (noch) nicht umnummeriert
+    werden?
+  expect:
+    outcome: answered
+    tool: renumber_kandidaten
+    scope: all_mismatches
+    quellgruppe: "020.120"
+    zielgruppe: "040.050"
+    total_count: 20
+    answer_contains: "20"
+    answer_excludes: "1 derzeit umnummerierbar"
+    reason_contains: Bezugsquelle
+  notes: >
+    Must pass quellgruppe/zielgruppe — not unscoped all_mismatches (99 / cap 50).
+    Mismatch count 20 in prod ground truth; all ineligible_supply_source today.
+    Must not answer with the global eligible-only figure (1).
+
+- id: global-mismatch-control
+  frage: >
+    Wie viele Artikel haben insgesamt eine Artikelnummer, die nicht zur
+    weclapp-Kategorie passt — ohne Einschränkung auf eine bestimmte Gruppe?
+  expect:
+    outcome: answered
+    tool: renumber_kandidaten
+    scope: all_mismatches
+  notes: >
+    Control: unscoped all_mismatches; total_count should reflect full catalogue
+    mismatch set (order ~90+ on current prod), not the 020.120 slice.
