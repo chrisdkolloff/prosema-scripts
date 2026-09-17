@@ -22,7 +22,12 @@ from pydantic import BaseModel, ValidationError
 from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
-from app.assistant.catalog import reset_pinned_snapshot, set_pinned_snapshot
+from app.assistant.catalog import (
+    reset_assistant_actor,
+    reset_pinned_snapshot,
+    set_assistant_actor,
+    set_pinned_snapshot,
+)
 from app.assistant.client import AssistantUnavailable, LLMClient, LLMResponse, ToolCall, get_client
 from app.assistant.prompts import (
     ANSWER_NOW_HINT,
@@ -42,6 +47,8 @@ from app.assistant.schemas import (
     QueryFilter,
     TransformVorschlagenArgs,
     GruppenZuordnenArgs,
+    RenumberKandidatenArgs,
+    RenumberVorschlagenArgs,
 )
 from app.assistant.tools import (
     ToolResult,
@@ -52,6 +59,8 @@ from app.assistant.tools import (
     einheiten_auflisten,
     gruppen_auflisten,
     gruppen_zuordnen,
+    renumber_kandidaten,
+    renumber_vorschlagen,
     resolve_current_snapshot,
     transform_vorschlagen,
 )
@@ -195,9 +204,33 @@ GRUPPEN_ZUORDNEN_SPEC = _ToolSpec(
     gruppen_zuordnen,
 )
 
+RENUMBER_KANDIDATEN_SPEC = _ToolSpec(
+    "renumber_kandidaten",
+    (
+        "List articles whose Prosema number pair differs from the live weclapp "
+        "category pair, with eligibility checks (read-only). scope: all_mismatches, "
+        "eligible_only, or single (requires article_identifier)."
+    ),
+    RenumberKandidatenArgs,
+    renumber_kandidaten,
+)
+
+RENUMBER_VORSCHLAGEN_SPEC = _ToolSpec(
+    "renumber_vorschlagen",
+    (
+        "Propose admin renumber for one article (ArticleRenumberSpec). Does not "
+        "preview, enqueue, or write. Takes article_identifier only — never a target "
+        "number. Refuses when eligibility fails or the user is not admin."
+    ),
+    RenumberVorschlagenArgs,
+    renumber_vorschlagen,
+)
+
 WRITE_TOOL_SPECS: tuple[_ToolSpec, ...] = TOOL_SPECS + (
     TRANSFORM_VORSCHLAGEN_SPEC,
     GRUPPEN_ZUORDNEN_SPEC,
+    RENUMBER_KANDIDATEN_SPEC,
+    RENUMBER_VORSCHLAGEN_SPEC,
 )
 TOOLS_BY_NAME = {spec.name: spec for spec in TOOL_SPECS}
 WRITE_TOOLS_BY_NAME = {spec.name: spec for spec in WRITE_TOOL_SPECS}
@@ -554,6 +587,7 @@ def ask(
         return finish(outcome="unavailable", hinweis_de=MSG_NO_SNAPSHOT, error=MSG_NO_SNAPSHOT)
 
     pin_token = set_pinned_snapshot(snapshot)
+    actor_token = set_assistant_actor(user)
     try:
         stand_hinweis = (
             f"Datenstand: Beginn des Abzugs vom {format_snapshot_timestamp(snapshot.created_at)}. "
@@ -742,7 +776,12 @@ def ask(
                             continue
                         payload = _serialize_tool_result(result)
                         recorded["total_count"] = result.total_count
-                        if spec.name in {"transform_vorschlagen", "gruppen_zuordnen"}:
+                        _PROPOSE_TOOLS = {
+                            "transform_vorschlagen",
+                            "gruppen_zuordnen",
+                            "renumber_vorschlagen",
+                        }
+                        if spec.name in _PROPOSE_TOOLS:
                             if result.hinweis_de:
                                 recorded["hinweis_de"] = result.hinweis_de
                             if result.rows:
@@ -756,14 +795,19 @@ def ask(
                         allowed.update(_collect_numbers(call.arguments, payload, result.total_count))
                         last_total = result.total_count
                         last_truncated = result.truncated
-                        if spec.name not in {"transform_vorschlagen", "gruppen_zuordnen"}:
+                        if spec.name == "renumber_kandidaten":
+                            had_row_returning = True
+                            last_rows = result.rows
+                            last_columns = _columns_for(result.rows)
+                            last_empty_rows = not result.rows
+                        elif spec.name not in _PROPOSE_TOOLS:
                             had_row_returning = True
                             last_rows = result.rows
                             last_columns = _columns_for(result.rows)
                             last_empty_rows = not result.rows
                             if spec.name in _SELECTION_TOOLS:
                                 last_selection_filter = args.filters
-                        elif result.rows:
+                        elif result.rows and spec.name != "renumber_vorschlagen":
                             last_selection_filter = args.filters
                         if result.datenstand is not None:
                             last_datenstand = result.datenstand
@@ -837,4 +881,5 @@ def ask(
                 error=traceback.format_exc() or str(exc),
             )
     finally:
+        reset_assistant_actor(actor_token)
         reset_pinned_snapshot(pin_token)

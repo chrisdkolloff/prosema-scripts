@@ -54,6 +54,13 @@
   </div>
   {% endif %}
 
+  {% if is_article_renumber and renumber_meta and renumber_meta.shopify_sku_warnings %}
+  <div class="alert alert-warning" role="alert">
+    <strong>Shopify:</strong> {{ renumber_meta.shopify_sku_warnings }} Artikel haben eine Varianten-SKU gleich der bisherigen Artikelnummer.
+    PROSEMA ändert Shopify nicht — nach der Umnummerierung SKU in Shopify manuell anpassen.
+  </div>
+  {% endif %}
+
   {% if preview_summary %}
   <div class="card mb-4">
     <div class="card-header">Zusammenfassung</div>
@@ -66,8 +73,42 @@
   </div>
   {% endif %}
 
+  {% if renumber_refused %}
+  <div class="card mb-4">
+    <div class="card-header">Abgelehnt (Vorschau)</div>
+    <div class="table-responsive">
+      <table class="table table-sm mb-0">
+        <thead>
+          <tr>
+            <th>Artikelnummer</th>
+            <th>Grund</th>
+            <th>Shopify-SKU</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in renumber_refused %}
+          <tr>
+            <td>{{ item.row.article_number }}</td>
+            <td>{{ item.reason_de }}</td>
+            <td>{% if item.shopify %}Ja{% else %}—{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
   {% if pending %}
   <form method="post" action="/transform/{{ run.id }}/bestaetigen" id="transform-review-form">
+    {% if is_article_renumber and renumber_meta and renumber_meta.shopify_sku_warnings %}
+    <div class="form-check mb-3">
+      <input class="form-check-input" type="checkbox" name="shopify_warnung_bestaetigt" value="1" id="shopify-warnung">
+      <label class="form-check-label" for="shopify-warnung">
+        Ich habe die Shopify-SKU-Warnung gelesen und werde betroffene SKUs manuell anpassen.
+      </label>
+    </div>
+    {% endif %}
     {% for group in groups %}
     <details class="mb-3" open>
       <summary class="fw-semibold">
@@ -87,9 +128,15 @@
         <thead>
           <tr>
             <th></th>
-            <th>Artikelnummer</th>
+            <th>Aktuelle Nummer</th>
+            {% if is_article_renumber %}
+            <th>Zielgruppe</th>
+            <th>Vorgeschlagene Nummer</th>
+            <th>Shopify-SKU</th>
+            {% else %}
             <th>Feld</th>
             <th>Änderung</th>
+            {% endif %}
           </tr>
         </thead>
         <tbody>
@@ -107,6 +154,11 @@
               >
             </td>
             <td>{{ row.article_number }}</td>
+            {% if is_article_renumber %}
+            <td>{{ item.renumber.destination_pair or "—" }}</td>
+            <td>{{ row.new_value }}</td>
+            <td>{% if item.renumber.shopify_sku_match %}<span class="text-warning fw-semibold">SKU vorhanden</span>{% else %}—{% endif %}</td>
+            {% else %}
             <td>{{ row.field }}{% if row.row_status == "DECLINED" %} <span class="badge text-bg-secondary">Abgelehnt</span>{% endif %}</td>
             <td class="transform-diff">
               {{ item.diff }}
@@ -114,6 +166,7 @@
               <div class="form-text">{{ msg_html_format }}</div>
               {% endif %}
             </td>
+            {% endif %}
           </tr>
           {% endfor %}
         </tbody>

@@ -196,10 +196,19 @@ async def start_preview_from_proposal(
             from app.group_assign import GroupAssignSpec
 
             spec = GroupAssignSpec.model_validate(payload)
+        elif isinstance(payload, dict) and payload.get("kind") == "article_renumber":
+            from app.article_renumber import ArticleRenumberSpec, assert_admin_renumber_actor
+
+            assert_admin_renumber_actor(user)
+            spec = ArticleRenumberSpec.model_validate(payload)
         else:
             spec = TransformSpec.model_validate(payload)
     except (TransformSpecError, ValidationError, ValueError, json.JSONDecodeError) as exc:
+        from app.article_renumber import MSG_ADMIN_ONLY
+
         message = getattr(exc, "message_de", None) or str(exc)
+        if message == MSG_ADMIN_ONLY:
+            raise HTTPException(status_code=403, detail=message) from exc
         raise HTTPException(status_code=400, detail=message) from exc
     run, _job = start_transform_preview(db, user, snapshot_id=snapshot.id, spec=spec)
     db.commit()
@@ -207,8 +216,35 @@ async def start_preview_from_proposal(
 
 
 def _run_context(db: Session, run: TransformRun) -> dict[str, Any]:
+    from app.article_renumber import is_article_renumber_spec, renumber_payload_from_row
+
+    is_renumber = is_article_renumber_spec(run.spec)
     pending = pending_review_rows(db, run)[:CHUNK_SIZE]
+    renumber_refused: list[dict[str, Any]] = []
+    if is_renumber and run.status == "previewed":
+        refused_rows = list(
+            db.scalars(
+                select(TransformRow)
+                .where(
+                    TransformRow.run_id == run.id,
+                    TransformRow.row_status == "REFUSED",
+                )
+                .order_by(TransformRow.article_number)
+            )
+        )
+        for row in refused_rows:
+            payload = renumber_payload_from_row(row)
+            renumber_refused.append(
+                {
+                    "row": row,
+                    "reason_de": payload.get("reason_de") or payload.get("reason_code"),
+                    "shopify": payload.get("shopify_sku_match"),
+                }
+            )
     views = row_views(pending)
+    if is_renumber:
+        for item in views:
+            item["renumber"] = renumber_payload_from_row(item["row"])
     by_id = {item["row"].id: item for item in views}
     groups = []
     for group in group_rows(pending):
@@ -263,6 +299,9 @@ def _run_context(db: Session, run: TransformRun) -> dict[str, Any]:
         "word_positions": run.word_positions or {},
         "remaining": remaining,
         "unknown_rows": unknown_rows,
+        "is_article_renumber": is_renumber,
+        "renumber_meta": (run.word_positions or {}).get("renumber") if is_renumber else None,
+        "renumber_refused": renumber_refused,
     }
 
 
@@ -276,6 +315,10 @@ def transform_run_page(
     run = db.get(TransformRun, run_id)
     if run is None:
         raise HTTPException(status_code=404, detail="Transform-Lauf nicht gefunden")
+    from app.article_renumber import is_article_renumber_spec
+
+    if is_article_renumber_spec(run.spec) and "admin" not in user.get("roles", []):
+        raise HTTPException(status_code=403)
     snapshot = db.get(ArticleSnapshot, run.snapshot_id)
     ctx = {
         "user": user,
@@ -299,6 +342,15 @@ async def confirm_chunk(
         raise HTTPException(status_code=404, detail="Transform-Lauf nicht gefunden")
     _require_transform_allowed(db, db.get(ArticleSnapshot, run.snapshot_id))
     form = await request.form()
+    from app.article_renumber import MSG_ACK_REQUIRED, is_article_renumber_spec
+
+    if is_article_renumber_spec(run.spec):
+        if "admin" not in user.get("roles", []):
+            raise HTTPException(status_code=403)
+        meta = (run.word_positions or {}).get("renumber") or {}
+        if int(meta.get("shopify_sku_warnings") or 0) > 0:
+            if str(form.get("shopify_warnung_bestaetigt") or "") not in {"1", "on", "true"}:
+                raise HTTPException(status_code=400, detail=MSG_ACK_REQUIRED)
     selected = [uuid.UUID(str(v)) for v in form.getlist("zeile") if str(v).strip()]
     if not selected:
         raise HTTPException(status_code=400, detail=MSG_NO_SELECTION)

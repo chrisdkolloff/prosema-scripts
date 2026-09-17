@@ -272,9 +272,10 @@ def test_write_ask_advertises_vorschlagen(db_session, snapshot):
         ask(db_session, USER, QUESTION, write_mode=True)
     schemas = client.complete.call_args.args[2]
     names = [item["function"]["name"] for item in schemas]
-    assert names[-1] == "gruppen_zuordnen"
+    assert names[-1] == "renumber_vorschlagen"
     assert "transform_vorschlagen" in names
-    assert len(names) == 8
+    assert "renumber_kandidaten" in names
+    assert len(names) == 10
     system = client.complete.call_args.args[0]
     assert "verbinder" in system
     assert "Winkel-Winkelprofil" in system

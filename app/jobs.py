@@ -268,6 +268,9 @@ def handle_article_transform_preview(
     run = db.get(TransformRun, run_id)
     if run is None:
         raise ValueError("Transform-Lauf nicht gefunden")
+    from app.article_renumber import assert_admin_renumber_job
+
+    assert_admin_renumber_job(payload)
     try:
         return run_preview(db, run, oid=oid)
     except TransformAuthAbort as exc:
@@ -309,7 +312,9 @@ def handle_article_transform_apply(
         raise ValueError("Abschnitt nicht gefunden")
     actor_name = str(payload.get("actor_name") or oid)
     try:
-        return apply_chunk(db, chunk, oid=oid, actor_name=actor_name)
+        return apply_chunk(
+            db, chunk, oid=oid, actor_name=actor_name, job_payload=payload
+        )
     except TransformAuthAbort as exc:
         db.rollback()
         chunk = db.get(TransformChunk, chunk_id)

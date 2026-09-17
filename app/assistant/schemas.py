@@ -278,6 +278,44 @@ class TransformVorschlagenArgs(BaseModel):
         return value
 
 
+class RenumberKandidatenArgs(BaseModel):
+    """Scope for articles whose number pair differs from weclapp category pair."""
+
+    model_config = {"extra": "forbid"}
+
+    scope: Literal["all_mismatches", "eligible_only", "single"]
+    article_identifier: str | None = None
+
+    @model_validator(mode="after")
+    def validate_scope(self) -> RenumberKandidatenArgs:
+        ident = (self.article_identifier or "").strip()
+        if self.scope == "single":
+            if not ident:
+                raise ValueError(
+                    "Bei scope «single» ist article_identifier (Artikelnummer oder weclapp-ID) erforderlich."
+                )
+            object.__setattr__(self, "article_identifier", ident)
+        elif ident:
+            raise ValueError("article_identifier ist nur bei scope «single» zulässig.")
+        return self
+
+
+class RenumberVorschlagenArgs(BaseModel):
+    """Propose admin renumber for one article. No target number — allocator only."""
+
+    model_config = {"extra": "forbid"}
+
+    article_identifier: str
+
+    @field_validator("article_identifier")
+    @classmethod
+    def require_identifier(cls, value: str) -> str:
+        cleaned = str(value).strip()
+        if not cleaned:
+            raise ValueError("Artikelnummer oder weclapp-ID darf nicht leer sein.")
+        return cleaned
+
+
 class GruppenZuordnenArgs(BaseModel):
     """Reassign matching articles to a Hauptgruppe.Untergruppe weclapp category.
 

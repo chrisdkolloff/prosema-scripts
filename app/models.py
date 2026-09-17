@@ -1647,3 +1647,32 @@ class WeclappSupplySourceLink(Base):
             name="uq_weclapp_ss_links_article_supplier",
         ),
     )
+
+
+class RetiredArticleNumber(Base):
+    """Tombstone for a vacated Prosema article number after admin renumber."""
+
+    __tablename__ = "retired_article_numbers"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    weclapp_article_id: Mapped[str] = mapped_column(Text, nullable=False)
+    retired_number: Mapped[str] = mapped_column(Text, nullable=False)
+    new_number: Mapped[str] = mapped_column(Text, nullable=False)
+    destination_haupt: Mapped[str] = mapped_column(Text, nullable=False)
+    destination_unter: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+    )
+    created_by_oid: Mapped[str] = mapped_column(Text, nullable=False)
+    created_by_name: Mapped[str] = mapped_column(Text, nullable=False)
+
+    __table_args__ = (
+        Index("ix_retired_article_numbers_retired_number", "retired_number"),
+        Index("ix_retired_article_numbers_weclapp_article_id", "weclapp_article_id"),
+    )

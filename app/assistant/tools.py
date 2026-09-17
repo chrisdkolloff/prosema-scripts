@@ -617,3 +617,308 @@ def gruppen_zuordnen(session: Session, args: Any) -> ToolResult:
         datenstand_hinweis_de=_datenstand_hinweis(snapshot),
         hinweis_de=MSG_NUMBERS_UNCHANGED,
     )
+
+
+RENUMBER_CHECK_KEYS = (
+    "no_mismatch",
+    "no_supply_source",
+    "no_alias_row",
+    "no_stock",
+    "no_movement",
+    "no_document",
+    "registry_ok",
+)
+
+
+def _renumber_row_payload(item: dict[str, Any]) -> dict[str, Any]:
+    from app.article_renumber_eligibility import REASON_LABELS_DE
+
+    eligibility = item["eligibility"]
+    checks = dict(eligibility.checks)
+    failed = [key for key in RENUMBER_CHECK_KEYS if not checks.get(key, False)]
+    reason_code = eligibility.reason_code
+    return {
+        "weclapp_id": item["weclapp_id"],
+        "article_number": item["article_number"],
+        "number_pair": item["number_pair"],
+        "category_pair": item["category_pair"],
+        "eligible": eligibility.ok,
+        "checks": checks,
+        "failed_checks": failed,
+        "reason_code": reason_code,
+        "reason_de": REASON_LABELS_DE.get(reason_code or "", reason_code or ""),
+    }
+
+
+def _snapshot_row_for_identifier(
+    session: Session,
+    snapshot: ArticleSnapshot,
+    identifier: str,
+) -> ArticleSnapshotRow | None:
+    ident = identifier.strip()
+    row = session.scalars(
+        select(ArticleSnapshotRow).where(
+            ArticleSnapshotRow.snapshot_id == snapshot.id,
+            ArticleSnapshotRow.article_number == ident,
+        )
+    ).first()
+    if row is not None:
+        return row
+    return session.scalars(
+        select(ArticleSnapshotRow).where(
+            ArticleSnapshotRow.snapshot_id == snapshot.id,
+            ArticleSnapshotRow.weclapp_id == ident,
+        )
+    ).first()
+
+
+def _weclapp_client_for_assistant(session: Session):
+    from app.assistant.catalog import assistant_actor
+    from app.weclapp import weclapp_client_for
+
+    actor = assistant_actor() or {}
+    oid = str(actor.get("oid") or "").strip()
+    if not oid:
+        raise ValueError("Kein Benutzerkontext für weclapp-Abfragen.")
+    return weclapp_client_for(session, oid)
+
+
+def renumber_kandidaten(session: Session, args: Any) -> ToolResult:
+    """List mismatch articles with eligibility checks (read-only)."""
+    from app.article_renumber import list_mismatch_candidates
+    from app.assistant.schemas import RenumberKandidatenArgs
+
+    if not isinstance(args, RenumberKandidatenArgs):
+        args = RenumberKandidatenArgs.model_validate(args)
+
+    snapshot = resolve_current_snapshot(session)
+    if snapshot is None:
+        return _empty_result(hinweis="Kein abgeschlossener Artikel-Snapshot vorhanden.")
+
+    try:
+        client = _weclapp_client_for_assistant(session)
+    except ValueError as exc:
+        return ToolResult(
+            rows=[],
+            total_count=0,
+            datenstand=snapshot.created_at,
+            datenstand_hinweis_de=_datenstand_hinweis(snapshot),
+            hinweis_de=str(exc),
+        )
+
+    try:
+        mismatches = list_mismatch_candidates(session, client, snapshot=snapshot)
+    except Exception as exc:
+        return ToolResult(
+            rows=[],
+            total_count=0,
+            datenstand=snapshot.created_at,
+            datenstand_hinweis_de=_datenstand_hinweis(snapshot),
+            hinweis_de=str(exc) or "Abfrage fehlgeschlagen.",
+        )
+
+    if args.scope == "single":
+        ident = args.article_identifier or ""
+        mismatches = [
+            item
+            for item in mismatches
+            if item["weclapp_id"] == ident or item["article_number"] == ident
+        ]
+        if not mismatches:
+            row = _snapshot_row_for_identifier(session, snapshot, ident)
+            if row is None:
+                hinweis = f"Artikel «{ident}» ist nicht im Snapshot."
+            else:
+                hinweis = (
+                    f"Artikel «{ident}» ist im Snapshot, aber die Nummer "
+                    "stimmt mit der weclapp-Kategorie überein (kein Mismatch)."
+                )
+            return ToolResult(
+                rows=[],
+                total_count=0,
+                datenstand=snapshot.created_at,
+                datenstand_hinweis_de=_datenstand_hinweis(snapshot),
+                hinweis_de=hinweis,
+            )
+    elif args.scope == "eligible_only":
+        mismatches = [item for item in mismatches if item["eligibility"].ok]
+
+    total = len(mismatches)
+    truncated = total > MAX_ROWS_TO_MODEL
+    visible = mismatches[:MAX_ROWS_TO_MODEL]
+    rows = [_renumber_row_payload(item) for item in visible]
+    eligible_count = sum(1 for item in mismatches if item["eligibility"].ok)
+    summary = (
+        f"{total} Artikel mit abweichender Nummer/Kategorie, "
+        f"{eligible_count} derzeit umnummerierbar."
+    )
+    hinweis = summary
+    if truncated:
+        hinweis = f"{summary} Die ersten {MAX_ROWS_TO_MODEL} stehen in rows."
+    return ToolResult(
+        rows=rows,
+        total_count=total,
+        truncated=truncated,
+        datenstand=snapshot.created_at,
+        datenstand_hinweis_de=_datenstand_hinweis(snapshot),
+        hinweis_de=hinweis,
+    )
+
+
+def renumber_vorschlagen(session: Session, args: Any) -> ToolResult:
+    """Return a validated ArticleRenumberSpec. Never preview, enqueue, or write."""
+    leaked = _PROPOSE_ONLY_FORBIDDEN & set(globals())
+    assert not leaked, (
+        "renumber_vorschlagen must not bind preview, apply, or write helpers: "
+        f"{sorted(leaked)}"
+    )
+
+    from app.article_renumber import ArticleRenumberSpec, MSG_ADMIN_ONLY
+    from app.article_renumber_eligibility import (
+        REASON_LABELS_DE,
+        destination_pair_for_article,
+        evaluate_eligibility,
+        prefetch_renumber_context,
+    )
+    from app.assistant.catalog import assistant_actor
+    from app.assistant.schemas import RenumberVorschlagenArgs
+    from app.transform.schemas import TransformScope
+    from app.transform.live_fetch import fetch_live_articles
+    from app.transform.scope import ScopeCandidate
+    from scripts.weclapp.client import WeclappError
+
+    if not isinstance(args, RenumberVorschlagenArgs):
+        args = RenumberVorschlagenArgs.model_validate(args)
+
+    actor = assistant_actor() or {}
+    if "admin" not in (actor.get("roles") or []):
+        return ToolResult(
+            rows=[],
+            total_count=0,
+            hinweis_de=MSG_ADMIN_ONLY,
+        )
+
+    snapshot = resolve_current_snapshot(session)
+    if snapshot is None:
+        return _empty_result(hinweis="Kein abgeschlossener Artikel-Snapshot vorhanden.")
+
+    row = _snapshot_row_for_identifier(session, snapshot, args.article_identifier)
+    if row is None or not row.weclapp_id or not row.article_number:
+        return ToolResult(
+            rows=[],
+            total_count=0,
+            datenstand=snapshot.created_at,
+            datenstand_hinweis_de=_datenstand_hinweis(snapshot),
+            hinweis_de=f"Artikel «{args.article_identifier}» ist nicht im Snapshot.",
+        )
+
+    try:
+        client = _weclapp_client_for_assistant(session)
+    except ValueError as exc:
+        return ToolResult(
+            rows=[],
+            total_count=0,
+            datenstand=snapshot.created_at,
+            datenstand_hinweis_de=_datenstand_hinweis(snapshot),
+            hinweis_de=str(exc),
+        )
+
+    candidate = ScopeCandidate(
+        article_number=row.article_number,
+        weclapp_id=row.weclapp_id,
+    )
+    try:
+        ctx = prefetch_renumber_context(session, client)
+        fetched = fetch_live_articles(client, [candidate])
+    except WeclappError as exc:
+        return ToolResult(
+            rows=[],
+            total_count=1,
+            datenstand=snapshot.created_at,
+            datenstand_hinweis_de=_datenstand_hinweis(snapshot),
+            hinweis_de=str(exc),
+        )
+
+    if candidate.weclapp_id in fetched.gone_ids:
+        return ToolResult(
+            rows=[],
+            total_count=1,
+            datenstand=snapshot.created_at,
+            datenstand_hinweis_de=_datenstand_hinweis(snapshot),
+            hinweis_de="Artikel ist in weclapp nicht mehr vorhanden.",
+        )
+    article = fetched.articles.get(candidate.weclapp_id)
+    if not isinstance(article, dict):
+        return ToolResult(
+            rows=[],
+            total_count=1,
+            datenstand=snapshot.created_at,
+            datenstand_hinweis_de=_datenstand_hinweis(snapshot),
+            hinweis_de="Live-Artikel konnte nicht geladen werden.",
+        )
+
+    number = str(article.get("articleNumber") or row.article_number)
+    eligibility = evaluate_eligibility(
+        article=article,
+        weclapp_id=candidate.weclapp_id,
+        ctx=ctx,
+    )
+    destination = destination_pair_for_article(article, ctx)
+    payload = _renumber_row_payload(
+        {
+            "weclapp_id": candidate.weclapp_id,
+            "article_number": number,
+            "number_pair": "",
+            "category_pair": (
+                f"{destination[0]}.{destination[1]}" if destination else ""
+            ),
+            "eligibility": eligibility,
+        }
+    )
+    if not eligibility.ok:
+        from app.article_renumber_eligibility import (
+            REASON_ALIAS,
+            REASON_DOCUMENT,
+            REASON_MOVEMENT,
+            REASON_NO_CHANGE,
+            REASON_REGISTRY,
+            REASON_STOCK,
+            REASON_SUPPLY_SOURCE,
+        )
+
+        check_to_reason = {
+            "no_mismatch": REASON_NO_CHANGE,
+            "no_supply_source": REASON_SUPPLY_SOURCE,
+            "no_alias_row": REASON_ALIAS,
+            "no_stock": REASON_STOCK,
+            "no_movement": REASON_MOVEMENT,
+            "no_document": REASON_DOCUMENT,
+            "registry_ok": REASON_REGISTRY,
+        }
+        labels = []
+        for key in payload["failed_checks"]:
+            code = check_to_reason.get(key)
+            if code:
+                labels.append(REASON_LABELS_DE.get(code, code))
+        label_text = ", ".join(labels) if labels else payload.get("reason_de") or "—"
+        return ToolResult(
+            rows=[payload],
+            total_count=1,
+            datenstand=snapshot.created_at,
+            datenstand_hinweis_de=_datenstand_hinweis(snapshot),
+            hinweis_de=f"Umnummerierung nicht möglich: {label_text}.",
+        )
+
+    spec = ArticleRenumberSpec(
+        scope=TransformScope(article_numbers=[number]),
+    )
+    return ToolResult(
+        rows=[{"spec": spec.model_dump(mode="json"), "eligibility": payload}],
+        total_count=1,
+        datenstand=snapshot.created_at,
+        datenstand_hinweis_de=_datenstand_hinweis(snapshot),
+        hinweis_de=(
+            "Vorschlag für Artikelnummer neu vergeben (Nummer leitet der Allocator ab). "
+            "Du kannst die Vorschau öffnen."
+        ),
+    )

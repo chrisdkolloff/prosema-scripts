@@ -9,7 +9,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.article_write import ArticleWriteOutcome, update_article
+from app.article_write import ArticleWriteOutcome, ArticleWriteResult, update_article
 from app.models import TransformChunk, TransformRow, TransformRun
 from app.transform.preview import TransformAuthAbort
 from app.transform.schemas import MSG_RERUN_NON_IDEM, TransformSpec, spec_has_non_idempotent_ops
@@ -106,6 +106,10 @@ def approve_chunk(
                 row.row_status = "DECLINED"
         for row in extra:
             row.row_status = "CHANGED"
+    from app.article_renumber import freeze_renumber_rows, is_article_renumber_spec
+
+    if is_article_renumber_spec(run.spec):
+        freeze_renumber_rows(chosen)
     chunk = TransformChunk(
         run_id=run.id,
         chunk_index=chunk_index,
@@ -176,6 +180,7 @@ def apply_chunk(
     oid: str,
     actor_name: str | None = None,
     client: WeclappClient | None = None,
+    job_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Apply unattempted rows in the chunk. Commits after each row."""
     if chunk.status not in {"approved", "applying", "applied", "failed"}:
@@ -184,16 +189,29 @@ def apply_chunk(
     if run is None:
         raise ValueError("Transform-Lauf nicht gefunden")
     is_rerun = chunk.status in {"applying", "applied", "failed"}
+    from app.article_renumber import (
+        approved_number_from_row,
+        is_article_renumber_spec,
+        renumber_payload_from_row,
+    )
     from app.group_assign import is_group_assign_spec, target_category_id_from_row
 
+    article_renumber = is_article_renumber_spec(run.spec)
     group_assign = is_group_assign_spec(run.spec)
-    spec = None if group_assign else TransformSpec.model_validate(run.spec)
+    spec = None if (group_assign or article_renumber) else TransformSpec.model_validate(run.spec)
     refuse_open = is_rerun and spec is not None and spec_has_non_idempotent_ops(spec)
     chunk.status = "applying"
     chunk.error = None
     db.commit()
 
     wc = client or weclapp_client_for(db, oid)
+    renumber_ctx = None
+    if article_renumber:
+        from app.article_renumber import assert_admin_renumber_job
+        from app.article_renumber_eligibility import prefetch_renumber_context
+
+        assert_admin_renumber_job(job_payload or {})
+        renumber_ctx = prefetch_renumber_context(db, wc)
     resolver = CustomAttributeResolver(wc)
     actor = actor_name or oid
     run_id = str(run.id)
@@ -217,7 +235,44 @@ def apply_chunk(
             db.commit()
             continue
         expected = versions.get(row.weclapp_id) or row.version_at_preview
-        if group_assign:
+        if article_renumber:
+            from app.article_renumber_eligibility import EligibilityResult
+            from app.article_renumber_write import update_article_number
+
+            payload = renumber_payload_from_row(row)
+            new_number = approved_number_from_row(row)
+            dest_label = str(payload.get("destination_pair") or "")
+            parts = dest_label.split(".", 1)
+            destination = (parts[0], parts[1]) if len(parts) == 2 else ("", "")
+            if not new_number or not destination[0]:
+                result = ArticleWriteResult(
+                    outcome=ArticleWriteOutcome.REJECTED,
+                    article_id=row.weclapp_id,
+                    article_number=row.article_number,
+                    message=str(payload.get("reason_code") or "missing approved number"),
+                    weclapp_detail={"reason_code": payload.get("reason_code")},
+                )
+            else:
+                result = update_article_number(
+                    db=db,
+                    client=wc,
+                    article_id=row.weclapp_id,
+                    new_number=new_number,
+                    actor_oid=oid,
+                    actor_name=actor,
+                    eligibility=EligibilityResult(
+                        ok=True,
+                        reason_code=None,
+                        checks=payload.get("eligibility") or {},
+                    ),
+                    destination_pair=destination,
+                    shopify_sku_match=bool(payload.get("shopify_sku_match")),
+                    prefetch_ctx=renumber_ctx,
+                    snapshot_id=run.snapshot_id,
+                    transform_run_id=run_id,
+                    transform_chunk_id=chunk_id,
+                )
+        elif group_assign:
             from app.article_write import update_article_category
 
             result = update_article_category(
@@ -283,10 +338,21 @@ def start_transform_apply(
     chunk = db.get(TransformChunk, chunk_id)
     if chunk is None:
         raise ValueError("Abschnitt nicht gefunden")
+    from app.article_renumber import assert_admin_renumber_actor, is_article_renumber_spec
+
+    run = db.get(TransformRun, chunk.run_id)
+    job_payload: dict[str, Any] = {
+        "transform_chunk_id": str(chunk.id),
+        "actor_name": str(user.get("name") or user["oid"]),
+    }
+    if run is not None and is_article_renumber_spec(run.spec):
+        assert_admin_renumber_actor(user)
+        job_payload["requires_admin"] = True
+        job_payload["creator_roles"] = list(user.get("roles") or [])
     job = enqueue(
         db,
         "article_transform_apply",
-        {"transform_chunk_id": str(chunk.id), "actor_name": str(user.get("name") or user["oid"])},
+        job_payload,
         user,
     )
     return chunk, job

@@ -168,6 +168,9 @@ EOF
 fi
 
 echo "Dumping production and restoring into local database…"
-pg_dump "$PROD_URL" --no-owner --no-acl --clean --if-exists | psql "$LOCAL_URL" -v ON_ERROR_STOP=1 -q
+# pg_dump from PG17+ emits SET transaction_timeout; older local servers reject it.
+pg_dump "$PROD_URL" --no-owner --no-acl --clean --if-exists \
+  | sed -E '/^SET transaction_timeout /d' \
+  | psql "$LOCAL_URL" -v ON_ERROR_STOP=1 -q
 
 echo "Done. Local database now matches production."

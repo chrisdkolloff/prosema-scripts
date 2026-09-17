@@ -24,7 +24,7 @@ import time
 import uuid
 from contextvars import ContextVar, Token
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 
 from sqlalchemy import ColumnElement, bindparam, case, cast, false, func, not_, or_, select
 from sqlalchemy.orm import Session
@@ -50,6 +50,21 @@ DOT_NUMBER_PATTERN = r"^-?[0-9]+(\.[0-9]+)?$"
 _PINNED_SNAPSHOT: ContextVar[ArticleSnapshot | None] = ContextVar(
     "assistant_pinned_snapshot", default=None
 )
+_PINNED_ACTOR: ContextVar[dict[str, Any] | None] = ContextVar(
+    "assistant_actor", default=None
+)
+
+
+def set_assistant_actor(user: dict[str, Any]) -> Token[dict[str, Any] | None]:
+    return _PINNED_ACTOR.set(dict(user))
+
+
+def reset_assistant_actor(token: Token[dict[str, Any] | None]) -> None:
+    _PINNED_ACTOR.reset(token)
+
+
+def assistant_actor() -> dict[str, Any] | None:
+    return _PINNED_ACTOR.get()
 
 
 def set_pinned_snapshot(snapshot: ArticleSnapshot) -> Token[ArticleSnapshot | None]:

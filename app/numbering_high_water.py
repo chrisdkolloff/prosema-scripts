@@ -12,7 +12,13 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import ArticleBatch, ArticleBatchRow, ArticleSnapshot, ArticleSnapshotRow
+from app.models import (
+    ArticleBatch,
+    ArticleBatchRow,
+    ArticleSnapshot,
+    ArticleSnapshotRow,
+    RetiredArticleNumber,
+)
 from core.numbering import Scheme
 
 
@@ -62,6 +68,13 @@ def seed_high_water(
     if exclude_batch_id is not None:
         stmt = stmt.where(ArticleBatch.id != exclude_batch_id)
     for (number,) in db.execute(stmt):
+        match = pattern.match((number or "").strip())
+        if match is None:
+            continue
+        key = (match.group(1), match.group(2))
+        counters[key] = max(counters.get(key, 0), int(match.group(3)))
+
+    for number in db.scalars(select(RetiredArticleNumber.retired_number)):
         match = pattern.match((number or "").strip())
         if match is None:
             continue

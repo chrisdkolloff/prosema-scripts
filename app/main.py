@@ -24,6 +24,7 @@ from app.config import settings
 from app.health import build_health
 from app.jobs import _shutdown as _worker_shutdown
 from app.jobs import worker_loop
+from app.routes import article_renumber as article_renumber_routes
 from app.routes import batches as batches_routes
 from app.routes import einstellungen as einstellungen_routes
 from app.routes import gruppen as gruppen_routes
@@ -125,6 +126,7 @@ app.include_router(tools_routes.router)
 app.include_router(batches_routes.router)
 app.include_router(snapshots_routes.router)
 app.include_router(transform_routes.router)
+app.include_router(article_renumber_routes.router)
 app.include_router(supply_source_runs_routes.router)
 app.include_router(supply_exports_routes.router)
 app.add_api_route("/auth/login", login, methods=["GET"])

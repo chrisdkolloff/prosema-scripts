@@ -123,8 +123,11 @@ def _scope_phrase_de(spec: TransformSpec) -> str:
 
 
 def format_spec_summary_de(spec: TransformSpec | Any) -> str:
+    from app.article_renumber import ArticleRenumberSpec
     from app.group_assign import GroupAssignSpec, format_group_assign_summary_de
 
+    if isinstance(spec, ArticleRenumberSpec):
+        return "Artikelnummer neu vergeben (Nummer an weclapp-Kategorie anpassen)."
     if isinstance(spec, GroupAssignSpec):
         return format_group_assign_summary_de(spec)
     fields = ", ".join(FIELD_LABELS_DE.get(key, key) for key in spec.fields)
@@ -161,6 +164,13 @@ def proposed_spec_from_tool_calls(
         if name == "transform_vorschlagen":
             try:
                 return TransformSpec.model_validate(raw)
+            except (ValueError, TypeError):
+                return None
+        if name == "renumber_vorschlagen":
+            from app.article_renumber import ArticleRenumberSpec
+
+            try:
+                return ArticleRenumberSpec.model_validate(raw)
             except (ValueError, TypeError):
                 return None
     return None

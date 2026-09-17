@@ -1,7 +1,21 @@
 # PROSEMA release history — edit this file to bump the version and document changes.
 # The top-level `version` is shown in the site header; `[[releases]]` entries appear on /changelog.
 
-version = "1.3.5"
+version = "1.3.6"
+
+[[releases]]
+version = "1.3.6"
+date = "2026-09-17"
+summary = "Update production database dump script to remove SET transaction_timeout for compatibility with older PostgreSQL versions. Modify retention test for article snapshots to clarify comments and improve snapshot creation logic. Enhance assertions in the test for vorschlagen transformation to reflect updated function names and expected outcomes. (+5 more)"
+changes = [
+  "Implement article renumbering functionality across various components. Add new RetiredArticleNumber model to track vacated article numbers. Update job handling in `apply.py` and `preview.py` to support article renumbering, including admin checks and payload management. Enhance templates to display renumbering warnings and refused articles. Refactor related functions and integrate renumbering logic into existing workflows, ensuring proper handling of article transformations and user notifications.",
+  "Add alias handling to article renumbering eligibility checks",
+  "Enhance article renumbering logic by integrating alias checks into eligibility evaluations. Update related models and summary mismatch handling to accommodate new alias functionality.",
+  "Refactor article renumbering eligibility checks to separate manual and live supply source alias handling. Update context management to accommodate new alias sets and enhance eligibility evaluation logic for improved accuracy.",
+  "Implement article renumbering functionality with new eligibility checks and context management. Introduce `RenumberKandidatenArgs` and `RenumberVorschlagenArgs` schemas for handling renumbering requests. Enhance prompts and tools to support renumbering operations, including admin checks and eligibility evaluations. Update related components to ensure proper integration and handling of renumbering logic.",
+  "Update production database dump script to remove SET transaction_timeout for compatibility with older PostgreSQL versions. Modify retention test for article snapshots to clarify comments and improve snapshot creation logic. Enhance assertions in the test for vorschlagen transformation to reflect updated function names and expected outcomes.",
+]
+
 
 [[releases]]
 version = "1.3.5"

@@ -1,0 +1,50 @@
+# Write-mode renumber fixtures. Run with:
+#   python tests/eval/run_eval.py --set renumber --provider azure --model gpt-4.1-mini
+#   python tests/eval/run_eval.py --set renumber --repeat 3
+#
+# Requires weclapp token on RENUMBER_EVAL_OID (default: smoke admin oid).
+
+- id: wrong-group-list
+  frage: >
+    Welche Artikel sind gerade in der falschen Haupt- und Untergruppe — also
+    deren Artikelnummer passt nicht zur weclapp-Kategorie?
+  expect:
+    outcome: answered
+    tool: renumber_kandidaten
+    scope: all_mismatches
+  notes: >
+    Must call renumber_kandidaten with scope all_mismatches and summarise
+    total_count (verify_numbers). Zero eligible is valid today.
+
+- id: why-ineligible-one
+  frage: >
+    Warum kann der Artikel 020.060.0010 nicht neu nummeriert werden?
+  expect:
+    outcome: answered
+    tool: renumber_kandidaten
+    scope: single
+    article_identifier: "020.060.0010"
+    reason_contains: Bezugsquelle
+  notes: >
+    Live mismatch with supply source. Tool should name UI label
+    «Bezugsquelle vorhanden» or equivalent reason_de.
+
+- id: refuse-live-supply-source
+  frage: >
+    Bitte nummeriere den Artikel 020.060.0010 neu, damit die Nummer zur
+    Kategorie passt.
+  expect:
+    outcome: refused
+    tool: renumber_vorschlagen
+    reason_contains: Bezugsquelle
+  notes: >
+    Must not return article_renumber spec; refusal cites supply source.
+
+- id: refuse-target-number
+  frage: >
+    Nummeriere den Artikel 020.060.0010 auf 110.020.0150 um.
+  expect:
+    outcome: refused
+    forbid_spec: true
+  notes: >
+    User-named target must be refused or ignored — no proposal carrying 110.020.0150.

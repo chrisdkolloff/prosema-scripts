@@ -938,6 +938,7 @@ def _last_proposed_spec(tool_calls: list[dict[str, Any]]) -> dict[str, Any] | No
         if str(call.get("name") or "") not in {
             "transform_vorschlagen",
             "gruppen_zuordnen",
+            "renumber_vorschlagen",
         }:
             continue
         spec = call.get("spec")
@@ -1259,6 +1260,261 @@ def render_transform_report(
     return "\n".join(lines)
 
 
+RENUMBER_QUESTIONS_PATH = EVAL_DIR / "renumber_questions.yaml"
+RENUMBER_EVAL_OID = __import__("os").environ.get(
+    "RENUMBER_EVAL_OID", "85156431-01ba-4bcf-844d-9243fd96e229"
+)
+RENUMBER_EVAL_USER = {
+    "oid": RENUMBER_EVAL_OID,
+    "name": "Renumber eval",
+    "email": "renumber-eval@local",
+    "roles": ["user", "admin"],
+}
+
+
+@dataclass
+class RenumberExpect:
+    outcome: str
+    tool: str | None = None
+    scope: str | None = None
+    article_identifier: str | None = None
+    reason_contains: str | None = None
+    forbid_spec: bool = False
+
+
+@dataclass
+class RenumberQuestion:
+    id: str
+    question_de: str
+    expect: RenumberExpect
+    notes: str = ""
+
+
+@dataclass
+class RenumberScore:
+    tool: Mark
+    scope: Mark
+    outcome: Mark
+    reason: Mark
+    verified: Mark
+    forbid_spec: Mark
+
+    def overall(self) -> Mark:
+        marks = [self.tool, self.scope, self.outcome, self.reason, self.verified, self.forbid_spec]
+        scored = [m for m in marks if m != "n/a"]
+        return "pass" if scored and all(m == "pass" for m in scored) else "fail"
+
+    def failed_names(self) -> list[str]:
+        pairs = [
+            ("tool", self.tool),
+            ("scope", self.scope),
+            ("outcome", self.outcome),
+            ("reason", self.reason),
+            ("verified", self.verified),
+            ("forbid_spec", self.forbid_spec),
+        ]
+        return [name for name, mark in pairs if mark == "fail"]
+
+
+@dataclass
+class RenumberQuestionResult:
+    question: RenumberQuestion
+    score: RenumberScore
+    ask_outcome: str
+    answer_de: str | None
+    hinweis_de: str | None
+    tool_calls: list[dict[str, Any]]
+    spec: dict[str, Any] | None
+    total_count: int | None
+    prompt_tokens: int
+    completion_tokens: int
+    model: str
+    snapshot_id: str | None
+    error: str | None
+
+
+def load_renumber_questions(path: Path) -> list[RenumberQuestion]:
+    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(raw, list) or not raw:
+        raise SystemExit(f"No renumber questions in {path}")
+    out: list[RenumberQuestion] = []
+    for entry in raw:
+        expect_raw = entry.get("expect") or {}
+        outcome = str(expect_raw.get("outcome") or "").strip()
+        if outcome not in {"answered", "proposed", "refused"}:
+            raise SystemExit(f"{entry.get('id')}: unknown outcome {outcome!r}")
+        out.append(
+            RenumberQuestion(
+                id=str(entry.get("id") or "").strip(),
+                question_de=str(entry.get("frage") or "").strip(),
+                notes=str(entry.get("notes") or "").strip(),
+                expect=RenumberExpect(
+                    outcome=outcome,
+                    tool=str(expect_raw["tool"]).strip() if expect_raw.get("tool") else None,
+                    scope=str(expect_raw["scope"]).strip() if expect_raw.get("scope") else None,
+                    article_identifier=(
+                        str(expect_raw["article_identifier"]).strip()
+                        if expect_raw.get("article_identifier")
+                        else None
+                    ),
+                    reason_contains=(
+                        str(expect_raw["reason_contains"])
+                        if expect_raw.get("reason_contains") is not None
+                        else None
+                    ),
+                    forbid_spec=bool(expect_raw.get("forbid_spec")),
+                ),
+            )
+        )
+    return out
+
+
+def _last_renumber_spec(tool_calls: list[dict[str, Any]]) -> dict[str, Any] | None:
+    for call in reversed(tool_calls):
+        if str(call.get("name") or "") != "renumber_vorschlagen":
+            continue
+        spec = call.get("spec")
+        if isinstance(spec, dict) and spec.get("kind") == "article_renumber":
+            return spec
+    return None
+
+
+def score_renumber_question(
+    question: RenumberQuestion,
+    *,
+    spec: dict[str, Any] | None,
+    tool_calls: list[dict[str, Any]],
+    ask_outcome: str,
+    answer_de: str | None,
+    hinweis_de: str | None,
+) -> RenumberScore:
+    expect = question.expect
+    prose = f"{answer_de or ''}\n{hinweis_de or ''}"
+    names = [str(c.get("name") or "") for c in tool_calls]
+
+    tool_mark: Mark = "n/a"
+    if expect.tool:
+        tool_mark = "pass" if expect.tool in names else "fail"
+
+    scope_mark: Mark = "n/a"
+    if expect.scope or expect.article_identifier:
+        args = None
+        for call in tool_calls:
+            if call.get("name") == (expect.tool or "renumber_kandidaten"):
+                args = call.get("arguments") or {}
+                break
+        if not isinstance(args, dict):
+            scope_mark = "fail"
+        else:
+            scope_ok = not expect.scope or args.get("scope") == expect.scope
+            ident_ok = (
+                not expect.article_identifier
+                or args.get("article_identifier") == expect.article_identifier
+            )
+            scope_mark = "pass" if scope_ok and ident_ok else "fail"
+
+    if expect.forbid_spec:
+        forbid_mark: Mark = "pass" if spec is None else "fail"
+    else:
+        forbid_mark = "n/a"
+
+    outcome_mark: Mark = "fail"
+    if expect.outcome == "answered":
+        outcome_mark = "pass" if ask_outcome in {"answered", "no_result"} else "fail"
+    elif expect.outcome == "proposed":
+        outcome_mark = "pass" if spec is not None else "fail"
+    elif expect.outcome == "refused":
+        outcome_mark = "pass" if spec is None else "fail"
+
+    reason_mark: Mark = "n/a"
+    if expect.reason_contains:
+        reason_mark = "pass" if expect.reason_contains in prose else "fail"
+
+    verified_mark: Mark = "pass" if ask_outcome != "answered_unverified" else "fail"
+
+    return RenumberScore(
+        tool=tool_mark,
+        scope=scope_mark,
+        outcome=outcome_mark,
+        reason=reason_mark,
+        verified=verified_mark,
+        forbid_spec=forbid_mark,
+    )
+
+
+def run_renumber_question(session, question: RenumberQuestion) -> RenumberQuestionResult:
+    result = ask(
+        session,
+        RENUMBER_EVAL_USER,
+        question.question_de,
+        write_mode=True,
+    )
+    audit = session.get(AssistantQuery, result.audit_id)
+    tool_calls = list(audit.tool_calls) if audit is not None else []
+    spec = _last_renumber_spec(tool_calls)
+    score = score_renumber_question(
+        question,
+        spec=spec,
+        tool_calls=tool_calls,
+        ask_outcome=result.outcome,
+        answer_de=result.answer_de,
+        hinweis_de=result.hinweis_de,
+    )
+    return RenumberQuestionResult(
+        question=question,
+        score=score,
+        ask_outcome=result.outcome,
+        answer_de=result.answer_de,
+        hinweis_de=result.hinweis_de,
+        tool_calls=tool_calls,
+        spec=spec,
+        total_count=result.total_count,
+        prompt_tokens=int(audit.prompt_tokens or 0) if audit is not None else 0,
+        completion_tokens=int(audit.completion_tokens or 0) if audit is not None else 0,
+        model=str(audit.model or "") if audit is not None else "",
+        snapshot_id=str(audit.snapshot_id) if audit is not None and audit.snapshot_id else None,
+        error=str(audit.error) if audit is not None and audit.error else None,
+    )
+
+
+def render_renumber_report(
+    results: list[RenumberQuestionResult],
+    *,
+    provider: str,
+    model: str,
+    snapshot_id: str | None,
+    timestamp: str,
+    repeat: int,
+) -> str:
+    lines = [
+        f"# Renumber write-mode eval {timestamp}",
+        "",
+        f"- provider: `{provider}`",
+        f"- model: `{model or '(unknown)'}`",
+        f"- snapshot_id: `{snapshot_id or '(none)'}`",
+        f"- repeat: {repeat}",
+        "",
+        "| id | run | tool | scope | outcome | reason | verified | forbid | overall |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    by_id: dict[str, list[RenumberQuestionResult]] = {}
+    for item in results:
+        by_id.setdefault(item.question.id, []).append(item)
+    for qid, runs in by_id.items():
+        for index, item in enumerate(runs, start=1):
+            s = item.score
+            lines.append(
+                f"| {qid} | {index}/{len(runs)} | {s.tool} | {s.scope} | {s.outcome} | "
+                f"{s.reason} | {s.verified} | {s.forbid_spec} | {s.overall()} |"
+            )
+    lines.append("")
+    for qid, runs in by_id.items():
+        passed = sum(1 for r in runs if r.score.overall() == "pass")
+        lines.append(f"- **{qid}**: {passed}/{len(runs)} passed")
+    lines.append("")
+    return "\n".join(lines)
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Score assistant tool-calling against a fixed article snapshot."
@@ -1294,9 +1550,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--set",
         dest="eval_set",
-        choices=("read", "write"),
+        choices=("read", "write", "renumber"),
         default="read",
-        help="read: questions.yaml (default). write: transform_questions.yaml with write_mode.",
+        help="read: questions.yaml (default). write: transform_questions.yaml. renumber: renumber_questions.yaml.",
+    )
+    parser.add_argument(
+        "--repeat",
+        type=int,
+        default=1,
+        help="Run each question N times (renumber set; default 1).",
     )
     parser.add_argument(
         "--mock",
@@ -1309,8 +1571,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     write_mode = args.eval_set == "write"
+    renumber_mode = args.eval_set == "renumber"
     questions_path = args.questions or (
-        TRANSFORM_QUESTIONS_PATH if write_mode else QUESTIONS_PATH
+        RENUMBER_QUESTIONS_PATH
+        if renumber_mode
+        else (TRANSFORM_QUESTIONS_PATH if write_mode else QUESTIONS_PATH)
     )
     apply_runtime_settings(provider=args.provider, model=args.model)
     provider = settings.assistant_provider
@@ -1332,7 +1597,33 @@ def main(argv: list[str] | None = None) -> int:
                 "every question will score as unavailable.",
                 file=sys.stderr,
             )
-        if write_mode:
+        if renumber_mode:
+            questions = load_renumber_questions(questions_path)
+            if args.question_id:
+                questions = [q for q in questions if q.id == args.question_id]
+                if not questions:
+                    raise SystemExit(f"No question with id {args.question_id!r}")
+            repeat = max(1, int(args.repeat or 1))
+            print(
+                f"Eval renumber {len(questions)} question(s) x{repeat}  provider={provider}  "
+                f"model={model or '(from server)'}  snapshot={snapshot_id or '(none)'}",
+                file=sys.stderr,
+            )
+            renumber_results: list[RenumberQuestionResult] = []
+            for question in questions:
+                for run_index in range(repeat):
+                    print(f"  {question.id} run {run_index + 1}/{repeat} …", file=sys.stderr, flush=True)
+                    renumber_results.append(run_renumber_question(session, question))
+            report = render_renumber_report(
+                renumber_results,
+                provider=provider,
+                model=model,
+                snapshot_id=snapshot_id,
+                timestamp=timestamp,
+                repeat=repeat,
+            )
+            failed = any(item.score.overall() == "fail" for item in renumber_results)
+        elif write_mode:
             questions = load_transform_questions(questions_path)
             if args.question_id:
                 questions = [q for q in questions if q.id == args.question_id]

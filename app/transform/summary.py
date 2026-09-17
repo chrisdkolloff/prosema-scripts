@@ -38,9 +38,21 @@ def preview_summary(run: TransformRun, *, changed_rows: int | None = None) -> st
         lines.append(f"{standalone} Änderungen an eigenständigen Vorkommen")
         lines.append(f"{embedded} Änderungen innerhalb eines zusammengesetzten Wortes")
     if run.spec:
+        from app.article_renumber import is_article_renumber_spec
         from app.group_assign import is_group_assign_spec
 
-        if not is_group_assign_spec(run.spec):
+        if is_article_renumber_spec(run.spec):
+            meta = (run.word_positions or {}).get("renumber") or {}
+            refused = sum(
+                1 for row in (run.rows or []) if row.row_status == "REFUSED"
+            )
+            if refused:
+                lines.append(f"{refused} Artikel abgelehnt (siehe Tabelle unten).")
+            if meta.get("shopify_sku_warnings"):
+                lines.append(
+                    f"Shopify-SKU-Warnung: {meta['shopify_sku_warnings']} Artikel."
+                )
+        elif not is_group_assign_spec(run.spec):
             spec = TransformSpec.model_validate(run.spec)
             lines.extend(spec.idempotency_warnings)
     return "\n".join(lines)

@@ -110,8 +110,11 @@ def run_preview(
     snapshot = db.get(ArticleSnapshot, run.snapshot_id)
     if snapshot is None or snapshot.status != "complete":
         raise ValueError("Snapshot nicht gefunden oder nicht abgeschlossen")
+    from app.article_renumber import is_article_renumber_spec, run_article_renumber_preview
     from app.group_assign import is_group_assign_spec, run_group_assign_preview
 
+    if is_article_renumber_spec(run.spec):
+        return run_article_renumber_preview(db, run, oid=oid, client=client)
     if is_group_assign_spec(run.spec):
         return run_group_assign_preview(db, run, oid=oid, client=client)
     spec = TransformSpec.model_validate(run.spec)
@@ -263,23 +266,34 @@ def start_transform_preview(
 ) -> tuple[TransformRun, Any]:
     from app.jobs import enqueue
 
+    from app.article_renumber import assert_admin_renumber_actor, is_article_renumber_spec
+
+    spec_raw = spec.model_dump(mode="json") if hasattr(spec, "model_dump") else spec
+    if is_article_renumber_spec(spec_raw):
+        assert_admin_renumber_actor(user)
     snapshot = db.get(ArticleSnapshot, snapshot_id)
     if snapshot is None or snapshot.status != "complete":
         raise ValueError("Snapshot nicht gefunden oder nicht abgeschlossen")
+    scope = getattr(spec, "scope", None)
+    candidate_guess = len(getattr(scope, "article_numbers", None) or [])
     run = TransformRun(
         created_by_oid=str(user["oid"]),
         snapshot_id=snapshot_id,
         spec=spec.model_dump(mode="json"),
         status="previewing",
-        candidate_count=len(spec.scope.article_numbers or []),
+        candidate_count=candidate_guess or None,
         error=None,
     )
     db.add(run)
     db.flush()
+    job_payload: dict[str, Any] = {"transform_run_id": str(run.id)}
+    if is_article_renumber_spec(run.spec):
+        job_payload["requires_admin"] = True
+        job_payload["creator_roles"] = list(user.get("roles") or [])
     job = enqueue(
         db,
         "article_transform_preview",
-        {"transform_run_id": str(run.id)},
+        job_payload,
         user,
     )
     return run, job
