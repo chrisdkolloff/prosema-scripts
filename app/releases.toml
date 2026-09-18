@@ -1,7 +1,16 @@
 # PROSEMA release history — edit this file to bump the version and document changes.
 # The top-level `version` is shown in the site header; `[[releases]]` entries appear on /changelog.
 
-version = "1.3.10"
+version = "1.3.11"
+
+[[releases]]
+version = "1.3.11"
+date = "2026-09-18"
+summary = "Refactor group usage logic in group_usage.py to streamline article deletion checks by replacing the snapshot query with a new count_snapshot_category_assignment function. Update refuse_delete_if_articles_remain to utilize haupt_code and unter_code parameters for improved clarity. Adjust tests in test_gruppen.py to reflect changes in snapshot handling and ensure accurate validation of deletion conditions."
+changes = [
+  "Refactor group usage logic in group_usage.py to streamline article deletion checks by replacing the snapshot query with a new count_snapshot_category_assignment function. Update refuse_delete_if_articles_remain to utilize haupt_code and unter_code parameters for improved clarity. Adjust tests in test_gruppen.py to reflect changes in snapshot handling and ensure accurate validation of deletion conditions.",
+]
+
 
 [[releases]]
 version = "1.3.10"

@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from app.assistant.catalog import snapshot_for_query
 from app.groups_service import GroupRegistryError
-from app.models import ArticleSnapshotRow, Hauptgruppe, Untergruppe
+from app.models import Hauptgruppe, Untergruppe
+from app.snapshot_groups import count_snapshot_category_assignment
 from scripts.weclapp.client import WeclappClient, WeclappError
 
 
@@ -34,52 +33,24 @@ def _refuse(count: int, *, number_prefix: str, kind: str) -> None:
     )
 
 
-def _snapshot_article_count(
-    db: Session, *, number_prefix: str, group_name: str, kind: str
-) -> int | None:
-    snapshot = snapshot_for_query(db)
-    if snapshot is None:
-        return None
-    prefix = f"{number_prefix}."
-    name_match = (
-        ArticleSnapshotRow.hauptgruppe_code == group_name
-        if kind == "hauptgruppe"
-        else ArticleSnapshotRow.untergruppe_code == group_name
-    )
-    count = db.scalar(
-        select(func.count())
-        .select_from(ArticleSnapshotRow)
-        .where(
-            ArticleSnapshotRow.snapshot_id == snapshot.id,
-            or_(
-                ArticleSnapshotRow.article_number.startswith(prefix),
-                name_match,
-            ),
-        )
-    )
-    return int(count or 0)
-
-
 def refuse_delete_if_articles_remain(
     db: Session,
     *,
     number_prefix: str,
+    haupt_code: str,
+    unter_code: str = "",
     kind: str,
-    group_name: str,
     weclapp_count: int | None = None,
 ) -> None:
+    """Block delete when articles are still in this weclapp category (not number prefix)."""
+    snapshot_count = count_snapshot_category_assignment(
+        db, haupt_code=haupt_code, unter_code=unter_code
+    )
+    if snapshot_count is not None:
+        _refuse(snapshot_count, number_prefix=number_prefix, kind=kind)
+        return
     if weclapp_count is not None:
         _refuse(weclapp_count, number_prefix=number_prefix, kind=kind)
-        return
-    snapshot_count = _snapshot_article_count(
-        db, number_prefix=number_prefix, group_name=group_name, kind=kind
-    )
-    if snapshot_count is None:
-        # No overview to check; allow. Callers with a weclapp client already
-        # passed weclapp_count. locked_at is set at create and is not evidence
-        # that article numbers exist under this group.
-        return
-    _refuse(snapshot_count, number_prefix=number_prefix, kind=kind)
 
 
 def _weclapp_unter_count(client: WeclappClient | None, group: Untergruppe) -> int | None:
@@ -120,8 +91,9 @@ def refuse_untergruppe_delete(
     refuse_delete_if_articles_remain(
         db,
         number_prefix=f"{parent.code}.{group.code}",
+        haupt_code=parent.code,
+        unter_code=group.code,
         kind="untergruppe",
-        group_name=group.name,
         weclapp_count=_weclapp_unter_count(client, group),
     )
 
@@ -132,7 +104,7 @@ def refuse_hauptgruppe_delete(
     refuse_delete_if_articles_remain(
         db,
         number_prefix=group.code,
+        haupt_code=group.code,
         kind="hauptgruppe",
-        group_name=group.name,
         weclapp_count=_weclapp_haupt_count(client, group),
     )

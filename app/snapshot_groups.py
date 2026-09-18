@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.groups_service import list_active_hauptgruppen, list_active_untergruppen
@@ -202,6 +202,30 @@ def _assignment_needles(
                 if ug == unter_code:
                     unter_needles.update({child.code, child.name})
     return haupt_needles, unter_needles
+
+
+def count_snapshot_category_assignment(
+    db: Session,
+    *,
+    haupt_code: str,
+    unter_code: str = "",
+) -> int | None:
+    """Articles assigned to this group in the latest snapshot (weclapp category), or None."""
+    from app.assistant.catalog import snapshot_for_query
+
+    snapshot = snapshot_for_query(db)
+    if snapshot is None:
+        return None
+    lookup = build_registry_lookup(db)
+    haupt_needles, unter_needles = _assignment_needles(
+        lookup, haupt_code=haupt_code.strip(), unter_code=unter_code.strip()
+    )
+    stmt = select(func.count()).where(ArticleSnapshotRow.snapshot_id == snapshot.id)
+    if haupt_needles:
+        stmt = stmt.where(ArticleSnapshotRow.hauptgruppe_code.in_(haupt_needles))
+    if unter_needles:
+        stmt = stmt.where(ArticleSnapshotRow.untergruppe_code.in_(unter_needles))
+    return int(db.scalar(stmt) or 0)
 
 
 def apply_registry_group_filters(

@@ -638,7 +638,7 @@ def test_restore_untergruppe_on_tools_host_posts_weclapp(admin_client, db_sessio
 
     parent = _make_hauptgruppe(db_session, name="Bestehend")
     child = _make_untergruppe(db_session, parent, code="020", name="Heizmatten")
-    with patch("app.group_usage.snapshot_for_query", return_value=None):
+    with patch("app.assistant.catalog.snapshot_for_query", return_value=None):
         soft_delete_untergruppe(db_session, child, actor=ACTOR)
     db_session.flush()
     mock_wc = MagicMock()
@@ -761,7 +761,13 @@ def test_gruppen_list_skips_sync_check_locally(admin_client, db_session):
     assert "alert-warning" not in response.text
 
 
-def _snapshot_with_number(db_session, article_number: str) -> ArticleSnapshot:
+def _snapshot_with_number(
+    db_session,
+    article_number: str,
+    *,
+    hauptgruppe_code: str = "",
+    untergruppe_code: str = "",
+) -> ArticleSnapshot:
     from app.config import settings
 
     snap = ArticleSnapshot(
@@ -782,6 +788,8 @@ def _snapshot_with_number(db_session, article_number: str) -> ArticleSnapshot:
             data={"Prosema Artikelnummer": article_number},
             article_number=article_number,
             article_name="Heizmatte",
+            hauptgruppe_code=hauptgruppe_code,
+            untergruppe_code=untergruppe_code,
             active=True,
             weclapp_id="art-1",
         )
@@ -794,8 +802,13 @@ def test_delete_untergruppe_refused_when_articles_remain(admin_client, db_sessio
     parent = _make_hauptgruppe(db_session, name="HeizHG")
     child = _make_untergruppe(db_session, parent, code="020", name="Heizmatten")
     db_session.flush()
-    snap = _snapshot_with_number(db_session, f"{parent.code}.020.0001")
-    with patch("app.group_usage.snapshot_for_query", return_value=snap):
+    snap = _snapshot_with_number(
+        db_session,
+        f"{parent.code}.020.0001",
+        hauptgruppe_code=parent.name,
+        untergruppe_code=child.name,
+    )
+    with patch("app.assistant.catalog.snapshot_for_query", return_value=snap):
         response = admin_client.post(
             f"/untergruppen/{child.id}/loeschen",
             follow_redirects=False,
@@ -814,8 +827,13 @@ def test_delete_untergruppe_htmx_swaps_warning(admin_client, db_session):
     parent = _make_hauptgruppe(db_session, name="HeizHG")
     child = _make_untergruppe(db_session, parent, code="020", name="Heizmatten")
     db_session.flush()
-    snap = _snapshot_with_number(db_session, f"{parent.code}.020.0001")
-    with patch("app.group_usage.snapshot_for_query", return_value=snap):
+    snap = _snapshot_with_number(
+        db_session,
+        f"{parent.code}.020.0001",
+        hauptgruppe_code=parent.name,
+        untergruppe_code=child.name,
+    )
+    with patch("app.assistant.catalog.snapshot_for_query", return_value=snap):
         response = admin_client.post(
             f"/untergruppen/{child.id}/loeschen",
             headers={"HX-Request": "true"},
@@ -850,7 +868,7 @@ def test_delete_untergruppe_refused_from_weclapp_count(admin_client, db_session)
     ]
     mock_wc.get_count.return_value = 4
     with (
-        patch("app.group_usage.snapshot_for_query", return_value=None),
+        patch("app.assistant.catalog.snapshot_for_query", return_value=None),
         patch("app.routes.gruppen.weclapp_client_for", return_value=mock_wc),
     ):
         response = admin_client.post(
@@ -864,6 +882,31 @@ def test_delete_untergruppe_refused_from_weclapp_count(admin_client, db_session)
     assert child.deleted_at is None
 
 
+def test_delete_untergruppe_allowed_when_only_number_prefix_matches_snapshot(
+    admin_client, db_session
+):
+    """Legacy article numbers must not block delete after category reassignment."""
+    parent = _make_hauptgruppe(db_session, name="HeizHG")
+    child = _make_untergruppe(db_session, parent, code="020", name="Heizmatten")
+    other = _make_hauptgruppe(db_session, name="OtherHG")
+    db_session.flush()
+    _snapshot_with_number(
+        db_session,
+        f"{parent.code}.{child.code}.0001",
+        hauptgruppe_code=other.name,
+        untergruppe_code="Elsewhere",
+    )
+    db_session.flush()
+    with patch("app.routes.gruppen._optional_weclapp_client", return_value=None):
+        response = admin_client.post(
+            f"/untergruppen/{child.id}/loeschen",
+            follow_redirects=False,
+        )
+    assert response.status_code == 303
+    db_session.refresh(child)
+    assert child.deleted_at is not None
+
+
 def test_delete_untergruppe_allowed_when_locked_and_no_snapshot(
     admin_client, db_session
 ):
@@ -872,7 +915,7 @@ def test_delete_untergruppe_allowed_when_locked_and_no_snapshot(
     child = _make_untergruppe(db_session, parent, code="020", name="LockUG")
     db_session.flush()
     assert child.locked_at is not None
-    with patch("app.group_usage.snapshot_for_query", return_value=None):
+    with patch("app.assistant.catalog.snapshot_for_query", return_value=None):
         response = admin_client.post(
             f"/untergruppen/{child.id}/loeschen",
             follow_redirects=False,
