@@ -91,6 +91,39 @@ def user_client(db_session):
         app.dependency_overrides.clear()
 
 
+REGISTRY_ACTOR = {"oid": "registry-seed", "name": "Registry Seed"}
+
+
+def _seed_registry_for_snapshot_tests(db_session) -> None:
+    from app.groups_service import (
+        create_hauptgruppe,
+        create_untergruppe,
+        resolve_hauptgruppe,
+        resolve_untergruppe,
+    )
+
+    def ensure_haupt(code: str, name: str):
+        group = resolve_hauptgruppe(db_session, code)
+        if group is None:
+            group = create_hauptgruppe(
+                db_session, code=code, name=name, actor=REGISTRY_ACTOR
+            )
+        return group
+
+    def ensure_unter(haupt, code: str, name: str) -> None:
+        if resolve_untergruppe(db_session, haupt, code) is None:
+            create_untergruppe(
+                db_session, haupt, code=code, name=name, actor=REGISTRY_ACTOR
+            )
+
+    holz = ensure_haupt("010", "Holz")
+    ensure_unter(holz, "020", "Bretter")
+    ensure_unter(holz, "030", "Latten")
+    metall = ensure_haupt("020", "Metall")
+    ensure_unter(metall, "010", "Schrauben")
+    db_session.flush()
+
+
 def _sample_master(article_number: str, **extra: str) -> dict[str, str]:
     from scripts.weclapp.master_columns import EXPORT_COLUMNS
 
@@ -323,6 +356,7 @@ def test_status_poll_redirects_when_snapshot_complete(db_session, user_client):
 
 @patch("app.config.settings.weclapp_tenant", TENANT)
 def test_filter_hauptgruppe_matches_count(db_session, user_client):
+    _seed_registry_for_snapshot_tests(db_session)
     snapshot = _make_complete_snapshot(db_session)
     db_session.commit()
 
@@ -342,6 +376,7 @@ def test_filter_hauptgruppe_matches_count(db_session, user_client):
 
 @patch("app.config.settings.weclapp_tenant", TENANT)
 def test_untergruppe_options_narrow_by_hauptgruppe(db_session, user_client):
+    _seed_registry_for_snapshot_tests(db_session)
     snapshot = _make_complete_snapshot(db_session)
     db_session.commit()
 
@@ -350,19 +385,111 @@ def test_untergruppe_options_narrow_by_hauptgruppe(db_session, user_client):
     )
     assert response.status_code == 200
     assert 'name="untergruppe"' in response.text
-    # Holz (010) has Bretter→020 and Latten→030 only.
-    assert ">020<" in response.text
-    assert ">030<" in response.text
-    assert ">010<" not in response.text
+    from app.groups_service import resolve_hauptgruppe, resolve_untergruppe
+
+    haupt = resolve_hauptgruppe(db_session, "010")
+    assert haupt is not None
+    for code in ("020", "030"):
+        child = resolve_untergruppe(db_session, haupt, code)
+        assert child is not None
+        assert f'value="{code}"' in response.text
+        assert f"{code} – {child.name}" in response.text
+    metall = resolve_hauptgruppe(db_session, "020")
+    assert metall is not None
+    schrauben = resolve_untergruppe(db_session, metall, "010")
+    if schrauben is not None:
+        assert f"010 – {schrauben.name}" not in response.text
 
     all_groups = user_client.get(f"/artikel-uebersicht/{snapshot.id}/untergruppen")
-    assert ">020<" in all_groups.text
-    assert ">030<" in all_groups.text
-    assert ">010<" in all_groups.text
+    assert " / " in all_groups.text
+    assert 'value="010.020"' in all_groups.text or 'value="010.030"' in all_groups.text
+
+
+@patch("app.config.settings.weclapp_tenant", TENANT)
+def test_grid_overlays_registry_group_labels_from_weclapp_assignment(db_session):
+    _seed_registry_for_snapshot_tests(db_session)
+    from app.groups_service import resolve_hauptgruppe, resolve_untergruppe
+
+    metall = resolve_hauptgruppe(db_session, "020")
+    assert metall is not None
+    schrauben = resolve_untergruppe(db_session, metall, "010")
+    assert schrauben is not None
+    # Number prefix is 070.040 but weclapp category points at 020.010.
+    data = master_row_to_snapshot_data(
+        _sample_master(
+            "070.040.0140",
+            hauptgruppe=metall.name,
+            untergruppe=schrauben.name,
+        )
+    )
+    columns = build_snapshot_columns([data])
+    snapshot = ArticleSnapshot(
+        status="complete",
+        created_by_oid=PLAIN_USER["oid"],
+        created_by_name=PLAIN_USER["name"],
+        weclapp_tenant=TENANT,
+        row_count=1,
+        columns=columns,
+    )
+    db_session.add(snapshot)
+    db_session.flush()
+    fields = extract_indexed_fields(data)
+    row = ArticleSnapshotRow(
+        snapshot_id=snapshot.id,
+        position=0,
+        data=data,
+        article_number=fields["article_number"],
+        article_name=fields["article_name"],
+        hauptgruppe_code=fields["hauptgruppe_code"],
+        untergruppe_code=fields["untergruppe_code"],
+        active=fields["active"],
+        weclapp_id=fields["weclapp_id"],
+    )
+    db_session.add(row)
+    db_session.flush()
+
+    from app.snapshot_groups import registry_code_name_label
+
+    config = build_grid_config(db_session, snapshot, [row])
+    by_key = dict(zip(config["fields"], config["data"][0], strict=True))
+    assert by_key["Hauptgruppe"] == registry_code_name_label(metall.code, metall.name)
+    assert by_key["Untergruppe"] == registry_code_name_label(
+        schrauben.code, schrauben.name
+    )
+    assert "070" not in by_key["Hauptgruppe"]
+    assert "040" not in by_key["Untergruppe"]
+
+
+@patch("app.config.settings.weclapp_tenant", TENANT)
+def test_group_filter_uses_weclapp_assignment_not_article_number(db_session):
+    _seed_registry_for_snapshot_tests(db_session)
+    from app.groups_service import resolve_hauptgruppe, resolve_untergruppe
+
+    metall = resolve_hauptgruppe(db_session, "020")
+    schrauben = resolve_untergruppe(db_session, metall, "010")
+    rows = [
+        master_row_to_snapshot_data(
+            _sample_master(
+                "070.040.0140",
+                hauptgruppe=metall.name,
+                untergruppe=schrauben.name,
+            )
+        ),
+        master_row_to_snapshot_data(_sample_master("010.020.0010")),
+    ]
+    snapshot = _make_complete_snapshot(db_session, rows=rows)
+    db_session.commit()
+
+    by_number = SnapshotFilters(hauptgruppe="070", untergruppe="040", nur_aktive=False)
+    assert count_filtered_rows(db_session, snapshot.id, by_number) == 0
+
+    by_category = SnapshotFilters(hauptgruppe="020", untergruppe="010", nur_aktive=False)
+    assert count_filtered_rows(db_session, snapshot.id, by_category) == 1
 
 
 @patch("app.config.settings.weclapp_tenant", TENANT)
 def test_excel_matches_zeilen_filter(db_session, user_client):
+    _seed_registry_for_snapshot_tests(db_session)
     snapshot = _make_complete_snapshot(db_session)
     db_session.commit()
 
@@ -426,7 +553,7 @@ def test_snapshot_uses_stored_columns_not_current_schema(db_session):
     db_session.add(row)
     db_session.flush()
 
-    config = build_grid_config(snapshot, [row])
+    config = build_grid_config(db_session, snapshot, [row])
     assert config["fields"] == ["Legacy-Spalte", "Prosema Artikelnummer"]
     assert [col["title"] for col in config["columns"]] == [
         "Legacy-Spalte",
@@ -522,12 +649,12 @@ def test_grid_and_excel_show_registration_titles_for_historic_keys(db_session):
         "Einkaufspreis EUR netto",
         "Nettoverkaufspreis CHF",
     ]
-    config = build_grid_config(snapshot, [row])
+    config = build_grid_config(db_session, snapshot, [row])
     assert config["fields"] == [col["key"] for col in stored_columns]
     assert [col["title"] for col in config["columns"]] == expected_titles
     assert config["data"] == [["010.020.0010", "Testname", "Lang", "Stk.", "1.00", "2.50"]]
 
-    wb = build_excel_workbook(snapshot, [row], SnapshotFilters())
+    wb = build_excel_workbook(db_session, snapshot, [row], SnapshotFilters())
     ws = wb["Artikel"]
     headers = [ws.cell(1, col).value for col in range(1, ws.max_column + 1)]
     assert headers == expected_titles

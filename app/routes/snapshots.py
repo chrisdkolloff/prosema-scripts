@@ -24,14 +24,16 @@ from app.batches import JSPREADSHEET_CE_VERSION, JSUITES_VERSION
 from app.config import settings
 from app.db import get_db
 from app.models import ArticleSnapshot, AssistantQuery
+from app.snapshot_groups import (
+    registry_hauptgruppe_filter_options,
+    registry_untergruppe_filter_options,
+)
 from app.snapshots import (
     EXCEL_MAX_ROWS,
     SnapshotFilters,
     build_grid_config,
     count_filtered_rows,
     create_snapshot_pull,
-    distinct_hauptgruppen,
-    distinct_untergruppen,
     excel_bytes,
     excel_filename_timestamp,
     fetch_all_filtered_rows,
@@ -282,11 +284,11 @@ def _viewer_context(
                 "total_filtered": total_filtered,
                 "pages": pages,
                 "page": filters.page,
-                "hauptgruppen": distinct_hauptgruppen(db, snapshot.id),
-                "untergruppen": distinct_untergruppen(
-                    db, snapshot.id, hauptgruppe=filters.hauptgruppe
+                "hauptgruppe_options": registry_hauptgruppe_filter_options(db),
+                "untergruppe_options": registry_untergruppe_filter_options(
+                    db, hauptgruppe_code=filters.hauptgruppe
                 ),
-                "grid_config": build_grid_config(snapshot, page_rows),
+                "grid_config": build_grid_config(db, snapshot, page_rows),
                 "excel_qs": filter_qs,
             }
         )
@@ -377,8 +379,8 @@ def snapshot_untergruppen_partial(
         {
             "user": user,
             "snapshot": snapshot,
-            "untergruppen": distinct_untergruppen(
-                db, snapshot.id, hauptgruppe=hauptgruppe
+            "untergruppe_options": registry_untergruppe_filter_options(
+                db, hauptgruppe_code=hauptgruppe
             ),
             "filters": SnapshotFilters(hauptgruppe=hauptgruppe, untergruppe=""),
         },
@@ -449,6 +451,7 @@ def snapshot_excel(
         )
     rows = fetch_all_filtered_rows(db, snapshot.id, filters)
     content = excel_bytes(
+        db,
         snapshot,
         rows,
         filters,

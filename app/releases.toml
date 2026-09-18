@@ -1,7 +1,19 @@
 # PROSEMA release history — edit this file to bump the version and document changes.
 # The top-level `version` is shown in the site header; `[[releases]]` entries appear on /changelog.
 
-version = "1.3.9"
+version = "1.3.10"
+
+[[releases]]
+version = "1.3.10"
+date = "2026-09-18"
+summary = "Enhance registry group handling in snapshot_groups.py by introducing new lookup functionalities for hauptgruppe and untergruppe based on names and codes. Update apply_registry_group_filters to utilize the new lookup structure. Modify tests in test_article_snapshots.py to validate changes in group label resolution and ensure accurate filtering based on weclapp assignments. (+3 more)"
+changes = [
+  "Refactor snapshot handling to integrate registry group filters and improve data retrieval in grid and Excel exports. Update templates to utilize new options for hauptgruppe and untergruppe selections. Enhance tests to validate registry group functionality and ensure accurate filtering in snapshot operations.",
+  "Refactor label generation for hauptgruppe and untergruppe in snapshot_groups.py. Introduce new functions for consistent formatting of registry codes and names. Update tests to validate changes in label assertions and ensure accurate display in responses.",
+  "Refactor label generation in snapshot_groups.py to simplify untergruppe label assignment. Update test assertions in test_article_snapshots.py to reflect changes in label handling, ensuring accurate validation of hauptgruppe and untergruppe outputs.",
+  "Enhance registry group handling in snapshot_groups.py by introducing new lookup functionalities for hauptgruppe and untergruppe based on names and codes. Update apply_registry_group_filters to utilize the new lookup structure. Modify tests in test_article_snapshots.py to validate changes in group label resolution and ensure accurate filtering based on weclapp assignments.",
+]
+
 
 [[releases]]
 version = "1.3.9"

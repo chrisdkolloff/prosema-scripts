@@ -79,8 +79,8 @@
             hx-trigger="change"
           >
             <option value="">(alle)</option>
-            {% for value in hauptgruppen %}
-            <option value="{{ value }}" {% if filters.hauptgruppe == value %}selected{% endif %}>{{ value }}</option>
+            {% for option in hauptgruppe_options %}
+            <option value="{{ option.value }}" {% if filters.hauptgruppe == option.value %}selected{% endif %}>{{ option.label }}</option>
             {% endfor %}
           </select>
         </div>

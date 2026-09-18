@@ -16,6 +16,13 @@ from sqlalchemy.orm import Session
 
 from app.batches import JSPREADSHEET_CE_VERSION, JSUITES_VERSION
 from app.config import settings
+from app.snapshot_groups import (
+    apply_registry_group_filters,
+    build_registry_lookup,
+    registry_hauptgruppe_filter_options,
+    registry_untergruppe_filter_options,
+    row_data_with_registry_groups,
+)
 from app.excel_export import workbook_bytes, write_cell
 from app.models import ArticleSnapshot, ArticleSnapshotRow, Job
 from core.article_flatten import flatten_articles, snapshot_column_title
@@ -103,14 +110,16 @@ def list_snapshots(db: Session, *, tenant: str | None = None) -> list[ArticleSna
     )
 
 
-def _base_row_query(snapshot_id: uuid.UUID, filters: SnapshotFilters):
+def _base_row_query(db: Session, snapshot_id: uuid.UUID, filters: SnapshotFilters):
     stmt = select(ArticleSnapshotRow).where(ArticleSnapshotRow.snapshot_id == snapshot_id)
     if filters.nur_aktive:
         stmt = stmt.where(ArticleSnapshotRow.active.is_(True))
-    if filters.hauptgruppe:
-        stmt = stmt.where(ArticleSnapshotRow.hauptgruppe_code == filters.hauptgruppe)
-    if filters.untergruppe:
-        stmt = stmt.where(ArticleSnapshotRow.untergruppe_code == filters.untergruppe)
+    stmt = apply_registry_group_filters(
+        stmt,
+        db=db,
+        hauptgruppe=filters.hauptgruppe,
+        untergruppe=filters.untergruppe,
+    )
     needle = filters.query.strip().lower()
     if needle:
         pattern = f"%{needle}%"
@@ -130,7 +139,9 @@ def _base_row_query(snapshot_id: uuid.UUID, filters: SnapshotFilters):
 
 
 def count_filtered_rows(db: Session, snapshot_id: uuid.UUID, filters: SnapshotFilters) -> int:
-    stmt = select(func.count()).select_from(_base_row_query(snapshot_id, filters).subquery())
+    stmt = select(func.count()).select_from(
+        _base_row_query(db, snapshot_id, filters).subquery()
+    )
     return int(db.scalar(stmt) or 0)
 
 
@@ -143,7 +154,7 @@ def fetch_filtered_rows(
     page = max(1, filters.page)
     start = (page - 1) * GRID_PAGE_SIZE
     stmt = (
-        _base_row_query(snapshot_id, filters)
+        _base_row_query(db, snapshot_id, filters)
         .order_by(ArticleSnapshotRow.position)
         .offset(start)
         .limit(GRID_PAGE_SIZE)
@@ -158,7 +169,7 @@ def fetch_all_filtered_rows(
     snapshot_id: uuid.UUID,
     filters: SnapshotFilters,
 ) -> list[ArticleSnapshotRow]:
-    stmt = _base_row_query(snapshot_id, filters).order_by(ArticleSnapshotRow.position)
+    stmt = _base_row_query(db, snapshot_id, filters).order_by(ArticleSnapshotRow.position)
     return list(db.scalars(stmt))
 
 
@@ -192,6 +203,7 @@ def distinct_untergruppen(
 
 
 def build_grid_config(
+    db: Session,
     snapshot: ArticleSnapshot,
     rows: list[ArticleSnapshotRow],
 ) -> dict[str, Any]:
@@ -211,7 +223,11 @@ def build_grid_config(
                 "name": key,
             }
         )
-    data = [[row.data.get(key, "") if isinstance(row.data, dict) else "" for key in keys] for row in rows]
+    lookup = build_registry_lookup(db)
+    data = [
+        [row_data_with_registry_groups(lookup, row).get(key, "") for key in keys]
+        for row in rows
+    ]
     return {
         "editable": False,
         "parseFormulas": False,
@@ -223,6 +239,7 @@ def build_grid_config(
 
 
 def build_excel_workbook(
+    db: Session,
     snapshot: ArticleSnapshot,
     rows: list[ArticleSnapshotRow],
     filters: SnapshotFilters,
@@ -242,8 +259,9 @@ def build_excel_workbook(
     for col_idx, header in enumerate(headers, start=1):
         ws.cell(row=1, column=col_idx, value=header)
 
+    lookup = build_registry_lookup(db)
     for row_idx, row in enumerate(rows, start=2):
-        data = row.data if isinstance(row.data, dict) else {}
+        data = row_data_with_registry_groups(lookup, row)
         for col_idx, key in enumerate(keys, start=1):
             write_cell(ws.cell(row=row_idx, column=col_idx), key, data.get(key, ""))
 
@@ -269,6 +287,7 @@ def build_excel_workbook(
 
 
 def excel_bytes(
+    db: Session,
     snapshot: ArticleSnapshot,
     rows: list[ArticleSnapshotRow],
     filters: SnapshotFilters,
@@ -276,7 +295,7 @@ def excel_bytes(
     question_de: str | None = None,
 ) -> bytes:
     return workbook_bytes(
-        build_excel_workbook(snapshot, rows, filters, question_de=question_de)
+        build_excel_workbook(db, snapshot, rows, filters, question_de=question_de)
     )
 
 
