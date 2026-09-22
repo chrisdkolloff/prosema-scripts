@@ -1,0 +1,40 @@
+{
+  "id": "fixture-multi-multi",
+  "currencyId": "265",
+  "externalRecordNumber": "RE1011",
+  "reverseTransaction": false,
+  "status": "DRAFT",
+  "transactionDate": 1790028000000,
+  "transactionDetails": [
+    {
+      "accountId": "acc-credit",
+      "amount": "150.5",
+      "debitCredit": "CREDIT",
+      "description": "X"
+    },
+    {
+      "accountId": "acc-credit",
+      "amount": "12.2",
+      "debitCredit": "CREDIT",
+      "description": "X"
+    },
+    {
+      "accountId": "acc-debit-a",
+      "amount": "66",
+      "debitCredit": "DEBIT",
+      "description": "X"
+    },
+    {
+      "accountId": "acc-debit-b",
+      "amount": "5.35",
+      "debitCredit": "DEBIT",
+      "description": "X"
+    },
+    {
+      "accountId": "acc-debit-c",
+      "amount": "91.35",
+      "debitCredit": "DEBIT",
+      "description": "X"
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "id": "fixture-incoming-2",
+  "currencyId": "265",
+  "draft": true,
+  "externalRecordNumber": "Mietkaution Prosema // Gretzenbach",
+  "reverseTransaction": false,
+  "status": "DRAFT",
+  "transactionDate": 1785189600000,
+  "transactionNumber": "1005",
+  "type": "INCOMING_INVOICE",
+  "transactionDetails": [
+    {
+      "accountId": "acc-debit-1411",
+      "amount": "7500",
+      "debitCredit": "DEBIT",
+      "description": "Mietkaution Prosema // Gretzenbach",
+      "taxId": "3689"
+    },
+    {
+      "accountId": "acc-credit-904",
+      "amount": "7500",
+      "debitCredit": "CREDIT",
+      "description": "Mietkaution Prosema // Gretzenbach"
+    }
+  ]
+}

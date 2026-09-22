@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import uuid
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -26,6 +27,10 @@ from app.batch_upload import (
 from app.db import get_db
 from app.models import ArticleBatch, ArticleBatchRow
 from app.snapshots import format_snapshot_timestamp
+from app.accounting_rombro_export import EXPORT_DIR, parse_export_date
+from app.jobs import enqueue
+from app.models import Job
+from app.routes.jobs import _job_status_response
 from app.weclapp import SETTINGS_PATH, check_weclapp_access, format_dt
 
 router = APIRouter()
@@ -236,8 +241,103 @@ def buchhaltung_export(
     user: SessionUser = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
+    ctx = _access_ctx(user, db)
+    job_param = request.query_params.get("job")
+    if job_param:
+        try:
+            job_id = uuid.UUID(job_param)
+        except ValueError:
+            job_id = None
+        if job_id is not None:
+            job = db.get(Job, job_id)
+            if job is not None and job.created_by_oid == user["oid"]:
+                ctx.update(_job_status_context(user, job))
     return request.app.state.templates.TemplateResponse(
         request,
         "buchhaltung_export.html",
-        _access_ctx(user, db),
+        ctx,
+    )
+
+
+@router.post("/buchhaltung-export", response_class=HTMLResponse)
+def buchhaltung_export_start(
+    request: Request,
+    user: SessionUser = Depends(require_user),
+    db: Session = Depends(get_db),
+    date_from: str = Form(...),
+    date_to: str = Form(...),
+    include_storno: str | None = Form(None),
+    include_drafts: str | None = Form(None),
+) -> Response:
+    access = check_weclapp_access(db, user["oid"])
+    if access.kind != "ok":
+        return RedirectResponse(url="/buchhaltung-export", status_code=303)
+
+    try:
+        parse_export_date(date_from, label="Von-Datum")
+        parse_export_date(date_to, label="Bis-Datum")
+    except ValueError as exc:
+        ctx = _access_ctx(user, db)
+        ctx["form_error"] = str(exc)
+        ctx["form_date_from"] = date_from
+        ctx["form_date_to"] = date_to
+        ctx["form_include_storno"] = include_storno in {"1", "true", "on"}
+        ctx["form_include_drafts"] = include_drafts in {"1", "true", "on"}
+        return request.app.state.templates.TemplateResponse(
+            request,
+            "buchhaltung_export.html",
+            ctx,
+        )
+
+    artifact_id = str(uuid.uuid4())
+    job = enqueue(
+        db,
+        "weclapp_accounting_rombro_export",
+        {
+            "artifact_id": artifact_id,
+            "date_from": date_from.strip(),
+            "date_to": date_to.strip(),
+            "include_storno": include_storno in {"1", "true", "on"},
+            "include_drafts": include_drafts in {"1", "true", "on"},
+        },
+        user,
+    )
+
+    if request.headers.get("HX-Request") == "true":
+        return _job_status_response(request, user, job)
+
+    return RedirectResponse(url=f"/buchhaltung-export?job={job.id}", status_code=303)
+
+
+@router.get("/buchhaltung-export/datei/{job_id}")
+def buchhaltung_export_download(
+    job_id: uuid.UUID,
+    user: SessionUser = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> FileResponse:
+    job = db.get(Job, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Export nicht gefunden")
+    if job.created_by_oid != user["oid"]:
+        raise HTTPException(status_code=403)
+    if job.job_type != "weclapp_accounting_rombro_export":
+        raise HTTPException(status_code=404, detail="Export nicht gefunden")
+    if job.status != "succeeded" or not job.result:
+        raise HTTPException(status_code=409, detail="Export noch nicht fertig")
+
+    artifact_id = str(job.result.get("artifact_id") or "")
+    try:
+        uuid.UUID(artifact_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=500, detail="Exportdatei fehlt") from exc
+
+    path = EXPORT_DIR / f"{artifact_id}.csv"
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Exportdatei nicht mehr vorhanden")
+
+    filename = str(job.result.get("filename") or path.name)
+    return FileResponse(
+        path,
+        media_type="text/csv; charset=utf-8",
+        filename=filename,
     )

@@ -1,7 +1,17 @@
 # PROSEMA release history — edit this file to bump the version and document changes.
 # The top-level `version` is shown in the site header; `[[releases]]` entries appear on /changelog.
 
-version = "1.3.11"
+version = "1.3.12"
+
+[[releases]]
+version = "1.3.12"
+date = "2026-09-22"
+summary = "Enhance accounting export functionality by adding a new job handler for Rombro exports in jobs.py. Update the buchhaltung_export route to handle export requests, including form validation and job status tracking. Modify templates to support user interactions for exporting and downloading CSV files, and update job status display for successful exports. Add relevant error handling and user feedback mechanisms throughout the process. (+1 more)"
+changes = [
+  "Implement product media management features in ShopifyClient and enhance image upload logic in match_images.py. Add methods to list and delete product media, and introduce a replace_media option to allow for clearing existing images before upload. Update upload statistics to reflect cleared media and adjust command-line arguments for improved user feedback.",
+  "Enhance accounting export functionality by adding a new job handler for Rombro exports in jobs.py. Update the buchhaltung_export route to handle export requests, including form validation and job status tracking. Modify templates to support user interactions for exporting and downloading CSV files, and update job status display for successful exports. Add relevant error handling and user feedback mechanisms throughout the process.",
+]
+
 
 [[releases]]
 version = "1.3.11"

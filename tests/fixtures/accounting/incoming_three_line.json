@@ -1,0 +1,30 @@
+{
+  "id": "fixture-incoming-3",
+  "currencyId": "265",
+  "externalRecordNumber": "553208435",
+  "reverseTransaction": false,
+  "status": "DRAFT",
+  "transactionDate": 1789509600000,
+  "transactionDetails": [
+    {
+      "accountId": "acc-debit-expense",
+      "amount": "351.1",
+      "debitCredit": "DEBIT",
+      "description": "Software intern // Shopify Theme",
+      "taxId": "3691"
+    },
+    {
+      "accountId": "acc-debit-vat",
+      "amount": "28.45",
+      "debitCredit": "DEBIT",
+      "description": "Software intern // Shopify Theme",
+      "taxId": "3691"
+    },
+    {
+      "accountId": "acc-credit-vendor",
+      "amount": "379.55",
+      "debitCredit": "CREDIT",
+      "description": "Software intern // Shopify Theme"
+    }
+  ]
+}

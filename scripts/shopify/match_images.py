@@ -18,6 +18,7 @@ def _ensure_project_root() -> None:
 @dataclass
 class UploadStats:
     uploaded: int = 0
+    cleared: int = 0
     skipped: int = 0
     errors: int = 0
     messages: list[str] = field(default_factory=list)
@@ -29,6 +30,7 @@ def run_match(
     output_path: Path,
     upload: bool = False,
     skip_with_media: bool = True,
+    replace_media: bool = False,
     limit: int | None = None,
     article_numbers: set[str] | None = None,
 ) -> tuple[dict[str, int], UploadStats]:
@@ -70,20 +72,27 @@ def run_match(
     if not upload:
         return summary, upload_stats
 
-    candidates = [
-        row
-        for row in rows
-        if row.match_status in {"ready", "color_only", "drawing_only"}
-        or (not skip_with_media and row.match_status == "already_has_media")
-    ]
-    if skip_with_media:
-        candidates = [row for row in candidates if row.media_count == 0]
+    uploadable_statuses = {"ready", "color_only", "drawing_only", "already_has_media"}
+    if replace_media:
+        candidates = [
+            row for row in rows if row.match_status in uploadable_statuses
+        ]
+    else:
+        candidates = [
+            row
+            for row in rows
+            if row.match_status in {"ready", "color_only", "drawing_only"}
+            or (not skip_with_media and row.match_status == "already_has_media")
+        ]
+        if skip_with_media:
+            candidates = [row for row in candidates if row.media_count == 0]
 
     if limit is not None:
         candidates = candidates[:limit]
 
     total = len(candidates)
-    print(f"Upload-Kandidaten: {total}", file=sys.stderr)
+    mode = "ersetzen" if replace_media else "hochladen"
+    print(f"Upload-Kandidaten ({mode}): {total}", file=sys.stderr)
 
     for index, row in enumerate(candidates, start=1):
         local = local_images.get(row.article_number)
@@ -91,14 +100,22 @@ def run_match(
             upload_stats.skipped += 1
             continue
         try:
+            removed = 0
+            if replace_media:
+                removed = _clear_product_media(client, row.product_id)
+                if removed:
+                    upload_stats.cleared += 1
             _upload_product_images(client, row, local)
             upload_stats.uploaded += 1
             upload_stats.messages.append(
                 f"OK {row.article_number}: {len(local.ordered_paths)} Bild(er)"
+                + (f" ({removed} entfernt)" if removed else "")
             )
             print(
                 f"  [{index}/{total}] OK {row.article_number} "
-                f"({len(local.ordered_paths)} Bild(er))",
+                f"({len(local.ordered_paths)} Bild(er)"
+                + (f", {removed} alt entfernt" if removed else "")
+                + ")",
                 file=sys.stderr,
             )
         except ShopifyError as exc:
@@ -112,6 +129,13 @@ def run_match(
             )
 
     return summary, upload_stats
+
+
+def _clear_product_media(client, product_id: str) -> int:
+    media_ids = client.list_product_media_ids(product_id)
+    if media_ids:
+        client.product_delete_media(product_id, media_ids)
+    return len(media_ids)
 
 
 def _upload_product_images(client, row: MatchRow, local: LocalImages) -> None:
@@ -180,6 +204,14 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Auch Produkte hochladen, die bereits Bilder haben",
     )
+    parser.add_argument(
+        "--replace-media",
+        action="store_true",
+        help=(
+            "Bestehende Produktbilder löschen und aus dem lokalen Ordner "
+            "neu hochladen (für alle Treffer mit lokalen Bildern)"
+        ),
+    )
     args = parser.parse_args(argv)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -194,6 +226,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.upload:
         print(
             "Upload:     AN"
+            + (" (ersetzen)" if args.replace_media else "")
             + (f" (limit={args.limit})" if args.limit is not None else ""),
             file=sys.stderr,
         )
@@ -201,6 +234,11 @@ def main(argv: list[str] | None = None) -> int:
         print("Upload:     aus (nur Matching)", file=sys.stderr)
 
     try:
+        if args.replace_media and args.include_with_media:
+            print(
+                "Hinweis: --replace-media ignoriert --include-with-media.",
+                file=sys.stderr,
+            )
         summary, upload_stats = run_match(
             base_dir=resolve_path(args.base_dir)
             if not args.base_dir.is_absolute()
@@ -208,6 +246,7 @@ def main(argv: list[str] | None = None) -> int:
             output_path=output,
             upload=args.upload,
             skip_with_media=not args.include_with_media,
+            replace_media=args.replace_media,
             limit=args.limit,
             article_numbers=article_numbers,
         )
@@ -225,6 +264,8 @@ def main(argv: list[str] | None = None) -> int:
         print("", file=sys.stderr)
         print("Upload-Zusammenfassung", file=sys.stderr)
         print(f"  hochgeladen: {upload_stats.uploaded}", file=sys.stderr)
+        if upload_stats.cleared:
+            print(f"  mit gelöschten Altbildern: {upload_stats.cleared}", file=sys.stderr)
         print(f"  übersprungen: {upload_stats.skipped}", file=sys.stderr)
         print(f"  Fehler:      {upload_stats.errors}", file=sys.stderr)
         for message in upload_stats.messages:

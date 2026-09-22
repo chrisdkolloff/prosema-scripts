@@ -14,6 +14,21 @@
   {% if job.status == "succeeded" and job.result and job.result.get("message") %}
   <p>{{ job.result.get("message") }}</p>
   {% endif %}
+  {% if job.status == "succeeded" and job.job_type == "weclapp_accounting_rombro_export" %}
+  <p>
+    <a class="btn btn-primary" href="/buchhaltung-export/datei/{{ job.id }}">CSV herunterladen</a>
+  </p>
+  {% endif %}
+  {% if job.status == "succeeded" and job.result and job.result.get("warnings") %}
+  <details class="mt-2">
+    <summary>Hinweise ({{ job.result.get("warning_count") or job.result.warnings|length }})</summary>
+    <ul class="small mb-0">
+      {% for line in job.result.get("warnings") %}
+      <li>{{ line }}</li>
+      {% endfor %}
+    </ul>
+  </details>
+  {% endif %}
   {% if job.status == "failed" %}
     {% if error_message %}
     <div class="alert alert-danger" role="alert" style="white-space: pre-wrap;">{{ error_message }}{% if show_settings_link %}

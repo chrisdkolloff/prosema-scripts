@@ -63,6 +63,7 @@ JOB_TYPE_LABELS = {
     "article_batch_submit": "Artikelregistrierung senden",
     "article_transform_preview": "Artikel-Transformation Vorschau",
     "article_transform_apply": "Artikel-Transformation anwenden",
+    "weclapp_accounting_rombro_export": "Buchhaltungsexport (Rombro)",
 }
 
 _STALE_FAILURE_ERROR = (
@@ -135,6 +136,19 @@ def handle_weclapp_supply_source_export(
             message = job_error_message(exc) or "Abfrage fehlgeschlagen"
             fail_export(db, run, message)
         raise
+
+
+@job_handler("weclapp_accounting_rombro_export")
+def handle_weclapp_accounting_rombro_export(
+    db: Session,
+    payload: dict,
+    oid: str,
+) -> dict:
+    from app.accounting_rombro_export import run_export_job
+    from app.weclapp import weclapp_client_for
+
+    client = weclapp_client_for(db, oid)
+    return run_export_job(client, payload)
 
 
 @job_handler("weclapp_supply_source_index")

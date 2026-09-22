@@ -275,6 +275,57 @@ class ShopifyClient:
             )
         return resource_url
 
+    def list_product_media_ids(self, product_id: str, *, page_size: int = 100) -> list[str]:
+        query = """
+        query ProductMediaIds($id: ID!, $first: Int!, $after: String) {
+          product(id: $id) {
+            media(first: $first, after: $after) {
+              pageInfo { hasNextPage endCursor }
+              nodes { id }
+            }
+          }
+        }
+        """
+        media_ids: list[str] = []
+        after: str | None = None
+        while True:
+            data = self.graphql(
+                query,
+                {"id": product_id, "first": page_size, "after": after},
+            )
+            product = data.get("product") or {}
+            connection = product.get("media") or {}
+            for node in connection.get("nodes") or []:
+                media_id = (node or {}).get("id")
+                if media_id:
+                    media_ids.append(media_id)
+            page_info = connection.get("pageInfo") or {}
+            if not page_info.get("hasNextPage"):
+                break
+            after = page_info.get("endCursor")
+            if not after:
+                break
+        return media_ids
+
+    def product_delete_media(self, product_id: str, media_ids: list[str]) -> None:
+        if not media_ids:
+            return
+        data = self.graphql(
+            """
+            mutation productDeleteMedia($productId: ID!, $mediaIds: [ID!]!) {
+              productDeleteMedia(productId: $productId, mediaIds: $mediaIds) {
+                deletedMediaIds
+                mediaUserErrors { field message code }
+              }
+            }
+            """,
+            {"productId": product_id, "mediaIds": media_ids},
+        )
+        payload = data.get("productDeleteMedia") or {}
+        errors = payload.get("mediaUserErrors") or []
+        if errors:
+            raise ShopifyError("productDeleteMedia fehlgeschlagen", detail=errors)
+
     def product_create_media(
         self,
         product_id: str,

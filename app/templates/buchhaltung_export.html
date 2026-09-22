@@ -6,12 +6,90 @@
 {% endblock %}
 {% block content %}
   <h1 class="mb-3">Buchhaltungsexport</h1>
+  <p class="text-body-secondary mb-4">
+    Buchungen aus weclapp für den gewählten Zeitraum als CSV im Rombro-Format exportieren.
+    Belegnummer ist die <strong>externe Belegnummer</strong> aus weclapp.
+  </p>
+
   {% if blocked %}
   <div class="alert alert-danger" role="alert">
     {{ access.message }}
     <a href="{{ settings_path }}">weclapp-Einstellungen</a>
   </div>
   {% else %}
-  <p class="text-body-secondary">Der Buchhaltungsexport folgt in Woche 4. weclapp-Zugriff ist vorhanden.</p>
+
+  {% if form_error %}
+  <div class="alert alert-danger" role="alert">{{ form_error }}</div>
+  {% endif %}
+
+  <form
+    method="post"
+    action="/buchhaltung-export"
+    class="row g-3 mb-4"
+    hx-post="/buchhaltung-export"
+    hx-target="#job-status"
+    hx-swap="outerHTML"
+  >
+    <div class="col-md-4">
+      <label class="form-label" for="date_from">Von</label>
+      <input
+        type="date"
+        class="form-control"
+        id="date_from"
+        name="date_from"
+        required
+        value="{{ form_date_from or '' }}"
+      />
+    </div>
+    <div class="col-md-4">
+      <label class="form-label" for="date_to">Bis</label>
+      <input
+        type="date"
+        class="form-control"
+        id="date_to"
+        name="date_to"
+        required
+        value="{{ form_date_to or '' }}"
+      />
+    </div>
+    <div class="col-12">
+      <div class="form-check">
+        <input
+          class="form-check-input"
+          type="checkbox"
+          id="include_drafts"
+          name="include_drafts"
+          value="1"
+          {% if form_include_drafts is not defined or form_include_drafts %}checked{% endif %}
+        />
+        <label class="form-check-label" for="include_drafts">
+          Entwürfe einschließen
+        </label>
+      </div>
+      <div class="form-check">
+        <input
+          class="form-check-input"
+          type="checkbox"
+          id="include_storno"
+          name="include_storno"
+          value="1"
+          {% if form_include_storno %}checked{% endif %}
+        />
+        <label class="form-check-label" for="include_storno">
+          Storno-Buchungen einschließen
+        </label>
+      </div>
+    </div>
+    <div class="col-12">
+      <button type="submit" class="btn btn-primary">Export starten</button>
+    </div>
+  </form>
+
+  {% if job %}
+    {% include "partials/job_status.html" %}
+  {% else %}
+    <div id="job-status"></div>
+  {% endif %}
+
   {% endif %}
 {% endblock %}

@@ -1,0 +1,33 @@
+{
+  "id": "fixture-outgoing-3",
+  "currencyId": "265",
+  "draft": true,
+  "externalRecordNumber": "RE1009",
+  "reverseTransaction": false,
+  "status": "DRAFT",
+  "transactionDate": 1789509600000,
+  "transactionNumber": "1029",
+  "type": "OUTGOING_INVOICE",
+  "transactionDetails": [
+    {
+      "accountId": "acc-credit-3200",
+      "amount": "1000",
+      "debitCredit": "CREDIT",
+      "description": "Fiegl GmbH",
+      "taxId": "3671"
+    },
+    {
+      "accountId": "acc-credit-3200",
+      "amount": "81",
+      "debitCredit": "CREDIT",
+      "description": "Fiegl GmbH",
+      "taxId": "3671"
+    },
+    {
+      "accountId": "acc-debit-153",
+      "amount": "1081",
+      "debitCredit": "DEBIT",
+      "description": "Fiegl GmbH"
+    }
+  ]
+}

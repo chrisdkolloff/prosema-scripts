@@ -6,6 +6,7 @@ __pycache__/
 .ruff_cache/
 *.egg-info/
 * [conflicted].*
+data/accounting_exports/
 output/**/*
 !output/processing/.gitkeep
 !output/export/.gitkeep
