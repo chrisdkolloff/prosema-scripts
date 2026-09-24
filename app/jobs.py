@@ -64,6 +64,7 @@ JOB_TYPE_LABELS = {
     "article_transform_preview": "Artikel-Transformation Vorschau",
     "article_transform_apply": "Artikel-Transformation anwenden",
     "weclapp_accounting_rombro_export": "Buchhaltungsexport (Rombro)",
+    "shopify_sharepoint_image_sync": "Shopify-Bilder (SharePoint)",
 }
 
 _STALE_FAILURE_ERROR = (
@@ -149,6 +150,35 @@ def handle_weclapp_accounting_rombro_export(
 
     client = weclapp_client_for(db, oid)
     return run_export_job(client, payload)
+
+
+@job_handler("shopify_sharepoint_image_sync")
+def handle_shopify_sharepoint_image_sync(
+    db: Session,
+    payload: dict,
+    oid: str,
+) -> dict:
+    from app.graph_credentials import NoGraphToken, get_graph_access_token
+    from app.shopify_credentials import NoShopifyToken, load_config_for_user
+    from app.shopify_image_sync import job_failure_message, run_sync_job
+
+    try:
+        shopify_config = load_config_for_user(db, oid)
+    except NoShopifyToken as exc:
+        raise ValueError(str(exc)) from exc
+    try:
+        graph_token = get_graph_access_token(db, oid)
+    except NoGraphToken as exc:
+        raise ValueError(str(exc)) from exc
+
+    result = run_sync_job(
+        payload,
+        shopify_config=shopify_config,
+        graph_token=graph_token,
+    )
+    if int(result.get("errors") or 0) > 0 and int(result.get("uploaded") or 0) == 0:
+        raise ValueError(job_failure_message(result))
+    return result
 
 
 @job_handler("weclapp_supply_source_index")

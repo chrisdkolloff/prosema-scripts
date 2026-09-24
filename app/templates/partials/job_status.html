@@ -34,8 +34,23 @@
     <div class="alert alert-danger" role="alert" style="white-space: pre-wrap;">{{ error_message }}{% if show_settings_link %}
       <a href="{{ settings_path }}">weclapp-Einstellungen</a>{% endif %}
     </div>
+    {% elif job.result and job.result.get("error_detail") %}
+    <div class="alert alert-danger" role="alert" style="white-space: pre-wrap;">{{ job.result.get("error_detail") }}</div>
+    {% if job.result.get("message") %}
+    <p class="text-body-secondary small">{{ job.result.get("message") }}</p>
+    {% endif %}
     {% else %}
     <p>Der Auftrag ist fehlgeschlagen.</p>
+    {% endif %}
+    {% if job.status == "failed" and job.result and job.result.get("warnings") %}
+    <details class="mt-2">
+      <summary>Details ({{ job.result.warnings|length }})</summary>
+      <ul class="small mb-0">
+        {% for line in job.result.get("warnings") %}
+        <li>{{ line }}</li>
+        {% endfor %}
+      </ul>
+    </details>
     {% endif %}
     {% if can_retry %}
     <form

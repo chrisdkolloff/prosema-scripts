@@ -30,7 +30,7 @@ from app.snapshots import format_snapshot_timestamp
 from app.accounting_rombro_export import EXPORT_DIR, parse_export_date
 from app.jobs import enqueue
 from app.models import Job
-from app.routes.jobs import _job_status_response
+from app.routes.jobs import _job_status_context, _job_status_response
 from app.weclapp import SETTINGS_PATH, check_weclapp_access, format_dt
 
 router = APIRouter()

@@ -139,6 +139,8 @@ def _clear_product_media(client, product_id: str) -> int:
 
 
 def _upload_product_images(client, row: MatchRow, local: LocalImages) -> None:
+    from app.shopify_media_alt import media_alt_text
+
     paths = local.ordered_paths
     targets = client.staged_upload_targets(paths)
     resource_urls: list[str] = []
@@ -147,12 +149,16 @@ def _upload_product_images(client, row: MatchRow, local: LocalImages) -> None:
 
     media = []
     for path, resource_url in zip(paths, resource_urls, strict=True):
-        kind = "Farbfoto" if path in local.color else "Strichzeichnung"
+        kind = "color" if path in local.color else "drawing"
         media.append(
             {
                 "originalSource": resource_url,
                 "mediaContentType": "IMAGE",
-                "alt": f"{row.article_number} – {kind}",
+                "alt": media_alt_text(
+                    filename=path.name,
+                    article_number=row.article_number,
+                    kind=kind,
+                ),
             }
         )
     client.product_create_media(row.product_id, media)

@@ -1,7 +1,19 @@
 # PROSEMA release history — edit this file to bump the version and document changes.
 # The top-level `version` is shown in the site header; `[[releases]]` entries appear on /changelog.
 
-version = "1.3.12"
+version = "1.4.0"
+
+[[releases]]
+version = "1.4.0"
+date = "2026-09-24"
+summary = "Remove outdated user guidance from Shopify image synchronization template. Streamline user interface by eliminating unnecessary instructions related to SharePoint access and API token management. (+3 more)"
+changes = [
+  "Implement Shopify image synchronization functionality by adding a new job handler for syncing images from Shopify to SharePoint in jobs.py. Update main application routing to include the new Shopify images route. Enhance ShopifyClient with improved media management methods, including listing and deleting product media, and update image upload logic in match_images.py to utilize alt text for better accessibility. Modify base.html to include a navigation section for Shopify images, improving user interface navigation.",
+  "Enhance Shopify integration by adding user token management and error handling. Implement new routes for saving, testing, and removing Shopify tokens in settings. Update job handling for Shopify image synchronization to include detailed error messages and improve user feedback. Refactor templates to display Shopify token status and provide user guidance for API token management.",
+  "Implement Microsoft Graph token management for SharePoint access. Enhance authentication flow to store refresh tokens upon user login. Update job handling for Shopify image synchronization to include Graph access token retrieval. Improve error messages for Graph access issues in the UI. Refactor URL encoding for SharePoint sharing links to comply with Graph specifications. Add a new database model for storing user Graph tokens.",
+  "Remove outdated user guidance from Shopify image synchronization template. Streamline user interface by eliminating unnecessary instructions related to SharePoint access and API token management.",
+]
+
 
 [[releases]]
 version = "1.3.12"

@@ -208,16 +208,16 @@ class ShopifyClient:
             if not after:
                 break
 
-    def staged_upload_targets(
+    def staged_upload_targets_for_filenames(
         self,
-        files: list[Path],
+        filenames: list[str],
     ) -> list[dict[str, Any]]:
         inputs = []
-        for path in files:
-            mime, _ = mimetypes.guess_type(path.name)
+        for name in filenames:
+            mime, _ = mimetypes.guess_type(name)
             inputs.append(
                 {
-                    "filename": path.name,
+                    "filename": name,
                     "mimeType": mime or "image/jpeg",
                     "httpMethod": "POST",
                     "resource": "PRODUCT_IMAGE",
@@ -243,15 +243,22 @@ class ShopifyClient:
         if errors:
             raise ShopifyError("stagedUploadsCreate fehlgeschlagen", detail=errors)
         targets = payload.get("stagedTargets") or []
-        if len(targets) != len(files):
+        if len(targets) != len(filenames):
             raise ShopifyError(
-                f"Erwartete {len(files)} Upload-Ziele, erhielt {len(targets)}"
+                f"Erwartete {len(filenames)} Upload-Ziele, erhielt {len(targets)}"
             )
         return targets
 
-    def upload_file_to_staged_target(
+    def staged_upload_targets(
         self,
-        path: Path,
+        files: list[Path],
+    ) -> list[dict[str, Any]]:
+        return self.staged_upload_targets_for_filenames([path.name for path in files])
+
+    def upload_bytes_to_staged_target(
+        self,
+        filename: str,
+        data: bytes,
         target: dict[str, Any],
     ) -> str:
         url = target["url"]
@@ -259,34 +266,52 @@ class ShopifyClient:
         form: dict[str, str] = {
             item["name"]: item["value"] for item in (target.get("parameters") or [])
         }
-        mime, _ = mimetypes.guess_type(path.name)
-        with path.open("rb") as handle:
-            response = requests.post(
-                url,
-                data=form,
-                files={"file": (path.name, handle, mime or "image/jpeg")},
-                timeout=self.timeout,
-            )
+        mime, _ = mimetypes.guess_type(filename)
+        response = requests.post(
+            url,
+            data=form,
+            files={"file": (filename, data, mime or "image/jpeg")},
+            timeout=self.timeout,
+        )
         if response.status_code >= 400:
             raise ShopifyError(
-                f"Datei-Upload fehlgeschlagen für {path.name} ({response.status_code})",
+                f"Datei-Upload fehlgeschlagen für {filename} ({response.status_code})",
                 status_code=response.status_code,
                 detail=response.text[:500],
             )
         return resource_url
 
-    def list_product_media_ids(self, product_id: str, *, page_size: int = 100) -> list[str]:
+    def upload_file_to_staged_target(
+        self,
+        path: Path,
+        target: dict[str, Any],
+    ) -> str:
+        return self.upload_bytes_to_staged_target(
+            path.name,
+            path.read_bytes(),
+            target,
+        )
+
+    def list_product_media(
+        self,
+        product_id: str,
+        *,
+        page_size: int = 100,
+    ) -> list[dict[str, str]]:
         query = """
-        query ProductMediaIds($id: ID!, $first: Int!, $after: String) {
+        query ProductMedia($id: ID!, $first: Int!, $after: String) {
           product(id: $id) {
             media(first: $first, after: $after) {
               pageInfo { hasNextPage endCursor }
-              nodes { id }
+              nodes {
+                id
+                ... on MediaImage { alt }
+              }
             }
           }
         }
         """
-        media_ids: list[str] = []
+        nodes_out: list[dict[str, str]] = []
         after: str | None = None
         while True:
             data = self.graphql(
@@ -296,16 +321,49 @@ class ShopifyClient:
             product = data.get("product") or {}
             connection = product.get("media") or {}
             for node in connection.get("nodes") or []:
-                media_id = (node or {}).get("id")
+                if not node:
+                    continue
+                media_id = node.get("id")
                 if media_id:
-                    media_ids.append(media_id)
+                    nodes_out.append(
+                        {
+                            "id": str(media_id),
+                            "alt": str(node.get("alt") or ""),
+                        }
+                    )
             page_info = connection.get("pageInfo") or {}
             if not page_info.get("hasNextPage"):
                 break
             after = page_info.get("endCursor")
             if not after:
                 break
-        return media_ids
+        return nodes_out
+
+    def list_product_media_ids(self, product_id: str, *, page_size: int = 100) -> list[str]:
+        return [item["id"] for item in self.list_product_media(product_id, page_size=page_size)]
+
+    def product_reorder_media(
+        self,
+        product_id: str,
+        moves: list[dict[str, object]],
+    ) -> None:
+        if not moves:
+            return
+        data = self.graphql(
+            """
+            mutation productReorderMedia($id: ID!, $moves: [MoveInput!]!) {
+              productReorderMedia(id: $id, moves: $moves) {
+                job { id }
+                mediaUserErrors { field message code }
+              }
+            }
+            """,
+            {"id": product_id, "moves": moves},
+        )
+        payload = data.get("productReorderMedia") or {}
+        errors = payload.get("mediaUserErrors") or []
+        if errors:
+            raise ShopifyError("productReorderMedia fehlgeschlagen", detail=errors)
 
     def product_delete_media(self, product_id: str, media_ids: list[str]) -> None:
         if not media_ids:

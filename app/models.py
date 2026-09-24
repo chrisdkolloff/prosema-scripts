@@ -90,6 +90,47 @@ class UserWeclappToken(Base):
     last_verified_ok: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
 
+class UserGraphToken(Base):
+    """Microsoft Graph refresh token for SharePoint read (delegated). Credential only."""
+
+    __tablename__ = "user_graph_tokens"
+
+    oid: Mapped[str] = mapped_column(Text, primary_key=True)
+    refresh_token_encrypted: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+    )
+
+
+class UserShopifyToken(Base):
+    """Per-Entra-oid Shopify Admin API token. Credential only — not a users table."""
+
+    __tablename__ = "user_shopify_tokens"
+
+    oid: Mapped[str] = mapped_column(Text, primary_key=True)
+    token_encrypted: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+    )
+    last_verified_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True),
+        nullable=True,
+    )
+    last_verified_ok: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+
+
 class Hauptgruppe(Base):
     __tablename__ = "hauptgruppen"
 

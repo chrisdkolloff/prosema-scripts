@@ -33,6 +33,7 @@ from app.routes import pages as pages_routes
 from app.routes import snapshots as snapshots_routes
 from app.routes import supply_exports as supply_exports_routes
 from app.routes import supply_source_runs as supply_source_runs_routes
+from app.routes import shopify_images as shopify_images_routes
 from app.routes import tools as tools_routes
 from app.routes import transform as transform_routes
 from app.version_info import load_version_info
@@ -123,6 +124,7 @@ app.include_router(jobs_routes.router)
 app.include_router(gruppen_routes.router)
 app.include_router(einstellungen_routes.router)
 app.include_router(tools_routes.router)
+app.include_router(shopify_images_routes.router)
 app.include_router(batches_routes.router)
 app.include_router(snapshots_routes.router)
 app.include_router(transform_routes.router)

@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}Shopify-Bilder — PROSEMA{% endblock %}
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/">Home</a></li>
+<li class="breadcrumb-item active"><span>Shopify-Bilder</span></li>
+{% endblock %}
+{% block content %}
+  <h1 class="mb-3">Shopify-Bilder</h1>
+  <p class="text-body-secondary mb-4">
+    Produktbilder aus einem SharePoint-Ordner mit Shopify-Produkten abgleichen (Artikelnummer
+    im Dateinamen, z.&nbsp;B. <code>010.010.0010-1.JPG</code> Farbfoto,
+    <code>010.010.0010-2.JPG</code> Strichzeichnung). In SharePoint den Ordner öffnen und
+    <strong>Link kopieren</strong>, dann hier einfügen.
+  </p>
+
+  {% if form_error %}
+  <div class="alert alert-danger" role="alert">{{ form_error }}</div>
+  {% endif %}
+
+  <form
+    method="post"
+    action="/shopify-bilder"
+    class="mb-4"
+    hx-post="/shopify-bilder"
+    hx-target="#job-status"
+    hx-swap="outerHTML"
+  >
+    <div class="mb-3">
+      <label class="form-label" for="sharepoint_url">SharePoint-Ordnerlink</label>
+      <input
+        type="url"
+        class="form-control"
+        id="sharepoint_url"
+        name="sharepoint_url"
+        required
+        placeholder="https://…sharepoint.com/…"
+        value="{{ sharepoint_url or '' }}"
+      />
+    </div>
+
+    <fieldset class="mb-3">
+      <legend class="form-label fs-6">Modus</legend>
+      <div class="form-check">
+        <input
+          class="form-check-input"
+          type="radio"
+          name="mode"
+          id="mode_sync"
+          value="sync"
+          {% if form_mode is not defined or form_mode == 'sync' %}checked{% endif %}
+        />
+        <label class="form-check-label" for="mode_sync">
+          <strong>Ergänzen</strong> — fehlende Dateinamen hochladen; bereits vorhandene
+          (gleicher Dateiname am Produkt) überspringen.
+        </label>
+      </div>
+      <div class="form-check">
+        <input
+          class="form-check-input"
+          type="radio"
+          name="mode"
+          id="mode_replace"
+          value="replace"
+          {% if form_mode == 'replace' %}checked{% endif %}
+        />
+        <label class="form-check-label" for="mode_replace">
+          <strong>Bestehende ersetzen</strong> — für jeden Artikel im Ordner alle
+          Shopify-Produktbilder löschen und nur die Dateien aus diesem Ordner neu hochladen.
+        </label>
+      </div>
+    </fieldset>
+
+    <div class="form-check mb-2">
+      <input
+        class="form-check-input"
+        type="checkbox"
+        id="replace_confirm"
+        name="replace_confirm"
+        value="1"
+      />
+      <label class="form-check-label" for="replace_confirm">
+        Ich bestätige das Löschen bestehender Produktbilder (nur bei «Bestehende ersetzen»).
+      </label>
+    </div>
+
+    <div class="form-check mb-2">
+      <input
+        class="form-check-input"
+        type="checkbox"
+        id="recursive"
+        name="recursive"
+        value="1"
+      />
+      <label class="form-check-label" for="recursive">
+        Unterordner einbeziehen
+      </label>
+    </div>
+
+    <div class="form-check mb-3">
+      <input
+        class="form-check-input"
+        type="checkbox"
+        id="dry_run"
+        name="dry_run"
+        value="1"
+      />
+      <label class="form-check-label" for="dry_run">
+        Nur Vorschau (kein Upload)
+      </label>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Starten</button>
+  </form>
+
+  {% if job %}
+    {% include "partials/job_status.html" %}
+  {% else %}
+    <div id="job-status"></div>
+  {% endif %}
+{% endblock %}

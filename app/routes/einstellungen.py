@@ -22,6 +22,17 @@ from app.article_templates import (
 )
 from app.auth import SessionUser, require_admin, require_user
 from app.db import get_db
+from app.shopify_credentials import (
+    SHOPIFY_TOKEN_PATH,
+    NoShopifyToken,
+    ShopifyTokenInvalid,
+    ShopifyTokenUnreadable,
+    delete_shopify_token,
+    get_shopify_token_meta,
+    probe_shopify,
+    shopify_meta_labels,
+    store_shopify_token,
+)
 from app.weclapp import (
     LANDING_TOOLS,
     SETTINGS_PATH,
@@ -38,6 +49,7 @@ from app.weclapp import (
     probe_weclapp,
     store_token,
 )
+from scripts.shopify.client import ShopifyError
 from scripts.weclapp.client import WeclappError
 
 router = APIRouter()
@@ -53,16 +65,21 @@ def _is_htmx(request: Request) -> bool:
 
 def _settings_context(user: SessionUser, db: Session, **extra: object) -> dict[str, object]:
     meta = get_token_meta(db, user["oid"])
+    shopify_meta = get_shopify_token_meta(db, user["oid"])
     return {
         "user": user,
         "stored": meta.stored,
         "created_at_label": format_dt(meta.created_at),
         "last_verified_label": format_dt(meta.last_verified_at),
         "last_verified_ok": meta.last_verified_ok,
+        "shopify_stored": shopify_meta.stored,
+        "shopify_last_verified_ok": shopify_meta.last_verified_ok,
         "settings_path": SETTINGS_PATH,
         "weclapp_token_path": WECLAPP_TOKEN_PATH,
+        "shopify_token_path": SHOPIFY_TOKEN_PATH,
         "vorlage_path": VORLAGE_PATH,
         "is_admin": "admin" in user.get("roles", []),
+        **shopify_meta_labels(shopify_meta),
         **extra,
     }
 
@@ -174,6 +191,73 @@ def remove_weclapp_token(
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     delete_token(db, user["oid"])
+    return RedirectResponse(url=SETTINGS_PATH, status_code=303)
+
+
+@router.post(SHOPIFY_TOKEN_PATH, response_class=HTMLResponse)
+def save_shopify_token(
+    request: Request,
+    user: SessionUser = Depends(require_user),
+    db: Session = Depends(get_db),
+    token: str = Form(""),
+) -> HTMLResponse:
+    try:
+        store_shopify_token(db, user["oid"], token)
+    except ValueError as exc:
+        return request.app.state.templates.TemplateResponse(
+            request,
+            "einstellungen/index.html",
+            _settings_context(user, db, shopify_form_error=str(exc)),
+            status_code=400,
+        )
+    return RedirectResponse(url=SETTINGS_PATH, status_code=303)
+
+
+@router.post(f"{SHOPIFY_TOKEN_PATH}/testen", response_class=HTMLResponse)
+def test_shopify_token(
+    request: Request,
+    user: SessionUser = Depends(require_user),
+    db: Session = Depends(get_db),
+    token: str = Form(""),
+) -> HTMLResponse:
+    submitted = token.strip()
+    if submitted:
+        store_shopify_token(db, user["oid"], submitted)
+    try:
+        result_message = probe_shopify(db, user["oid"])
+        result_kind = "ok"
+    except NoShopifyToken as exc:
+        result_kind = "error"
+        result_message = str(exc)
+    except (ShopifyTokenInvalid, ShopifyTokenUnreadable) as exc:
+        result_kind = "error"
+        result_message = str(exc)
+    except ShopifyError:
+        result_kind = "error"
+        result_message = "Shopify ist derzeit nicht erreichbar."
+
+    ctx = {
+        "user": user,
+        "result_kind": result_kind,
+        "result_message": result_message,
+        "settings_path": SETTINGS_PATH,
+    }
+    if _is_htmx(request):
+        return request.app.state.templates.TemplateResponse(
+            request,
+            "partials/shopify_test_result.html",
+            ctx,
+            headers=_FRAGMENT_HEADERS,
+        )
+    return RedirectResponse(url=SETTINGS_PATH, status_code=303)
+
+
+@router.post(f"{SHOPIFY_TOKEN_PATH}/entfernen")
+def remove_shopify_token(
+    user: SessionUser = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    delete_shopify_token(db, user["oid"])
     return RedirectResponse(url=SETTINGS_PATH, status_code=303)
 
 

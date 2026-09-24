@@ -12,6 +12,8 @@ from fastapi.responses import RedirectResponse
 from starlette.responses import Response
 
 from app.config import settings
+from app.db import SessionLocal
+from app.graph_credentials import store_graph_refresh_token
 
 oauth = OAuth()
 oauth.register(
@@ -22,7 +24,12 @@ oauth.register(
         f"https://login.microsoftonline.com/{settings.entra_tenant_id}"
         "/v2.0/.well-known/openid-configuration"
     ),
-    client_kwargs={"scope": "openid profile email"},
+    client_kwargs={
+        "scope": (
+            "openid profile email offline_access "
+            "https://graph.microsoft.com/Files.Read.All"
+        ),
+    },
 )
 
 
@@ -139,6 +146,10 @@ async def callback(request: Request) -> Response:
         raise HTTPException(status_code=400, detail="ID token is missing required claims.")
     request.session.clear()
     request.session["user"] = dict(user)
+    refresh_token = token.get("refresh_token")
+    if isinstance(refresh_token, str) and refresh_token.strip():
+        with SessionLocal() as db:
+            store_graph_refresh_token(db, user["oid"], refresh_token)
     return RedirectResponse(url="/", status_code=302)
 
 
