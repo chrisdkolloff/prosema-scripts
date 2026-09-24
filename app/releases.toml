@@ -1,7 +1,17 @@
 # PROSEMA release history — edit this file to bump the version and document changes.
 # The top-level `version` is shown in the site header; `[[releases]]` entries appear on /changelog.
 
-version = "1.4.0"
+version = "1.4.1"
+
+[[releases]]
+version = "1.4.1"
+date = "2026-09-24"
+summary = "Update Shopify credentials handling and user guidance. Modify messages in `shopify_credentials.py` to clarify token requirements and enhance user instructions in the settings template. Adjust the logic for loading user-specific configurations to support client secrets. Add tests to ensure proper handling of stored client secrets and access tokens. (+1 more)"
+changes = [
+  "Implement Shopify access checks and enhance UI integration. Add new ShopifyAccess class for managing token status and messages. Update templates to display Shopify access status and integrate with existing Weclapp status checks. Modify CSS for consistent styling of Shopify status indicators. Enhance tests to validate Shopify presence in the UI and token status handling.",
+  "Update Shopify credentials handling and user guidance. Modify messages in `shopify_credentials.py` to clarify token requirements and enhance user instructions in the settings template. Adjust the logic for loading user-specific configurations to support client secrets. Add tests to ensure proper handling of stored client secrets and access tokens.",
+]
+
 
 [[releases]]
 version = "1.4.0"

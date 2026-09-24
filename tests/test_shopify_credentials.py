@@ -42,6 +42,18 @@ def test_store_and_meta(db_session):
     assert meta.created_at is not None
 
 
+def test_load_config_for_user_uses_stored_client_secret(db_session, monkeypatch):
+    monkeypatch.setenv("SHOPIFY_SHOP", "test-shop")
+    monkeypatch.setenv("SHOPIFY_CLIENT_ID", "cid-from-env")
+    monkeypatch.delenv("SHOPIFY_ACCESS_TOKEN", raising=False)
+    monkeypatch.delenv("SHOPIFY_CLIENT_SECRET", raising=False)
+    store_shopify_token(db_session, PLAIN_USER["oid"], "shpss_partner_dashboard_secret")
+    config = load_config_for_user(db_session, PLAIN_USER["oid"])
+    assert config.client_secret == "shpss_partner_dashboard_secret"
+    assert config.client_id == "cid-from-env"
+    assert config.access_token == ""
+
+
 def test_load_config_for_user_uses_stored_token(db_session, monkeypatch):
     monkeypatch.setenv("SHOPIFY_SHOP", "test-shop")
     monkeypatch.delenv("SHOPIFY_ACCESS_TOKEN", raising=False)

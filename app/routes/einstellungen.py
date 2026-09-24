@@ -27,6 +27,7 @@ from app.shopify_credentials import (
     NoShopifyToken,
     ShopifyTokenInvalid,
     ShopifyTokenUnreadable,
+    check_shopify_access,
     delete_shopify_token,
     get_shopify_token_meta,
     probe_shopify,
@@ -268,6 +269,7 @@ def weclapp_status_fragment(
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     access = check_weclapp_access(db, user["oid"])
+    shopify_access = check_shopify_access(db, user["oid"])
     return request.app.state.templates.TemplateResponse(
         request,
         "partials/weclapp_status.html",
@@ -275,8 +277,11 @@ def weclapp_status_fragment(
             "user": user,
             "access": access,
             "last_verified_label": format_dt(access.last_verified_at),
+            "shopify_access": shopify_access,
+            "shopify_last_verified_label": format_dt(shopify_access.last_verified_at),
             "tools": landing_tool_states(access),
             "settings_path": SETTINGS_PATH,
+            "shopify_settings_path": f"{SETTINGS_PATH}#shopify",
             "static_tools": LANDING_TOOLS,
         },
         headers=_FRAGMENT_HEADERS,

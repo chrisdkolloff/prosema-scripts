@@ -280,6 +280,7 @@ def test_landing_lists_every_tool(user_client):
     assert "Externe Systeme" in response.text
     assert "Anwendung" in response.text
     assert "weclapp" in response.text
+    assert "Shopify" in response.text
     assert ">Beschreibung<" in response.text
     for tool in LANDING_TOOLS:
         assert tool["name"] in response.text
@@ -291,7 +292,9 @@ def test_landing_lists_every_tool(user_client):
     fragment = user_client.get("/weclapp/status")
     assert fragment.status_code == 200
     assert "<td>weclapp</td>" in fragment.text
-    assert "Kein Token hinterlegt" in fragment.text
+    assert "<td>Shopify</td>" in fragment.text
+    assert fragment.text.count("Kein Token hinterlegt") == 2
+    assert 'class="shopify-status shopify-status-missing"' in fragment.text
     assert "Externe Systeme" in fragment.text
     assert 'class="system-status-detail"' in fragment.text
     assert ">Beschreibung<" in fragment.text

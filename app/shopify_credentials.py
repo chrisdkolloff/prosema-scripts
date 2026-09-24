@@ -14,12 +14,15 @@ from scripts.shopify.client import ShopifyClient, ShopifyError
 from scripts.shopify.config import ShopifyConfig, load_config
 
 MSG_NO_TOKEN = (
-    "Kein Shopify-Token hinterlegt. Bitte unter Einstellungen einen Admin-API-Token speichern."
+    "Kein Shopify-Schlüssel hinterlegt. Bitte unter Einstellungen den App-Schlüssel "
+    "(Neu) speichern."
 )
 MSG_INVALID = "Shopify-Token ungültig oder ohne Berechtigung."
 MSG_UNREADABLE = (
     "Shopify-Token konnte nicht gelesen werden. Bitte Token neu hinterlegen."
 )
+LANDING_NO_TOKEN = "Kein Token hinterlegt"
+LANDING_OK = "Zugriff aktiv"
 
 SHOPIFY_TOKEN_PATH = "/einstellungen/shopify"
 
@@ -45,6 +48,14 @@ class ShopifyTokenMeta:
     created_at: datetime | None
     last_verified_at: datetime | None
     last_verified_ok: bool | None
+
+
+@dataclass(frozen=True)
+class ShopifyAccess:
+    kind: str
+    message: str
+    stored_at: datetime | None = None
+    last_verified_at: datetime | None = None
 
 
 def get_shopify_token_meta(db: Session, oid: str) -> ShopifyTokenMeta:
@@ -106,14 +117,55 @@ def _access_token_for_user(db: Session, oid: str) -> str | None:
 
 
 def load_config_for_user(db: Session, oid: str) -> ShopifyConfig:
-    """User token from Postgres overrides ``SHOPIFY_ACCESS_TOKEN`` in ``.env``."""
+    """Per-user secret from Postgres overrides env Shopify credentials."""
     user_token = _access_token_for_user(db, oid)
     if user_token:
-        return load_config(access_token=user_token)
+        if user_token.startswith("shpat_"):
+            return load_config(access_token=user_token)
+        return load_config(client_secret=user_token, access_token="")
     try:
         return load_config()
     except ValueError as exc:
         raise NoShopifyToken() from exc
+
+
+def check_shopify_access(db: Session, oid: str) -> ShopifyAccess:
+    meta = get_shopify_token_meta(db, oid)
+    if not meta.stored:
+        return ShopifyAccess(kind="missing", message=LANDING_NO_TOKEN)
+    try:
+        probe_shopify(db, oid)
+    except NoShopifyToken:
+        return ShopifyAccess(kind="missing", message=LANDING_NO_TOKEN)
+    except ShopifyTokenInvalid:
+        return ShopifyAccess(
+            kind="invalid",
+            message=MSG_INVALID,
+            stored_at=meta.created_at,
+            last_verified_at=meta.last_verified_at,
+        )
+    except ShopifyTokenUnreadable:
+        return ShopifyAccess(
+            kind="unreadable",
+            message=MSG_UNREADABLE,
+            stored_at=meta.created_at,
+            last_verified_at=meta.last_verified_at,
+        )
+    except ShopifyError as exc:
+        status = f" ({exc.status_code})" if exc.status_code else ""
+        return ShopifyAccess(
+            kind="unreachable",
+            message=f"Shopify ist derzeit nicht erreichbar{status}.",
+            stored_at=meta.created_at,
+            last_verified_at=meta.last_verified_at,
+        )
+    meta = get_shopify_token_meta(db, oid)
+    return ShopifyAccess(
+        kind="ok",
+        message=LANDING_OK,
+        stored_at=meta.created_at,
+        last_verified_at=meta.last_verified_at,
+    )
 
 
 def probe_shopify(db: Session, oid: str) -> str:

@@ -37,6 +37,33 @@
             </div>
           </td>
         </tr>
+        <tr>
+          <td>Shopify</td>
+          <td class="shopify-status shopify-status-{{ shopify_access.kind }}">
+            <div class="system-status">
+              <strong>{{ shopify_access.message }}</strong>
+              <span class="system-status-detail">
+                {% if shopify_access.kind == "ok" and shopify_last_verified_label %}
+                <span class="text-body-secondary">Zuletzt geprüft: {{ shopify_last_verified_label }}</span>
+                {% endif %}
+                {% if shopify_access.kind == "missing" %}
+                <a href="{{ shopify_settings_path }}">Token hinterlegen</a>
+                {% elif shopify_access.kind != "ok" %}
+                <a href="{{ shopify_settings_path }}">Einstellungen</a>
+                {% endif %}
+                <button
+                  type="button"
+                  class="btn btn-outline-secondary btn-sm"
+                  hx-get="/weclapp/status"
+                  hx-target="#access-overview"
+                  hx-swap="outerHTML"
+                >
+                  Jetzt prüfen
+                </button>
+              </span>
+            </div>
+          </td>
+        </tr>
       </tbody>
     </table>
   </div>

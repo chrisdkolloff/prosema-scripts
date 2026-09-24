@@ -157,11 +157,15 @@
     <div class="card-header">Shopify</div>
     <div class="card-body">
       <p class="text-body-secondary">
-        Shopify Admin: Einstellungen → Apps und Vertriebskanäle → App entwickeln →
-        API-Zugangsdaten → Admin-API-Zugriffstoken (Berechtigungen u.&nbsp;a.
-        <code>read_products</code>, <code>write_products</code>, <code>read_files</code>,
-        <code>write_files</code> für Produktbilder).
-        Der Shop-Name (<code>SHOPIFY_SHOP</code>) bleibt in der Server-Konfiguration.
+        App-Schlüssel aus dem
+        <a href="https://dev.shopify.com/dashboard" rel="noopener noreferrer">Shopify-Partner-Dashboard</a>:
+        anmelden, App <strong>chris-export</strong> öffnen,
+        <strong>App-Einstellungen</strong> → <strong>Anmeldedaten</strong> →
+        bei <strong>Schlüssel</strong> den Eintrag mit der Kennzeichnung
+        <strong>Neu</strong> kopieren (Kopieren-Symbol) und unten einfügen.
+        Nach einem Schlüsselwechsel den neuen Schlüssel verwenden, nicht den mit
+        <strong>Alt</strong>.
+        Shop (<code>SHOPIFY_SHOP</code>) und Client-ID liegen in der Server-Konfiguration.
       </p>
 
       {% if shopify_form_error %}
@@ -175,7 +179,7 @@
         class="row g-3 align-items-end"
       >
         <div class="col-md-6">
-          <label class="form-label" for="shopify-token">Admin-API-Token</label>
+          <label class="form-label" for="shopify-token">Schlüssel (Neu)</label>
           <input
             class="form-control"
             id="shopify-token"

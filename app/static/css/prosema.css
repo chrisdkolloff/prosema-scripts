@@ -122,12 +122,17 @@ body.is-frage-busy #snapshot-frage-banner {
 .job-status-running strong { color: var(--running); }
 .job-status-succeeded strong { color: var(--succeeded); }
 
-.table td.weclapp-status-ok strong { color: var(--succeeded); }
+.table td.weclapp-status-ok strong,
+.table td.shopify-status-ok strong { color: var(--succeeded); }
 .table td.weclapp-status-missing strong,
 .table td.weclapp-status-invalid strong,
 .table td.weclapp-status-unlicensed strong,
 .table td.weclapp-status-unreadable strong,
-.table td.weclapp-status-unreachable strong { color: var(--failed); }
+.table td.weclapp-status-unreachable strong,
+.table td.shopify-status-missing strong,
+.table td.shopify-status-invalid strong,
+.table td.shopify-status-unreadable strong,
+.table td.shopify-status-unreachable strong { color: var(--failed); }
 
 .gruppen-code { font-family: var(--cui-font-monospace); }
 
