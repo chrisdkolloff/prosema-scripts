@@ -67,57 +67,6 @@ def _format_summary(result: dict[str, object]) -> list[str]:
     return lines
 
 
-def run_job(params: dict):
-    from gui.job_spec import RunResult, coerce_params, validate_params
-
-    params = coerce_params(JOB_SPEC, params)
-    validate_params(JOB_SPEC, params)
-
-    try:
-        result = run_connection_test(
-            tenant=params.get("tenant", ""),
-            api_token=params.get("api_token", ""),
-        )
-    except ValueError as exc:
-        return RunResult(summary=f"Fehler: {exc}", details=[])
-
-    return RunResult(
-        summary="weclapp-Verbindung erfolgreich",
-        details=_format_summary(result),
-    )
-
-
-def _build_job_spec():
-    from gui.job_spec import FieldKind, FieldSpec, JobSpec
-
-    return JobSpec(
-        id="weclapp_test",
-        title="weclapp-Verbindung testen",
-        description=(
-            "Prüft die weclapp-API-Zugangsdaten aus der Datei .env im Projektordner "
-            "(WECLAPP_TENANT und WECLAPP_API_TOKEN). Optional können Tenant und Token "
-            "unter Erweitert überschrieben werden."
-        ),
-        fields=(
-            FieldSpec(
-                "tenant",
-                "Tenant (optional, sonst aus .env)",
-                FieldKind.STR,
-                "",
-                advanced=True,
-            ),
-            FieldSpec(
-                "api_token",
-                "API-Token (optional, sonst aus .env)",
-                FieldKind.STR,
-                "",
-                advanced=True,
-            ),
-        ),
-        run=run_job,
-    )
-
-
 def build_argparser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="weclapp-API-Verbindung testen.",
@@ -151,7 +100,6 @@ def main() -> None:
 
 
 _ensure_project_root()
-JOB_SPEC = _build_job_spec()
 
 
 if __name__ == "__main__":

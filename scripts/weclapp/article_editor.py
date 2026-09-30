@@ -383,47 +383,6 @@ def launch_editor(input_path: Path | None = None) -> subprocess.Popen:
     )
 
 
-def run_job(params: dict):
-    from gui.job_spec import RunResult, coerce_params, validate_params
-    from scripts.paths import resolve_path
-
-    params = coerce_params(JOB_SPEC, params)
-    validate_params(JOB_SPEC, params)
-    input_path = resolve_path(params["input"])
-    process = launch_editor(input_path)
-    return RunResult(
-        summary="Artikel-Editor im Browser gestartet.",
-        details=[
-            f"CSV: {input_path}",
-            f"Prozess-ID: {process.pid}",
-            "Falls sich kein Browser öffnet: http://localhost:8501",
-        ],
-        show_success_dialog=False,
-    )
-
-
-def _build_job_spec():
-    from gui.job_spec import FieldKind, FieldSpec, JobSpec
-
-    return JobSpec(
-        id="weclapp_article_editor",
-        title="Artikel-Import Editor (abgelöst)",
-        description=(
-            "CSV-Editor noch nutzbar zum Prüfen. Anlegen nur noch über "
-            "/artikel-registrierung in der Web-App."
-        ),
-        fields=(
-            FieldSpec(
-                "input",
-                "Import-CSV",
-                FieldKind.FILE_IN,
-                "data/weclapp_article_import_template.csv",
-            ),
-        ),
-        run=run_job,
-    )
-
-
 def main(argv: list[str] | None = None) -> int:
     _ensure_project_root()
     if _running_in_streamlit():
@@ -451,7 +410,6 @@ def main(argv: list[str] | None = None) -> int:
 
 
 _ensure_project_root()
-JOB_SPEC = _build_job_spec()
 
 
 if __name__ == "__main__":

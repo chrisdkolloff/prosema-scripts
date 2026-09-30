@@ -8,16 +8,19 @@
 #   ./release.sh --push
 #
 # Environment overrides:
-#   DEV_BRANCH=dev MAIN_BRANCH=main
+#   DEV_BRANCH=... MAIN_BRANCH=main  (default work branch: scripts/prosema_dev_branch.sh)
 
 set -euo pipefail
 
 # Avoid interactive pagers when listing commits in the terminal.
 export GIT_PAGER=cat
 
-DEV_BRANCH="${DEV_BRANCH:-dev}"
-MAIN_BRANCH="${MAIN_BRANCH:-main}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export PROSEMA_REPO_ROOT="${REPO_ROOT}"
+# shellcheck source=prosema_dev_branch.sh
+source "${REPO_ROOT}/scripts/prosema_dev_branch.sh"
+DEV_BRANCH="${DEV_BRANCH:-$(prosema_dev_branch)}"
+MAIN_BRANCH="${MAIN_BRANCH:-main}"
 DRY_RUN=false
 DO_PUSH=false
 AUTO_MESSAGE=false
@@ -46,7 +49,7 @@ Options:
   -h, --help       Show this help
 
 Environment:
-  DEV_BRANCH   Source branch (default: dev)
+  DEV_BRANCH   Source branch (default: dev or dev-dk on this machine)
   MAIN_BRANCH  Target branch (default: main)
 
 Pushing main triggers the Azure App Service workflow

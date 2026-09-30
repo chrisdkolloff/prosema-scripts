@@ -325,81 +325,6 @@ def _ensure_project_root() -> None:
         sys.path.insert(0, str(root))
 
 
-def run_job(params: dict):
-    from gui.job_spec import RunResult, coerce_params, validate_params
-
-    params = coerce_params(JOB_SPEC, params)
-    validate_params(JOB_SPEC, params)
-
-    try:
-        stats = generate_weclapp_import(
-            _resolve_path(params["input"]),
-            _resolve_path(params["template"]),
-            _resolve_path(params["rabatte"]),
-            _resolve_path(params["output"]),
-        )
-    except PermissionError as exc:
-        raise PermissionError(
-            f"Konnte {params['output']} nicht speichern — ist die Datei geöffnet?"
-        ) from exc
-
-    details = stats.summary_lines()
-    if stats.warnings:
-        details.append("Warnung: Artikel ohne Rabattkategorie:")
-        details.extend(f"  {warning}" for warning in stats.warnings)
-
-    return RunResult(
-        summary=f"Fertig: {params['output']}  ({stats.rows_written} Zeilen)",
-        details=details,
-    )
-
-
-def _build_job_spec():
-    from gui.job_spec import FieldKind, FieldSpec, JobSpec
-
-    template_default = (
-        "data/SupplySourcesWeclapp DemoImportfile_de (28.10.2024)(1).csv"
-    )
-    return JobSpec(
-        id="weclapp_import",
-        title="Weclapp-Import erzeugen",
-        description=(
-            "Bezugsquellen-Import für Weclapp aus der Masterdatei erzeugen. "
-            "Rabatte werden anhand der Rabattkategorie_Lieferant nachgeschlagen."
-        ),
-        fields=(
-            FieldSpec(
-                "input",
-                "Masterdatei",
-                FieldKind.FILE_IN,
-                "input/input.xlsx",
-            ),
-            FieldSpec(
-                "output",
-                "Ausgabedatei",
-                FieldKind.FILE_OUT,
-                "output/export/weclapp_import.csv",
-                output_name="weclapp_import.csv",
-            ),
-            FieldSpec(
-                "template",
-                "Weclapp-Importvorlage",
-                FieldKind.FILE_IN,
-                template_default,
-                advanced=True,
-            ),
-            FieldSpec(
-                "rabatte",
-                "Produktgruppen-Rabatte",
-                FieldKind.FILE_IN,
-                "data/produktgruppen_rabatte.csv",
-                advanced=True,
-            ),
-        ),
-        run=run_job,
-    )
-
-
 def build_argparser() -> argparse.ArgumentParser:
     root = _project_root()
     parser = argparse.ArgumentParser(
@@ -472,7 +397,6 @@ def main() -> None:
 
 
 _ensure_project_root()
-JOB_SPEC = _build_job_spec()
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ import csv
 import json
 import re
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -55,28 +55,6 @@ RESTRICTED_SELECT_COLUMNS: tuple[str, ...] = (
 class ImportErrorRow:
     article_number: str
     message: str
-
-
-@dataclass
-class ImportStats:
-    rows_read: int = 0
-    created: int = 0
-    skipped: int = 0
-    errors: list[ImportErrorRow] = field(default_factory=list)
-    created_ids: list[tuple[str, str]] = field(default_factory=list)
-
-    def summary_lines(self) -> list[str]:
-        lines = [
-            f"Zeilen gelesen: {self.rows_read}",
-            f"Erstellt:       {self.created}",
-            f"Übersprungen:   {self.skipped}",
-            f"Fehler:         {len(self.errors)}",
-        ]
-        for article_number, article_id in self.created_ids:
-            lines.append(f"  OK {article_number} -> {article_id}")
-        for error in self.errors:
-            lines.append(f"  FEHLER {error.article_number}: {error.message}")
-        return lines
 
 
 def _ensure_project_root() -> None:
@@ -521,55 +499,6 @@ MSG_CLI_RETIRED = (
 )
 
 
-def _article_exists(client, article_number: str) -> dict[str, Any] | None:
-    data = client.get(
-        "/article",
-        params={"pageSize": 1, "articleNumber-eq": article_number},
-    )
-    rows = (data or {}).get("result") or []
-    return rows[0] if rows else None
-
-
-def import_articles(
-    input_path: Path,
-    *,
-    dry_run: bool = True,
-    limit: int | None = None,
-    article_numbers: set[str] | None = None,
-) -> ImportStats:
-    """Retired: do not POST articles from the CLI or desktop GUI.
-
-    Shared helpers in this module (columns, lookups, validation) remain for the
-    web Artikelregistrierung. Offline CSV checks can use ``validate_import_rows``.
-    """
-    raise RuntimeError(MSG_CLI_RETIRED)
-
-
-def run_job(params: dict):
-    from gui.job_spec import RunResult
-
-    return RunResult(summary=MSG_CLI_RETIRED, details=[])
-
-
-def _build_job_spec():
-    from gui.job_spec import FieldKind, FieldSpec, JobSpec
-
-    return JobSpec(
-        id="weclapp_import_articles",
-        title="weclapp-Artikel anlegen (abgelöst)",
-        description=MSG_CLI_RETIRED,
-        fields=(
-            FieldSpec(
-                "input",
-                "Import-CSV",
-                FieldKind.FILE_IN,
-                "data/weclapp_article_import_template.csv",
-            ),
-        ),
-        run=run_job,
-    )
-
-
 def main(argv: list[str] | None = None) -> int:
     _ensure_project_root()
     from scripts.paths import DATA_DIR, resolve_path
@@ -621,7 +550,6 @@ def main(argv: list[str] | None = None) -> int:
 
 
 _ensure_project_root()
-JOB_SPEC = _build_job_spec()
 
 
 if __name__ == "__main__":

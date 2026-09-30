@@ -2,7 +2,7 @@
 Artikelnummer-Generator (PROSEMA / DURAL Masterliste) — Excel-Adapter.
 
 Reine Vergabelogik: ``core.numbering``. Gruppenschlüssel: ``core.groups``.
-Dieses Modul liest/schreibt die Masterliste und bleibt der CLI / JOB_SPEC-Einstieg.
+Dieses Modul liest/schreibt die Masterliste (CLI: run.command oder direkt aufrufen).
 """
 
 from __future__ import annotations
@@ -161,7 +161,7 @@ def assign_article_numbers(
 
 
 def run_job(params: dict):
-    from gui.job_spec import RunResult, coerce_params, validate_params
+    from scripts.job_spec import RunResult, coerce_params, validate_params
 
     params = coerce_params(JOB_SPEC, params)
     validate_params(JOB_SPEC, params)
@@ -198,11 +198,9 @@ def run_job(params: dict):
 
 
 def _build_job_spec():
-    from gui.job_spec import FieldKind, FieldSpec, JobSpec
+    from scripts.job_spec import FieldKind, FieldSpec, JobSpec
 
     return JobSpec(
-        id="artikelnummern",
-        title="Artikelnummern erstellen",
         description="Fehlende Artikelnummern in einer Excel-Masterliste vergeben.",
         fields=(
             FieldSpec("input", "Eingabedatei", FieldKind.FILE_IN, "input/input.xlsx"),
@@ -211,7 +209,6 @@ def _build_job_spec():
                 "Ausgabedatei",
                 FieldKind.FILE_OUT,
                 "output/processing/output_mit_artikelnummern.xlsx",
-                output_name="output_mit_artikelnummern.xlsx",
             ),
             FieldSpec(
                 "strict",
@@ -227,23 +224,34 @@ def _build_job_spec():
                 False,
                 help="Vorhandene Artikelnummern neu vergeben",
             ),
-            FieldSpec("start", "Startnummer", FieldKind.INT, 10, advanced=True),
-            FieldSpec("step", "Schrittweite", FieldKind.INT, 10, advanced=True),
+            FieldSpec(
+                "start",
+                "Startnummer",
+                FieldKind.INT,
+                10,
+                help="Erste laufende Nummer pro Gruppe",
+            ),
+            FieldSpec(
+                "step",
+                "Schrittweite",
+                FieldKind.INT,
+                10,
+                help="Abstand zwischen laufenden Nummern",
+            ),
             FieldSpec(
                 "dictionary_file",
                 "Gruppenschlüssel",
                 FieldKind.STR,
                 "data/gruppen.xlsx",
-                advanced=True,
+                help="Excel-Datei mit Haupt-/Untergruppen",
             ),
         ),
-        run=run_job,
     )
 
 
 def main():
     _ensure_project_root()
-    from gui.job_spec import args_to_params, build_argparser, coerce_params, validate_params
+    from scripts.job_spec import args_to_params, build_argparser, coerce_params, validate_params
 
     parser = build_argparser(JOB_SPEC)
     args = parser.parse_args()

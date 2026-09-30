@@ -18,14 +18,18 @@
 #                 built from the dev commits, then push main + reset/push dev
 #
 # Environment overrides:
-#   DEV_BRANCH=dev MAIN_BRANCH=main
+#   DEV_BRANCH=...  (default: dev on primary machine, dev-dk otherwise — see scripts/prosema_dev_branch.sh)
+#   MAIN_BRANCH=main
 
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${ROOT}"
 
-DEV_BRANCH="${DEV_BRANCH:-dev}"
+export PROSEMA_REPO_ROOT="${ROOT}"
+# shellcheck source=scripts/prosema_dev_branch.sh
+source "${ROOT}/scripts/prosema_dev_branch.sh"
+DEV_BRANCH="${DEV_BRANCH:-$(prosema_dev_branch)}"
 MAIN_BRANCH="${MAIN_BRANCH:-main}"
 SQUASH_SCRIPT="${ROOT}/scripts/squash-merge-dev-to-main.sh"
 MIGRATE_SCRIPT="${ROOT}/scripts/upgrade_prod_db.sh"
@@ -57,11 +61,11 @@ Options:
   -h, --help     Show this help
 
 Environment:
-  DEV_BRANCH    Branch to run from (default: dev)
+  DEV_BRANCH    Work branch (default: dev or dev-dk for this machine)
   MAIN_BRANCH   Release branch (default: main)
 
 Prerequisites:
-  - checkout on dev before running
+  - checkout on your work branch (dev or dev-dk) before running
   - Python 3.12 venv with the app installed (pip install -e ".[dev]")
   - Postgres available for pytest
   - PRODUCTION_DATABASE_URL in .env (for --push)
@@ -235,7 +239,7 @@ step_release() {
 
 main() {
   log "PROSEMA tools release pipeline"
-  echo "Branch: $(current_branch)"
+  echo "Branch: $(current_branch) (expected work branch: ${DEV_BRANCH}; $(prosema_dev_branch_label))"
   if [[ "${DRY_RUN}" == true ]]; then
     echo "Mode: dry run (no changes)"
   fi

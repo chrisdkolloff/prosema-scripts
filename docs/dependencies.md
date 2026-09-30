@@ -18,6 +18,6 @@ Do not pass `--generate-hashes` — Oryx builds are less predictable with hashes
 
 `pip-compile` without `--upgrade` keeps existing pins. Use `--upgrade` (or `--upgrade-package NAME`) only when you intend to bump versions.
 
-## Desktop / legacy packages
+## Removed desktop GUI
 
-Former desktop and Streamlit dependencies (`customtkinter`, `streamlit`, `pandas`) were removed from the project. They are not declared as extras and must not be installed in production.
+The Tk desktop menu (`gui.command`) was removed. Offline work uses CLI scripts under `scripts/` (see `run.command` for Artikelnummern). Do not re-add `customtkinter` or similar GUI stacks to production dependencies.

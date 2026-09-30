@@ -120,81 +120,6 @@ def export_articles_csv(
     return stats
 
 
-def run_job(params: dict):
-    from gui.job_spec import RunResult, coerce_params, validate_params
-
-    params = coerce_params(JOB_SPEC, params)
-    validate_params(JOB_SPEC, params)
-
-    output_path = _resolve_path(params["output"])
-    try:
-        stats = export_articles_csv(
-            output_path,
-            tenant=params.get("tenant", ""),
-            api_token=params.get("api_token", ""),
-            active_only=bool(params.get("active_only")),
-        )
-    except ValueError as exc:
-        return RunResult(summary=f"Fehler: {exc}", details=[])
-    except OSError as exc:
-        return RunResult(summary=f"Dateifehler: {exc}", details=[])
-
-    details = stats.summary_lines()
-    if stats.warnings:
-        details.extend(f"  {warning}" for warning in stats.warnings)
-
-    return RunResult(
-        summary=f"Fertig: {output_path} ({stats.rows_written} Artikel)",
-        details=details,
-    )
-
-
-def _build_job_spec():
-    from gui.job_spec import FieldKind, FieldSpec, JobSpec
-
-    return JobSpec(
-        id="weclapp_export_articles",
-        title="weclapp-Artikel exportieren",
-        description=(
-            "Lädt alle Artikel aus weclapp über die API und speichert sie als CSV-Snapshot "
-            "(Rohdatei *_raw.csv mit Masterlisten-Spalten, Hauptdatei mit Import-Spaltennamen, "
-            "Masterliste als .xlsx). "
-            "Zugangsdaten werden aus .env gelesen."
-        ),
-        fields=(
-            FieldSpec(
-                "output",
-                "Ausgabedatei",
-                FieldKind.FILE_OUT,
-                "output/export/weclapp_export.csv",
-                output_name="weclapp_export.csv",
-            ),
-            FieldSpec(
-                "active_only",
-                "Nur aktive Artikel",
-                FieldKind.BOOL,
-                False,
-                advanced=True,
-            ),
-            FieldSpec(
-                "tenant",
-                "Tenant (optional, sonst aus .env)",
-                FieldKind.STR,
-                "",
-                advanced=True,
-            ),
-            FieldSpec(
-                "api_token",
-                "API-Token (optional, sonst aus .env)",
-                FieldKind.STR,
-                "",
-                advanced=True,
-            ),
-        ),
-        run=run_job,
-    )
-
-
 def build_argparser() -> argparse.ArgumentParser:
     root = _project_root()
     parser = argparse.ArgumentParser(
@@ -250,7 +175,6 @@ def main() -> None:
 
 
 _ensure_project_root()
-JOB_SPEC = _build_job_spec()
 
 
 if __name__ == "__main__":

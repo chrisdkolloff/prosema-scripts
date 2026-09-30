@@ -235,78 +235,6 @@ def fill_prosema_prices(
     return stats
 
 
-def run_job(params: dict):
-    from gui.job_spec import RunResult, coerce_params, validate_params
-
-    params = coerce_params(JOB_SPEC, params)
-    validate_params(JOB_SPEC, params)
-
-    try:
-        stats = fill_prosema_prices(
-            resolve_path(params["input"]),
-            resolve_path(params["rabatte"]),
-            resolve_path(params["output"]),
-            zuschlag_percent=int(params["zuschlag"]),
-        )
-    except PermissionError as exc:
-        raise PermissionError(
-            f"Konnte {params['output']} nicht speichern — ist die Datei geöffnet?"
-        ) from exc
-
-    details = stats.summary_lines()
-    if stats.warnings:
-        details.append("Warnung: Artikel ohne Rabattkategorie:")
-        details.extend(f"  {warning}" for warning in stats.warnings)
-
-    return RunResult(
-        summary=f"Fertig: {params['output']}  ({stats.rows_priced} Preise berechnet)",
-        details=details,
-    )
-
-
-def _build_job_spec():
-    from gui.job_spec import FieldKind, FieldSpec, JobSpec
-
-    return JobSpec(
-        id="fill_prosema_prices",
-        title="Prosema-Preise berechnen",
-        description=(
-            "Rabatte aus der Rabattkategorie nachschlagen und Einkaufs-/Verkaufspreise "
-            "Prosema im Weclapp-Export berechnen."
-        ),
-        fields=(
-            FieldSpec(
-                "input",
-                "Weclapp-Export",
-                FieldKind.FILE_IN,
-                "output/export/weclapp_export.csv",
-            ),
-            FieldSpec(
-                "output",
-                "Ausgabedatei",
-                FieldKind.FILE_OUT,
-                "output/export/weclapp_export_priced.csv",
-                output_name="weclapp_export_priced.csv",
-            ),
-            FieldSpec(
-                "rabatte",
-                "Produktgruppen-Rabatte",
-                FieldKind.FILE_IN,
-                "data/produktgruppen_rabatte.csv",
-                advanced=True,
-            ),
-            FieldSpec(
-                "zuschlag",
-                "Zuschlag (%)",
-                FieldKind.INT,
-                DEFAULT_ZUSCHLAG_PERCENT,
-                advanced=True,
-            ),
-        ),
-        run=run_job,
-    )
-
-
 def build_argparser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
@@ -372,9 +300,6 @@ def main() -> None:
     print(f"Fertig: {output_path}")
     for line in stats.summary_lines():
         print(line)
-
-
-JOB_SPEC = _build_job_spec()
 
 
 if __name__ == "__main__":

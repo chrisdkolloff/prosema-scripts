@@ -1,4 +1,6 @@
-# Artikelregistrierung
+# Artikelregistrierung (Entwickler)
+
+Schulungsanleitung (Deutsch): [`artikel-registrierung-anleitung.md`](artikel-registrierung-anleitung.md).
 
 Upload → grid → Freigeben → Senden. **This is the only supported path** to create
 sales articles in weclapp. The desktop/CLI path

@@ -944,7 +944,7 @@ def render_dashboard(
 
 
 def run_job(params: dict):
-    from gui.job_spec import RunResult, coerce_params, validate_params
+    from scripts.job_spec import RunResult, coerce_params, validate_params
 
     params = coerce_params(JOB_SPEC, params)
     validate_params(JOB_SPEC, params)
@@ -973,16 +973,13 @@ def run_job(params: dict):
     return RunResult(
         summary=f"Fertig: {output_file}",
         details=details,
-        show_success_dialog=False,
     )
 
 
 def _build_job_spec():
-    from gui.job_spec import FieldKind, FieldSpec, JobSpec
+    from scripts.job_spec import FieldKind, FieldSpec, JobSpec
 
     return JobSpec(
-        id="master_dashboard",
-        title="Masterliste-Dashboard",
         description=(
             "Interaktives Plotly-Dashboard aus der Excel-Masterliste oder dem "
             "weclapp-Artikel-CSV-Snapshot erzeugen. Filtern nach Kategorien, "
@@ -1000,16 +997,14 @@ def _build_job_spec():
                 "Ausgabedatei",
                 FieldKind.FILE_OUT,
                 "output/reports/master_dashboard.html",
-                output_name="master_dashboard.html",
             ),
         ),
-        run=run_job,
     )
 
 
 def main() -> None:
     _ensure_project_root()
-    from gui.job_spec import args_to_params, build_argparser, coerce_params, validate_params
+    from scripts.job_spec import args_to_params, build_argparser, coerce_params, validate_params
 
     parser = build_argparser(JOB_SPEC)
     args = parser.parse_args()

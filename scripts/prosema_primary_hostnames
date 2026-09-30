@@ -1,0 +1,3 @@
+# Short hostname (`hostname -s`) for machines that use branch `dev`.
+# All other machines default to `dev-dk`. Override with PROSEMA_DEV_BRANCH.
+MacBookPro

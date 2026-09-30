@@ -47,4 +47,4 @@ fi
 
 echo ""
 echo "Fertig. Die Einrichtung war erfolgreich."
-echo "Ab jetzt kannst du gui.command oder run.command doppelklicken."
+echo "Ab jetzt kannst du run.command doppelklicken (Artikelnummern) oder die Web-App nutzen."

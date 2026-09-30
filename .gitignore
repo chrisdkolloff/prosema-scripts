@@ -2,6 +2,7 @@
 __pycache__/
 .DS_Store
 .env
+.prosema-primary-operator
 .pytest_cache/
 .ruff_cache/
 *.egg-info/

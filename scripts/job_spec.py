@@ -1,12 +1,10 @@
-"""Shared job specification types used by scripts and the GUI."""
+"""CLI argument helpers shared by offline processing scripts."""
 
 from __future__ import annotations
 
 import argparse
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from pathlib import Path
 from typing import Any
 
 
@@ -25,47 +23,18 @@ class FieldSpec:
     kind: FieldKind
     default: Any
     help: str = ""
-    advanced: bool = False
-    output_name: str | None = None
 
 
 @dataclass
 class RunResult:
     summary: str
     details: list[str] = field(default_factory=list)
-    show_success_dialog: bool = True
 
 
 @dataclass(frozen=True)
 class JobSpec:
-    id: str
-    title: str
     description: str
     fields: tuple[FieldSpec, ...]
-    run: Callable[[dict[str, Any]], RunResult]
-
-
-def default_output_path(
-    input_path: str | Path,
-    output_name: str,
-    *,
-    default_output: str | Path | None = None,
-) -> Path:
-    from scripts.paths import PROJECT_ROOT
-
-    if default_output:
-        default = Path(default_output)
-        if default.parent != Path("."):
-            return PROJECT_ROOT / default.parent / Path(output_name).name
-
-    out = Path(output_name)
-    if out.parent != Path("."):
-        return PROJECT_ROOT / out
-    return Path(input_path).parent / output_name
-
-
-def defaults_from_spec(spec: JobSpec) -> dict[str, Any]:
-    return {f.name: f.default for f in spec.fields}
 
 
 def coerce_params(spec: JobSpec, raw: dict[str, Any]) -> dict[str, Any]:

@@ -440,7 +440,7 @@ def _ensure_project_root() -> None:
 
 
 def run_job(params: dict):
-    from gui.job_spec import RunResult, coerce_params, validate_params
+    from scripts.job_spec import RunResult, coerce_params, validate_params
 
     params = coerce_params(JOB_SPEC, params)
     validate_params(JOB_SPEC, params)
@@ -472,11 +472,9 @@ def run_job(params: dict):
 
 
 def _build_job_spec():
-    from gui.job_spec import FieldKind, FieldSpec, JobSpec
+    from scripts.job_spec import FieldKind, FieldSpec, JobSpec
 
     return JobSpec(
-        id="legacy_names",
-        title="Legacy-Namen ersetzen",
         description="Alte Haupt- und Untergruppen-Namen auf neue Bezeichnungen umstellen.",
         fields=(
             FieldSpec("input", "Eingabedatei", FieldKind.FILE_IN, "input/input.xlsx"),
@@ -485,7 +483,6 @@ def _build_job_spec():
                 "Ausgabedatei",
                 FieldKind.FILE_OUT,
                 "output/processing/output_mit_neuen_namen.xlsx",
-                output_name="output_mit_neuen_namen.xlsx",
             ),
             FieldSpec(
                 "strict",
@@ -500,10 +497,8 @@ def _build_job_spec():
                 FieldKind.STR,
                 "",
                 help="Leer lassen für aktives Blatt",
-                advanced=True,
             ),
         ),
-        run=run_job,
     )
 
 
@@ -513,7 +508,7 @@ def main():
         return
 
     _ensure_project_root()
-    from gui.job_spec import args_to_params, build_argparser, coerce_params, validate_params
+    from scripts.job_spec import args_to_params, build_argparser, coerce_params, validate_params
 
     parser = build_argparser(JOB_SPEC)
     args = parser.parse_args()

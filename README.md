@@ -1,6 +1,9 @@
 # PROSEMA internal tooling
 
 Web application for the PROSEMA internal tools (FastAPI, server-rendered Jinja2 + HTMX).
+
+**AI agents / handover:** read [`AGENTS.md`](AGENTS.md) first (branches `dev` vs `dev-dk`, release, safety).  
+Documentation index: [`docs/README.md`](docs/README.md).
 Identity comes from Entra ID; jobs are stored in PostgreSQL and executed by an in-process worker thread.
 
 Dependency pins and how to regenerate them: [docs/dependencies.md](docs/dependencies.md).
@@ -65,9 +68,9 @@ Enable **Always On**. The worker is a `threading.Thread` inside the web process;
 
 Queued jobs themselves live in PostgreSQL and are picked up after a restart.
 
-### Release (dev → main → tools.prosema.ch)
+### Release (work branch → main → tools.prosema.ch)
 
-Work on `dev`. Deploying squash-merges that work onto `main` as one commit and pushes; GitHub Actions then deploys to Azure. Each `./release.sh --push` also bumps the patch version in `app/releases.toml` (site header and `/changelog`). Use `--minor` or `--major` when the change warrants it, or `--no-bump` to leave the version alone.
+Day-to-day work happens on **`dev`** (primary developer machine) or **`dev-dk`** (other machines). `./scripts/checkout_work_branch.sh` selects the right branch. Deploying squash-merges that work onto `main` as one commit and pushes; GitHub Actions then deploys to Azure. Coordinate with the team before `--push` ([`docs/deploy-koordination.md`](docs/deploy-koordination.md)). Each `./release.sh --push` also bumps the patch version in `app/releases.toml` (site header and `/changelog`). Use `--minor` or `--major` when the change warrants it, or `--no-bump` to leave the version alone.
 
 ```bash
 # On dev: lint + pytest, then print the next command

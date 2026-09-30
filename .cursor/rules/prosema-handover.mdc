@@ -1,0 +1,14 @@
+---
+description: PROSEMA handover — branches, release, safety (read AGENTS.md)
+alwaysApply: true
+---
+
+# PROSEMA agent rules
+
+Read [AGENTS.md](../../AGENTS.md) at the start of substantive tasks.
+
+- Work on **`dev-dk`** on this machine unless `PROSEMA_DEV_BRANCH` or primary-operator detection says **`dev`**. Use `./scripts/checkout_work_branch.sh` before editing.
+- Never commit to **`main`** directly. Production deploy = squash-merge via `./release.sh --push`.
+- Run **`pytest`** before commit; warn the user if the change touches many modules, DB migrations, weclapp writes, or assistant behaviour — those need Chris’s supervision.
+- weclapp live writes: follow [`docs/artikel-registrierung.md`](../../docs/artikel-registrierung.md) (test article `999.999` unless explicitly approved).
+- Do not commit `.env` or secrets.

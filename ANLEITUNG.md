@@ -31,7 +31,7 @@ Diese Anleitung ist fuer macOS und fuer Einsteiger gedacht.
 
 ## 5. Python installieren: genau Version 3.12 (wichtig)
 
-PROSEMA braucht **Python 3.12** mit **Tkinter**.
+PROSEMA braucht **Python 3.12**.
 
 1. Oeffne [https://www.python.org/downloads/](https://www.python.org/downloads/).
 2. Lade **Python 3.12 fuer macOS** herunter (nicht 3.13, nicht 3.11).
@@ -63,40 +63,43 @@ Bevor du arbeitest, immer kurz die neueste Version holen:
 
 So hast du immer den neuesten Stand.
 
-## 8. GUI starten (empfohlen)
+## 8. Web-App (Hauptwerkzeug)
 
-1. In GitHub Desktop: **Repository -> Show in Finder**.
-2. Im Finder Doppelklick auf `gui.command`.
-3. Das PROSEMA-Fenster oeffnet sich.
-4. Werkzeug auswaehlen (z. B. **Artikelnummern erstellen**).
-5. Eingabedatei auswaehlen und Ausgabeort kontrollieren.
-6. Auf **Generieren** klicken.
+Artikelregistrierung, Artikeluebersicht, Assistent und weitere Tools: **https://tools.prosema.ch** (Microsoft-Anmeldung).
 
-Wichtig: Vor dem Start immer pruefen, ob **Input** und **Output** auf die richtigen Dateien/Ordner zeigen. Falls nicht, bitte anpassen.
+## 9. Optional: Artikelnummern per Doppelklick (Excel)
 
-## 9. macOS-Hinweis beim ersten Start von .command-Dateien
+1. Excel-Datei nach `input/input.xlsx` legen.
+2. Doppelklick auf `run.command`.
+3. Ergebnis: `output/processing/output_mit_artikelnummern.xlsx`.
+
+## 10. macOS-Hinweis beim ersten Start von .command-Dateien
 
 Wenn macOS beim ersten Doppelklick blockiert:
 
-1. Rechtsklick auf die Datei (z. B. `setup.command` oder `gui.command`).
+1. Rechtsklick auf die Datei (z. B. `setup.command` oder `run.command`).
 2. **Oeffnen** waehlen.
 3. Im Dialog nochmal **Oeffnen** bestaetigen.
 
 Falls noetig: **Systemeinstellungen -> Datenschutz & Sicherheit -> Trotzdem oeffnen**.
 
-## 10. Alternative ohne GUI: run.command
+## 11. Web-App und KI-Hilfe (Cursor)
 
-Wenn du stattdessen den Direktlauf nutzen willst:
+Die **Web-Anwendung** (Artikelregistrierung, Artikelübersicht, Assistent, …) läuft auf **https://tools.prosema.ch**. Lokale Entwicklung: siehe [`README.md`](README.md).
 
-1. Datei nach `input/input.xlsx` legen.
-2. Doppelklick auf `run.command`.
-3. Ergebnis liegt danach in `output/processing/output_mit_artikelnummern.xlsx`.
+Wenn du mit **Cursor** (KI) am Code arbeitest:
 
-## 11. Wenn etwas nicht klappt
+1. Repository in Cursor öffnen (gleicher Ordner wie bei GitHub Desktop).
+2. Vor Änderungen: `./scripts/checkout_work_branch.sh` im Terminal — du landest auf Branch **`dev-dk`**.
+3. Der KI-Assistent soll [`AGENTS.md`](AGENTS.md) lesen (dort: Commits, Release, Warnungen).
+4. Kleine Bugfixes: KI kann oft allein helfen. **Grössere Features** oder viele geänderte Dateien: bitte **Chris** einbeziehen, bevor live released wird.
+5. Live schalten: nur über `./release.sh --push` (nach Absprache mit dem Team — siehe [`docs/deploy-koordination.md`](docs/deploy-koordination.md)).
+
+## 12. Wenn etwas nicht klappt
 
 Bitte diese Punkte pruefen:
 1. Wurde `setup.command` nach der Python-Installation ausgefuehrt?
 2. Ist wirklich Python 3.12 installiert (`python3.12 --version`)?
 3. Ist die Excel-Datei vor dem Start geschlossen?
-4. Stimmen die Input- und Output-Pfade in der GUI?
+4. Liegt die Eingabedatei unter `input/input.xlsx` (bei `run.command`)?
 5. Bei Fehlern: bitte die genaue Meldung schicken (Screenshot oder Text).
