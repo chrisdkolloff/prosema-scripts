@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.auth import SessionUser, require_admin, require_user
 from app.db import get_db
 from app.models import SupplySourceRow, SupplySourceRun
+from app.supply_source_matches import assign_missing, match_preview
 from app.supply_source_runs import (
     SupplySourceRunError,
     apply_bulk_rates,
@@ -338,7 +339,18 @@ def run_detail(
     from app.supply_source_apply import apply_summary, pending_rows
 
     run = _get_run(db, run_id)
+    try:
+        matches = match_preview(db, run, request.query_params.get("mapping_batch", ""))
+    except SupplySourceRunError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     rows = load_rows(db, run.id) if run.status != "running" else []
+    parse_summary = dict(run.upload.parse_summary or {}) if run.upload is not None else None
+    if parse_summary:
+        missing_units = {r.supplier_article_number for r in rows if not r.unit_id}
+        parse_summary["unmatched_units"] = [
+            item for item in parse_summary.get("unmatched_units", [])
+            if item.get("san") in missing_units
+        ]
     summary = summary_counts(rows)
     blockers = approval_blockers(rows)
     pending = pending_rows(db, run) if rows else []
@@ -359,6 +371,7 @@ def run_detail(
         {
             "user": user,
             "run": run,
+            "matches": matches,
             "preis_eintritt_date": format_preis_eintritt_input(run.preis_eintritt),
             "rows": rows,
             "summary": summary,
@@ -374,7 +387,7 @@ def run_detail(
             "format_pct": format_pct,
             "error": request.query_params.get("error"),
             "notice": request.query_params.get("notice"),
-            "parse_summary": (run.upload.parse_summary if run.upload is not None else None),
+            "parse_summary": parse_summary,
         },
     )
 
@@ -538,6 +551,26 @@ def save_settings(
             status_code=303,
         )
     return RedirectResponse(url=f"/bezugsquellen/neu/{run.id}", status_code=303)
+
+
+@router.post("/bezugsquellen/neu/{run_id}/artikel-zuordnen")
+async def assign_articles(
+    request: Request, run_id: int,
+    db: Session = Depends(get_db), user: SessionUser = Depends(require_user),
+):
+    run = _get_run(db, run_id)
+    form = await request.form()
+    try:
+        selections = {int(k.removeprefix("article_")): str(v)
+                      for k, v in form.items() if k.startswith("article_")}
+        count = assign_missing(db, run, selections, user)
+    except (SupplySourceRunError, ValueError) as exc:
+        db.rollback()
+        return RedirectResponse(f"/bezugsquellen/neu/{run.id}?error={quote(str(exc))}", status_code=303)
+    return RedirectResponse(
+        f"/bezugsquellen/neu/{run.id}?notice={quote(f'{count} Artikelzuordnungen gespeichert.')}",
+        status_code=303,
+    )
 
 
 @router.post("/bezugsquellen/neu/{run_id}/zuordnen")

@@ -127,7 +127,20 @@ Preis-Eintritt ist Pflicht vor dem Schreiben — kein stilles «heute». Übersc
 
 ### Artikel manuell zuordnen
 
-Im Grid (oder zugehörige Aktion): PROSEMA-Artikelnummer eingeben — speichert Alias für künftige Läufe.
+Im Abschnitt «Fehlende Artikelzuordnungen» die PROSEMA-Artikelnummern eintragen.
+Alternativ einen erfolgreich gesendeten Artikel-Batch auswählen und «Zuordnungen
+vorschlagen» anklicken. Prüfen, dass der Batch zum Lieferanten des Laufs gehört:
+Die Artikelregistrierung selbst kennt noch keinen Lieferantenbezug. Vorschläge
+verwenden nur exakt gleiche Lieferantenartikelnummern und die bestätigten,
+weiterhin im aktuellen weclapp-Index vorhandenen Artikel. Mehrdeutige oder
+abweichend geschriebene Nummern bleiben leer und können manuell ergänzt werden.
+
+«Zuordnungen übernehmen» prüft alle ausgefüllten Felder vor dem Speichern und
+legt die Lieferanten-Aliase mit Audit in einer Transaktion an. Leere Felder bleiben
+offen. Preise und Rabatte bleiben erhalten; die Einheit wird wie bisher aus dem
+zugeordneten Artikel übernommen. Für künftige Läufe steht die bestätigte
+Lieferanten-Zuordnung bereit. Das Speichern der Zuordnungen schreibt nichts nach
+weclapp. Die Freigabe zum Schreiben der Bezugsquellen erfolgt separat.
 
 
 ## Freigabe & Schreiben

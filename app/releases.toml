@@ -1,7 +1,16 @@
 # PROSEMA release history — edit this file to bump the version and document changes.
 # The top-level `version` is shown in the site header; `[[releases]]` entries appear on /changelog.
 
-version = "1.4.5"
+version = "1.4.6"
+
+[[releases]]
+version = "1.4.6"
+date = "2026-10-20"
+summary = "Bezugsquellen: fehlende Artikelzuordnungen aus gesendeten Batches vorschlagen und gesammelt bestätigen."
+changes = [
+  "Bezugsquellen: fehlende Artikelzuordnungen aus gesendeten Batches vorschlagen und gesammelt bestätigen.",
+]
+
 
 [[releases]]
 version = "1.4.5"

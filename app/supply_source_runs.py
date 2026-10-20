@@ -846,6 +846,7 @@ def attach_manual_alias(
     article_number: str,
     oid: str,
     name: str = "",
+    commit: bool = True,
 ) -> SupplierArticleAlias:
     assert_editable(run)
     number = article_number.strip()
@@ -919,7 +920,8 @@ def attach_manual_alias(
     if supplier is None:
         raise SupplySourceRunError("Lieferant nicht gefunden.")
     resolve_row(db, run, row, supplier=supplier)
-    db.commit()
+    if commit:
+        db.commit()
     return existing
 
 
