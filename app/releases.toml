@@ -1,7 +1,16 @@
 # PROSEMA release history — edit this file to bump the version and document changes.
 # The top-level `version` is shown in the site header; `[[releases]]` entries appear on /changelog.
 
-version = "1.4.2"
+version = "1.4.3"
+
+[[releases]]
+version = "1.4.3"
+date = "2026-10-20"
+summary = "Artikelregistrierung: aktuelle weclapp-Auswahlwerte auch bei erneutem Senden verwenden."
+changes = [
+  "Artikelregistrierung: aktuelle weclapp-Auswahlwerte auch bei erneutem Senden verwenden.",
+]
+
 
 [[releases]]
 version = "1.4.2"
