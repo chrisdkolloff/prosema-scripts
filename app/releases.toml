@@ -1,7 +1,16 @@
 # PROSEMA release history — edit this file to bump the version and document changes.
 # The top-level `version` is shown in the site header; `[[releases]]` entries appear on /changelog.
 
-version = "1.4.3"
+version = "1.4.4"
+
+[[releases]]
+version = "1.4.4"
+date = "2026-10-20"
+summary = "Artikelregistrierung: deaktivierte weclapp-Auswahlwerte beim Gruppenabgleich ignorieren."
+changes = [
+  "Artikelregistrierung: deaktivierte weclapp-Auswahlwerte beim Gruppenabgleich ignorieren.",
+]
+
 
 [[releases]]
 version = "1.4.3"
