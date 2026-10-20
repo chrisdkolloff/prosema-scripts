@@ -1,6 +1,6 @@
 # Gruppenverwaltung – was geht und was nicht
 
-*Stand: August 2026. Zum späteren Schulen der Tools-Website.*
+*Stand: Oktober 2026. Zum späteren Schulen der Tools-Website.*
 
 Die **Gruppenverwaltung** pflegt Hauptgruppen und Untergruppen. Daraus entstehen die PROSEMA-Artikelnummern (`MMM.SSS.…`).
 
@@ -61,7 +61,7 @@ Eine **weitere Untergruppe** zu einer bestehenden Hauptgruppe legt man auf der D
 - **Keine Hauptgruppe allein.** Das Formular verlangt immer die erste Untergruppe mit.
 - **Code ändern** gilt nur für die Tools-Website. weclapp wird dabei **nicht** mitgeändert. Auf der Gruppenliste erscheint dann eine Warnung, wenn Tools und weclapp auseinanderlaufen; die Einträge müssen manuell angeglichen werden.
 - Die Shopify-Auswahllisten **Hauptwarengruppe** und **Warengruppe** in weclapp werden **nicht** ergänzt. Es entstehen nur die Artikelkategorien (der Gruppenbaum).
-- Die Artikelregistrierung prüft Hauptgruppe und Untergruppe **nur** gegen die Gruppenverwaltung. Eine neue Gruppe ist dort gültig, auch wenn sie in den weclapp-Shopify-Listen noch fehlt.
+- Upload und Freigabe der Artikelregistrierung prüfen Gruppen gegen die Gruppenverwaltung. **Beim Senden** werden die aktuellen weclapp-Shopify-Auswahllisten zusätzlich abgeglichen. Fehlt ein eindeutiger passender Eintrag, bricht der Probelauf vor der ersten Artikelanlage ab. Gruppen immer zuerst in Tools pflegen und anschliessend die weclapp-Auswahllisten angleichen. Danach kann derselbe freigegebene Batch erneut gesendet werden.
 - Eine fehlgeschlagene weclapp-Anlage, -Umbenennung oder -Löschung speichert auch auf der Tools-Website nichts bzw. den alten Stand. Zuerst Token und Rechte prüfen, dann erneut speichern.
 
 

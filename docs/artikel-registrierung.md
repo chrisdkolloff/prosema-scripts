@@ -39,15 +39,27 @@ Hauptgruppe / Untergruppe values: dropdowns, numbering, and grid validation
 all read from there. weclapp's Shopify lists `Hauptwarengruppe (Auswahl)` and
 `Warengruppe (Auswahl)` are a write target, not a second catalogue.
 
-The registry zero-pads Untergruppe codes to three digits
-(`Nivelliersystem - 010`). weclapp's `Warengruppe (Auswahl)` list is mixed:
-most values use two digits (`Nivelliersystem - 10`), codes ≥ 100 use three.
+Before **every submit attempt**, including retries of approved batches, the worker
+reads all pages of `customAttributeDefinition` from the user's current weclapp
+tenant. The committed schema is only a historic lookup for removing old group
+attribute IDs; its selectable-value IDs are never used for the final group write.
 
-Do not canonicalise either direction. Match selectable values on **display
-name + integer code**; the payload uses weclapp's own option id (and thus
-weclapp's literal label) when that option exists. If the Shopify list has
-not caught up, the custom attribute is omitted rather than rejecting the row.
-The registry owns the code; weclapp owns its label.
+Group values match by name (case-insensitive) and integer code when weclapp's
+option includes a code (`Werkzeug - 030` matches `Werkzeug - 30`). A current
+option without a code (`Werkzeug`) can match the registry name when unique.
+Missing or ambiguous options, unavailable definitions, and catalogue read errors
+abort the preflight before any article POST. No automatic group rename or option
+creation is performed. Maintain groups in Tools first, then align weclapp's lists.
+This is stricter than draft validation: a locally valid group may still fail the
+live preflight if the Shopify list has not caught up.
+
+Only the two group custom attributes are rebuilt for sending. Approved content
+and article numbers stay unchanged. The refreshed payload is held for this run;
+`approved_payload` remains the approval snapshot. Each successful row records
+the actual group attribute IDs and option IDs in the audit log under
+`group_options_resolved`. A failed batch stays approved and can be retried after
+the lists have been aligned; no Excel re-upload or new approval is needed just
+to refresh these technical IDs.
 
 ## Deploy order
 
