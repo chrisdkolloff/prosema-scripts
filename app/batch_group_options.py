@@ -46,6 +46,8 @@ class GroupOptions:
         name, code = _split_group_label(value)
         matches: set[str] = set()
         for option in self.definitions[label]["selectableValues"]:
+            if option.get("active") is False:
+                continue
             option_name, option_code = _split_group_label(str(option.get("value") or ""))
             if (
                 option_name.casefold() == name.casefold()
