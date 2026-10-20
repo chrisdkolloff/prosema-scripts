@@ -15,42 +15,59 @@
   <div class="alert alert-danger" role="alert" style="white-space: pre-wrap">{{ request.query_params.get("error") }}</div>
   {% endif %}
 
-  {% if busy %}
-  <div class="alert alert-warning" role="alert">Für diesen Lieferanten läuft bereits ein Abgleich.</div>
-  {% endif %}
-
-  <form method="post" action="/bezugsquellen/neu/upload" enctype="multipart/form-data" class="row g-3 align-items-end mb-4">
-    <div class="col-auto">
-      <label class="form-label" for="ss-file">Datei (xlsx oder csv)</label>
-      <label class="file-picker input-group mb-0" for="ss-file">
-        <span class="input-group-text">Datei auswählen</span>
-        <span class="form-control file-picker-name">Keine Datei ausgewählt</span>
-      </label>
-      <input class="visually-hidden" id="ss-file" type="file" name="datei" accept=".xlsx,.csv" required>
+  <form id="ss-start-form" method="post" action="/bezugsquellen/neu/upload" enctype="multipart/form-data" class="mb-4">
+    <div id="ss-upload-supplier-wrap" class="mb-3" style="max-width: 42rem">
+      <label class="form-label" for="ss-supplier-search">Lieferant: Name oder Lieferantennummer</label>
+      <input class="form-control" id="ss-supplier-search" type="search" autocomplete="off"
+             placeholder="Zum Beispiel DURAL oder 10000" aria-describedby="ss-supplier-status"
+             role="combobox" aria-expanded="false" aria-controls="ss-supplier-results" aria-autocomplete="list" required>
+      <input type="hidden" name="supplier_id" id="ss-selected-supplier" value="">
+      <div id="ss-supplier-results" class="list-group mt-1" role="listbox" aria-label="Lieferanten" hidden></div>
+      <p class="form-text" id="ss-supplier-status" role="status">Lieferanten werden geladen…</p>
+      <button id="ss-supplier-reload" type="button" class="btn btn-sm btn-outline-secondary">Lieferanten aus weclapp neu laden</button>
     </div>
-    <div class="col-auto" id="ss-upload-supplier-wrap" hidden>
-      <label class="form-label" for="ss-upload-supplier">Lieferant</label>
-      <select class="form-select" id="ss-upload-supplier" name="supplier_id">
-        {% for supplier in suppliers %}
-        <option value="{{ supplier.id }}" {% if supplier.id == default_supplier_id %}selected{% endif %}>
-          {{ supplier.supplier_number }} · {{ supplier.name }}
-        </option>
-        {% endfor %}
-      </select>
+    <fieldset id="ss-supplier-setup" class="border rounded p-3 mb-3" hidden disabled>
+      <legend class="float-none w-auto fs-6 px-2">Neuen Lieferanten in Tools einrichten</legend>
+      <p>Bitte die Vorgaben für diesen Lieferanten bestätigen. Die Verkaufswährung ist CHF.
+         Die Werte können später in der Vorschau angepasst werden.</p>
+      <div class="row g-3">
+        <div class="col-sm-3">
+          <label for="ss-supplier-currency" class="form-label">Einkaufswährung</label>
+          <select id="ss-supplier-currency" name="supplier_currency" class="form-select" required>
+            <option value="">Bitte wählen</option><option value="CHF">CHF</option><option value="EUR">EUR</option>
+          </select>
+        </div>
+        <div class="col-sm-4">
+          <label for="ss-supplier-rate" class="form-label">Kurs: 1 Einkaufwährung in CHF</label>
+          <input id="ss-supplier-rate" name="supplier_rate" class="form-control" inputmode="decimal" required>
+        </div>
+        <div class="col-sm-3">
+          <label for="ss-supplier-markup" class="form-label">Aufschlag auf EK in %</label>
+          <input id="ss-supplier-markup" name="supplier_markup" class="form-control" inputmode="decimal" required>
+        </div>
+      </div>
+    </fieldset>
+    <div class="row g-3 align-items-end">
+      <div class="col-auto">
+        <label class="form-label" for="ss-file">Datei (xlsx oder csv)</label>
+        <label class="file-picker input-group mb-0" for="ss-file">
+          <span class="input-group-text">Datei auswählen</span>
+          <span class="form-control file-picker-name">Keine Datei ausgewählt</span>
+        </label>
+        <input class="visually-hidden" id="ss-file" type="file" name="datei" accept=".xlsx,.csv">
+      </div>
+      <div class="col-auto"><button type="submit" class="btn btn-primary" id="ss-upload-start">Datei prüfen</button></div>
+      <div class="col-auto"><button type="submit" class="btn btn-outline-secondary" formaction="/bezugsquellen/neu/abfragen">Ohne Datei aus weclapp abgleichen</button></div>
     </div>
-    <div class="col-auto">
-      <button type="submit" class="btn btn-primary" {% if busy %}disabled{% endif %}>Datei prüfen</button>
-    </div>
+    <noscript><p class="text-danger mt-2">Für die Lieferantensuche bitte JavaScript aktivieren.</p></noscript>
   </form>
-
-  <form method="post" action="/bezugsquellen/neu/abfragen" class="row g-3 align-items-end mb-4">
-    <input type="hidden" name="supplier_id" id="ss-pull-supplier" value="{{ default_supplier_id }}">
-    <div class="col-auto">
-      <button type="submit" class="btn btn-outline-secondary" {% if busy %}disabled{% endif %}>
-        Ohne Datei aus weclapp abgleichen
-      </button>
-    </div>
-  </form>
+  <script type="application/json" id="ss-local-suppliers">[
+    {% for supplier in suppliers %}
+    {{ {"id": supplier.id|string, "number": supplier.supplier_number, "name": supplier.name,
+        "label": supplier.supplier_number ~ " · " ~ supplier.name, "needs_setup": false}|tojson }}{% if not loop.last %},{% endif %}
+    {% endfor %}
+  ]</script>
+  <script src="/static/supply_source_suppliers.js?v=1"></script>
 
   {% if runs %}
   <div class="table-responsive mb-4">
@@ -85,24 +102,4 @@
   {% if is_admin %}
   <p class="mb-4"><a href="/bezugsquellen/neu/vorlagen">Spalten der Vorlage</a></p>
   {% endif %}
-  <script>
-    (function () {
-      var file = document.getElementById("ss-file");
-      var wrap = document.getElementById("ss-upload-supplier-wrap");
-      var sel = document.getElementById("ss-upload-supplier");
-      var pull = document.getElementById("ss-pull-supplier");
-      var nameEl = document.querySelector(".file-picker-name");
-      var empty = "Keine Datei ausgewählt";
-      function sync() {
-        var hasFile = !!(file && file.files && file.files.length);
-        if (wrap) wrap.hidden = !hasFile;
-        if (sel) sel.required = hasFile;
-        if (pull && sel && sel.value) pull.value = sel.value;
-        if (nameEl) nameEl.textContent = hasFile ? file.files[0].name : empty;
-      }
-      if (file) file.addEventListener("change", sync);
-      if (sel) sel.addEventListener("change", sync);
-      sync();
-    })();
-  </script>
 {% endblock %}
