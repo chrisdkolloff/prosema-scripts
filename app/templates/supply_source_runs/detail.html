@@ -128,6 +128,45 @@
   <p class="fw-semibold mb-3" id="ss-summary">{{ ns.parts | join(' · ') }}</p>
   {% endif %}
 
+  {% if matches.rows and run.status == "preview" and not run.approved_at %}
+  <section class="card mb-4" aria-labelledby="ss-matches-heading">
+    <div class="card-body">
+      <h2 class="h5" id="ss-matches-heading">Fehlende Artikelzuordnungen</h2>
+      <p>PROSEMA-Artikelnummern eintragen oder aus einem erfolgreich gesendeten Artikel-Batch vorschlagen lassen.
+         Prüfe, dass der Batch zum Lieferanten dieses Laufs gehört. Gespeichert wird erst mit «Zuordnungen übernehmen».</p>
+      <form method="get" action="/bezugsquellen/neu/{{ run.id }}" class="row g-2 align-items-end mb-3">
+        <div class="col-auto">
+          <label class="form-label" for="ss-mapping-batch">Gesendeter Artikel-Batch</label>
+          <select id="ss-mapping-batch" name="mapping_batch" class="form-select" required>
+            <option value="">Bitte auswählen</option>
+            {% for batch in matches.batches %}
+            <option value="{{ batch.id }}" {% if matches.batch_id == batch.id|string %}selected{% endif %}>{{ batch.filename or "Artikel-Batch" }} · {{ batch.id|string|truncate(8, true, "") }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-auto"><button class="btn btn-outline-primary" type="submit">Zuordnungen vorschlagen</button></div>
+      </form>
+      <form method="post" action="/bezugsquellen/neu/{{ run.id }}/artikel-zuordnen">
+        <div class="table-responsive" style="max-height: 24rem; overflow-y: auto">
+          <table class="table table-sm align-middle">
+            <thead><tr><th>Lieferantenartikelnummer</th><th>Bezeichnung</th><th>PROSEMA-Artikelnummer</th></tr></thead>
+            <tbody>
+              {% for item in matches.rows %}
+              <tr><td>{{ item.san }}</td><td>{{ item.name }}</td><td>
+                <input class="form-control form-control-sm" name="article_{{ item.id }}" value="{{ item.number }}"
+                       aria-label="PROSEMA-Artikelnummer für {{ item.san }}" placeholder="z. B. 010.030.2075">
+              </td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <p class="form-text">Leere Felder bleiben offen. Vorschläge verwenden nur exakt gleiche Lieferantenartikelnummern und im weclapp-Index vorhandene Artikel.</p>
+        <button class="btn btn-primary" type="submit">Zuordnungen übernehmen</button>
+      </form>
+    </div>
+  </section>
+  {% endif %}
+
   <form class="row g-3 align-items-end mb-4" method="post" action="/bezugsquellen/neu/{{ run.id }}/einstellungen">
     <div class="col-auto">
       <label class="form-label" for="ss-ek-whg">Einkaufswährung</label>
