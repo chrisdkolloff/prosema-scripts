@@ -113,3 +113,31 @@ def test_malformed_option_is_rejected():
     defs[0]["selectableValues"] = [None]
     with pytest.raises(ValueError, match="ungültig"):
         GroupOptions(defs, _load_schema())
+
+
+@pytest.mark.parametrize("archived_first", [True, False])
+def test_archived_options_do_not_conflict_with_current_live_options(archived_first):
+    defs = definitions()
+    for definition, old_id, old_value, current_id in zip(
+        defs,
+        ("226370", "226386"),
+        ("Zubehör - 010", "Werkzeug - 30"),
+        ("420831", "420848"),
+        strict=True,
+    ):
+        current = {**definition["selectableValues"][0], "id": current_id, "active": True}
+        archived = {"id": old_id, "value": old_value, "active": False}
+        definition["selectableValues"] = (
+            [archived, current] if archived_first else [current, archived]
+        )
+    refreshed = GroupOptions(defs, _load_schema()).refresh({}, VALUES)
+    assert [a["selectedValueId"] for a in refreshed["customAttributes"]] == [
+        "420831", "420848"
+    ]
+
+
+def test_inactive_only_option_is_rejected():
+    defs = definitions()
+    defs[0]["selectableValues"][0]["active"] = False
+    with pytest.raises(ValueError, match="fehlt oder ist mehrdeutig"):
+        GroupOptions(defs, _load_schema()).refresh({}, VALUES)
