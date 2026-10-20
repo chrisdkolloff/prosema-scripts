@@ -922,3 +922,100 @@ def test_create_pull_enqueues_without_touching_export_tables(user_client, db_ses
     assert "/bezugsquellen/neu/" in response.headers["location"]
     enqueue.assert_called_once()
     assert enqueue.call_args[0][1] == "supply_source_resolve"
+
+
+def _unmatched_assignment_run(db):
+    run = _run(db, _supplier(db))
+    run.status = "preview"
+    rows = []
+    for index in range(2):
+        _article(db, aid=f"assign-{index}", number=f"999.999.00{index}0")
+        row = SupplySourceRow(run_id=run.id, supplier_article_number=f"SAN-{index}",
+                              name="Teil", match_status="unmatched", included=True,
+                              listenpreis=Decimal("10"), rabatt_1=Decimal(0),
+                              rabatt_2=Decimal(0), discount_set=True)
+        db.add(row)
+        rows.append(row)
+    db.flush()
+    return run, rows
+
+
+def test_bulk_manual_assignment_validates_all_before_changing(db_session):
+    from app.supply_source_matches import assign_missing
+    run, rows = _unmatched_assignment_run(db_session)
+    with pytest.raises(SupplySourceRunError, match="nicht eindeutig"):
+        assign_missing(db_session, run, {rows[0].id: "999.999.0000", rows[1].id: "missing"}, PLAIN_USER)
+    assert not rows[0].weclapp_article_id
+    assert db_session.scalar(select(SupplierArticleAlias).where(
+        SupplierArticleAlias.supplier_id == run.supplier_id,
+        SupplierArticleAlias.supplier_article_number == "SAN-0",
+    )) is None
+
+
+def test_bulk_manual_assignment_resolves_articles_and_units_preserving_prices(db_session):
+    from app.models import SupplierArticleAliasesAudit
+    from app.supply_source_matches import assign_missing
+    run, rows = _unmatched_assignment_run(db_session)
+    result = assign_missing(db_session, run, {r.id: f"999.999.00{i}0" for i, r in enumerate(rows)}, PLAIN_USER)
+    assert result == 2
+    assert all(r.match_status == "matched" and r.row_intent == "create" for r in rows)
+    assert all(r.unit_id == "3566" and r.listenpreis == Decimal("10") and r.discount_set for r in rows)
+    assert can_approve(rows)
+    assert len(list(db_session.scalars(select(SupplierArticleAliasesAudit).where(
+        SupplierArticleAliasesAudit.actor_oid == PLAIN_USER["oid"])))) == 2
+
+
+def test_assignment_form_visible_and_post_uses_current_run(user_client, db_session):
+    run, rows = _unmatched_assignment_run(db_session)
+    page = user_client.get(f"/bezugsquellen/neu/{run.id}")
+    assert "Fehlende Artikelzuordnungen" in page.text
+    assert f'name="article_{rows[0].id}"' in page.text
+    response = user_client.post(f"/bezugsquellen/neu/{run.id}/artikel-zuordnen",
+                               data={f"article_{rows[0].id}": "999.999.0000"}, follow_redirects=False)
+    assert response.status_code == 303
+    assert rows[0].article_number == "999.999.0000"
+    assert rows[1].weclapp_article_id is None
+
+
+@pytest.mark.parametrize("locked", ["approved", "other-run", "existing-alias", "gone"])
+def test_assignment_rejects_uneditable_or_conflicting_selection(db_session, locked):
+    from app.supply_source_matches import assign_missing
+    run, rows = _unmatched_assignment_run(db_session)
+    selections = {rows[0].id: "999.999.0000"}
+    if locked == "approved":
+        run.approved_at = _now()
+    elif locked == "other-run":
+        selections = {999999: "999.999.0000"}
+    elif locked == "existing-alias":
+        db_session.add(SupplierArticleAlias(supplier_id=run.supplier_id,
+            supplier_article_number="SAN-0", article_number="999.999.0010",
+            weclapp_article_id="assign-1", source="manual"))
+    else:
+        db_session.get(WeclappArticle, "assign-0").missing_since = _now()
+    with pytest.raises(SupplySourceRunError):
+        assign_missing(db_session, run, selections, PLAIN_USER)
+    assert rows[0].weclapp_article_id is None
+
+
+def test_batch_preview_uses_sent_approved_identity_and_exact_supplier_number(db_session):
+    from app.article_templates import get_active_template
+    from app.models import ArticleBatch, ArticleBatchRow
+    from app.supply_source_matches import match_preview
+    run, rows = _unmatched_assignment_run(db_session)
+    batch = ArticleBatch(status="submitted", filename="sent.xlsx", template_id=get_active_template(db_session).id,
+                         created_by_oid="x", created_by_name="x", submitted_at=_now())
+    db_session.add(batch)
+    db_session.flush()
+    db_session.add(ArticleBatchRow(batch_id=batch.id, position=1,
+        raw_data={"Lieferantenartikelnummer": "SAN-0"}, edits={},
+        approved_payload={"articleNumber": "999.999.0000"}, weclapp_article_id="assign-0"))
+    db_session.add(ArticleBatchRow(batch_id=batch.id, position=2,
+        raw_data={"Lieferantenartikelnummer": "SAN 1"}, edits={},
+        approved_payload={"articleNumber": "999.999.0010"}, weclapp_article_id="assign-1"))
+    db_session.flush()
+    preview = match_preview(db_session, run, str(batch.id))
+    assert [r["number"] for r in preview["rows"]] == ["999.999.0000", ""]
+    assert all(r.weclapp_article_id is None for r in rows)
+    batch.status = "approved"
+    with pytest.raises(SupplySourceRunError, match="gesendete"):
+        match_preview(db_session, run, str(batch.id))
