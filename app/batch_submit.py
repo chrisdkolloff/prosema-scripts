@@ -12,6 +12,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.audit import record_audit_log
+from app.batch_group_options import GroupOptions
+from app.batches import effective_values
 from app.groups_service import (
     record_audit,
     resolve_hauptgruppe,
@@ -185,6 +187,22 @@ def run_batch_submit(
     schema = _load_create_schema()
     pending = _pending_rows(db, batch.id)
 
+    # Fetch once per attempt, including retries of previously approved batches.
+    # A catalogue read failure must never fall back to the committed August IDs.
+    try:
+        definitions = list(client.iter_pages("customAttributeDefinition"))
+        group_options = GroupOptions(definitions, schema)
+    except (WeclappError, ValueError) as exc:
+        _return_to_approved(db, batch)
+        if isinstance(exc, WeclappError):
+            if is_weclapp_auth_failure(exc):
+                raise LicenceAbort(job_error_message(exc) or str(exc)) from exc
+            detail = _weclapp_write_error(exc)
+        else:
+            detail = str(exc)
+        raise ValueError(f"{MSG_DRY_RUN_FAILED}\nGruppenabgleich: {detail}") from exc
+    prepared_payloads: dict[Any, dict[str, Any]] = {}
+
     # Phase 1 — dry-run, unconditional
     dry_failed = False
     for row in pending:
@@ -195,6 +213,7 @@ def run_batch_submit(
             continue
         try:
             payload = _payload_for_create(payload)
+            payload = group_options.refresh(payload, effective_values(row))
         except ValueError as exc:
             row.write_error = MSG_PAYLOAD_INVALID.format(detail=str(exc))
             dry_failed = True
@@ -221,6 +240,7 @@ def run_batch_submit(
             dry_failed = True
             continue
         row.write_error = None
+        prepared_payloads[row.id] = payload
 
     if dry_failed:
         db.commit()
@@ -235,7 +255,7 @@ def run_batch_submit(
             row = db.get(ArticleBatchRow, row_id)
             if row is None or row.weclapp_article_id:
                 continue
-            payload = copy.deepcopy(row.approved_payload or {})
+            payload = copy.deepcopy(prepared_payloads[row_id])
             try:
                 payload = _payload_for_create(payload)
             except ValueError as exc:
@@ -260,6 +280,21 @@ def run_batch_submit(
             row.submitted_at = now
             row.submitted_by_oid = actor_oid
             row.write_error = None
+            record_audit_log(
+                db,
+                actor=actor,
+                entity_type="article_batch_row",
+                entity_id=row.id,
+                action="group_options_resolved",
+                detail={
+                    "weclapp_article_id": article_id,
+                    "customAttributes": [
+                        attr for attr in payload.get("customAttributes", [])
+                        if str(attr.get("attributeDefinitionId"))
+                        in group_options.group_attribute_ids
+                    ],
+                },
+            )
             _lock_groups_if_needed(db, payload=payload, actor=actor, now=now)
             created_ids.append(article_id)
             succeeded += 1

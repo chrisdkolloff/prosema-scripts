@@ -114,6 +114,21 @@ def _make_groups(db_session):
     return haupt, unter
 
 
+def _submit_client(haupt_label: str, unter_label: str):
+    client = MagicMock()
+    client.iter_pages.return_value = [
+        {
+            "id": attr_id, "label": label, "attributeType": "LIST",
+            "selectableValues": [{"id": option_id, "value": value}],
+        }
+        for attr_id, label, option_id, value in [
+            ("226369", "Hauptwarengruppe (Auswahl)", "current-main", haupt_label),
+            ("226383", "Warengruppe (Auswahl)", "current-sub", unter_label),
+        ]
+    ]
+    return client
+
+
 def _xlsx_bytes(rows: list[dict[str, str]], *, headers: list[str] | None = None) -> bytes:
     headers = headers or list(IMPORT_COLUMNS)
     wb = Workbook()
@@ -438,7 +453,7 @@ def test_approved_payload_survives_failed_submit(db_session):
     ).one()
     before = json.dumps(row.approved_payload, sort_keys=True)
 
-    client = MagicMock()
+    client = _submit_client(h, u)
     client.get.return_value = {"result": [{"id": "existing"}]}
     with patch("app.batch_submit.weclapp_client_for", return_value=client):
         with pytest.raises(ValueError, match="Probelauf"):
@@ -468,7 +483,7 @@ def test_dry_run_collision_zero_posts(db_session):
     _approve(db_session, result.batch)
     db_session.flush()
 
-    client = MagicMock()
+    client = _submit_client(h, u)
     client.get.return_value = {"result": [{"id": "taken"}]}
     with patch("app.batch_submit.weclapp_client_for", return_value=client):
         with pytest.raises(ValueError, match=MSG_DRY_RUN_FAILED):
@@ -499,7 +514,7 @@ def test_dry_run_weclapp_400_is_row_error_not_licence(db_session):
     _approve(db_session, result.batch)
     db_session.flush()
 
-    client = MagicMock()
+    client = _submit_client(h, u)
     client.get.side_effect = WeclappError(
         "weclapp API Fehler 400 bei GET /article",
         status_code=400,
@@ -542,7 +557,7 @@ def test_submit_coerces_normal_tax_rate_to_standard(db_session):
     row.approved_payload = payload
     db_session.flush()
 
-    client = MagicMock()
+    client = _submit_client(h, u)
     client.get.return_value = {"result": []}
     client.post.return_value = {"id": "wc-new"}
     with patch("app.batch_submit.weclapp_client_for", return_value=client):
@@ -610,7 +625,7 @@ def test_submit_interrupted_retry_posts_remaining(db_session):
         row.submitted_by_oid = ACTOR["oid"]
     db_session.flush()
 
-    client = MagicMock()
+    client = _submit_client(h, u)
     client.get.return_value = {"result": []}
     client.post.side_effect = [{"id": "new-3"}, {"id": "new-4"}]
     with patch("app.batch_submit.weclapp_client_for", return_value=client):
@@ -649,7 +664,7 @@ def test_licence_failure_keeps_written_ids(db_session):
     _approve(db_session, result.batch)
     db_session.flush()
 
-    client = MagicMock()
+    client = _submit_client(h, u)
     client.get.return_value = {"result": []}
     client.post.side_effect = [
         {"id": "ok-1"},
@@ -741,7 +756,7 @@ def test_first_write_locks_group_and_audits(db_session):
     _approve(db_session, result.batch)
     db_session.flush()
 
-    client = MagicMock()
+    client = _submit_client(h, u)
     client.get.return_value = {"result": []}
     client.post.return_value = {"id": "wc-new"}
     with patch("app.batch_submit.weclapp_client_for", return_value=client):

@@ -180,7 +180,7 @@ Verschiedene Felder (Einheit vs. Verkaufseinheit) mit unterschiedlichen erlaubte
 
 ### Shopify Hauptwarengruppe / Warengruppe
 
-Die Registrierung schreibt weclapp-Felder laut Vorlage. Shopify-Auswahllisten können hinterher fehlen, obwohl die Gruppe in PROSEMA stimmt — siehe [Gruppenverwaltung](gruppen-verwaltung.md).
+Vor jedem Senden werden die aktuellen weclapp-Auswahllisten gelesen. Bezeichnungen mit Code (`Werkzeug - 030` bzw. `Werkzeug - 30`) und eindeutige Bezeichnungen ohne Code (`Werkzeug`) werden unterstützt. Fehlt ein passender Eintrag oder ist er mehrdeutig, stoppt der gesamte Probelauf vor der ersten Artikelanlage. Gruppen zuerst in der [Gruppenverwaltung](gruppen-verwaltung.md) auf Tools pflegen und anschliessend die weclapp-Auswahllisten angleichen. Danach denselben freigegebenen Batch erneut senden; die technischen Auswahl-IDs werden automatisch neu ermittelt.
 
 ### Brauche ich tools.prosema.ch?
 
