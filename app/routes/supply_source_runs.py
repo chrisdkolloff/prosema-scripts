@@ -15,38 +15,54 @@ from sqlalchemy.orm import Session, joinedload
 from app.auth import SessionUser, require_admin, require_user
 from app.db import get_db
 from app.models import SupplySourceRow, SupplySourceRun
-from app.supply_source_wizard_csv import render_wizard_csv
 from app.supply_source_runs import (
     SupplySourceRunError,
-    apply_template_overrides,
     apply_bulk_rates,
     apply_edits,
     apply_run_settings,
+    apply_template_overrides,
     approval_blockers,
     approve_run,
     attach_manual_alias,
     build_grid_config,
     can_approve,
     create_pull_run,
-    format_preis_eintritt_input,
-    parse_preis_eintritt,
     create_upload_run,
     format_pct,
+    format_preis_eintritt_input,
     format_swiss_number,
     list_runs,
     list_suppliers,
     load_rows,
     parse_aufschlag_percent,
+    parse_preis_eintritt,
     parse_rate,
     preview_ek_after_rates,
     retry_failed_run,
-    running_for_supplier,
     summary_counts,
 )
+from app.supply_source_suppliers import resolve_supplier, supplier_catalogue
+from app.supply_source_wizard_csv import render_wizard_csv
+from app.weclapp import (
+    NoWeclappToken,
+    WeclappLicenceMissing,
+    WeclappTokenInvalid,
+    WeclappTokenUnreadable,
+)
+from scripts.weclapp.client import WeclappError
 
 router = APIRouter()
 
 _FRAGMENT_HEADERS = {"Cache-Control": "no-store"}
+
+SUPPLIER_ERRORS = (
+    SupplySourceRunError,
+    NoWeclappToken,
+    WeclappTokenInvalid,
+    WeclappLicenceMissing,
+    WeclappTokenUnreadable,
+    WeclappError,
+)
 
 STATUS_LABELS = {
     "running": "Abfrage läuft…",
@@ -120,11 +136,6 @@ def run_list(
     user: SessionUser = Depends(require_user),
 ):
     suppliers = list_suppliers(db)
-    default_id = next(
-        (s.id for s in suppliers if s.supplier_number == "10000"),
-        suppliers[0].id if suppliers else None,
-    )
-    busy = running_for_supplier(db, default_id) if default_id else None
     return request.app.state.templates.TemplateResponse(
         request,
         "supply_source_runs/list.html",
@@ -132,23 +143,45 @@ def run_list(
             "user": user,
             "suppliers": suppliers,
             "runs": list_runs(db),
-            "busy": busy,
-            "default_supplier_id": default_id,
             "status_labels": STATUS_LABELS,
             "is_admin": "admin" in (user.get("roles") or []),
         },
     )
 
 
-@router.post("/bezugsquellen/neu/abfragen")
-def start_pull(
-    supplier_id: int = Form(...),
+@router.get("/bezugsquellen/neu/lieferanten")
+def supplier_choices(
     db: Session = Depends(get_db),
     user: SessionUser = Depends(require_user),
 ):
     try:
-        run = create_pull_run(db, supplier_id=supplier_id, user=user)
-    except SupplySourceRunError as exc:
+        options = supplier_catalogue(db, str(user["oid"]))
+    except SUPPLIER_ERRORS as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400, headers=_FRAGMENT_HEADERS)
+    return JSONResponse({"suppliers": options}, headers=_FRAGMENT_HEADERS)
+
+
+@router.post("/bezugsquellen/neu/abfragen")
+def start_pull(
+    supplier_id: str = Form(...),
+    supplier_currency: str = Form(""),
+    supplier_rate: str = Form(""),
+    supplier_markup: str = Form(""),
+    db: Session = Depends(get_db),
+    user: SessionUser = Depends(require_user),
+):
+    try:
+        supplier = resolve_supplier(
+            db,
+            selection=supplier_id,
+            user=user,
+            currency=supplier_currency,
+            rate=supplier_rate,
+            markup=supplier_markup,
+        )
+        run = create_pull_run(db, supplier_id=supplier.id, user=user)
+    except SUPPLIER_ERRORS as exc:
+        db.rollback()
         return RedirectResponse(
             url=f"/bezugsquellen/neu?error={quote(str(exc))}",
             status_code=303,
@@ -182,7 +215,10 @@ def download_template(
 
 @router.post("/bezugsquellen/neu/upload")
 async def start_upload(
-    supplier_id: int = Form(...),
+    supplier_id: str = Form(...),
+    supplier_currency: str = Form(""),
+    supplier_rate: str = Form(""),
+    supplier_markup: str = Form(""),
     datei: UploadFile = File(...),
     db: Session = Depends(get_db),
     user: SessionUser = Depends(require_user),
@@ -190,14 +226,23 @@ async def start_upload(
     content = await datei.read()
     filename = datei.filename or "upload.xlsx"
     try:
+        supplier = resolve_supplier(
+            db,
+            selection=supplier_id,
+            user=user,
+            currency=supplier_currency,
+            rate=supplier_rate,
+            markup=supplier_markup,
+        )
         run = create_upload_run(
             db,
-            supplier_id=supplier_id,
+            supplier_id=supplier.id,
             filename=filename,
             content=content,
             user=user,
         )
-    except SupplySourceRunError as exc:
+    except SUPPLIER_ERRORS as exc:
+        db.rollback()
         return RedirectResponse(
             url=f"/bezugsquellen/neu?error={quote(str(exc))}",
             status_code=303,

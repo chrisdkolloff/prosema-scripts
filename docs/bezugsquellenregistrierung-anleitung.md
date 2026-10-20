@@ -11,6 +11,28 @@ Optional danach: «weclapp-Assistent-CSV» für Felder, die der API-Lauf nicht a
 Ein älterer, separater Weg ohne API-Schreiben ist der Bezugsquellenexport unter `/bezugsquellen` (nur CSV für den weclapp-Assistenten). In der Navigation findest du die Registrierung unter «Bezugsquellenregistrierung».
 
 
+## Lieferanten auswählen
+
+Das Suchfeld ist immer sichtbar, auch ohne Datei. Nach Lieferantenname oder
+Lieferantennummer suchen und den passenden Treffer anklicken (oder mit Pfeiltasten
+und Enter übernehmen). Die Auswahl gilt sowohl für «Datei prüfen» als auch für
+«Ohne Datei aus weclapp abgleichen». Es wird kein Lieferant automatisch vorbelegt.
+
+Beim Öffnen lädt Tools alle aktiven Lieferanten aus weclapp. Über «Lieferanten aus
+weclapp neu laden» lässt sich der Katalog aktualisieren, ohne eine gewählte Datei
+zu verlieren. Ohne weclapp-Zugriff bleiben bereits in Tools eingerichtete aktive
+Lieferanten auswählbar; der Hinweis nennt den Grund für den fehlenden Live-Katalog.
+
+Ein noch nicht eingerichteter Lieferant ist als «neu in Tools» gekennzeichnet.
+Bei der ersten Verwendung sind Einkaufswährung (EUR/CHF), Kurs nach CHF und
+Aufschlag auf den Einkaufspreis in Prozent anzugeben. CHF verwendet Kurs 1;
+für EUR ist ein Kurs erforderlich. Die Verkaufswährung ist zunächst CHF und kann
+wie bisher in der Vorschau geändert werden. Erst beim Start von «Datei prüfen»
+oder Abgleich legt Tools den Lieferanten mit diesen Vorgaben und Audit-Eintrag
+lokal an. Bereits gespeicherte Lieferantenvorgaben werden nicht überschrieben.
+Die Suche und Einrichtung schreiben nichts nach weclapp; das spätere Schreiben
+der Bezugsquellen bleibt ein eigener Freigabe-/Sende-Schritt.
+
 ## Ablauf (typisch mit Lieferantenfile)
 
 1. «Vorlage erzeugen» → Excel ausfüllen (Lieferantenartikelnummer, Listenpreis, Rabattcode, EAN, Einheit, …).
