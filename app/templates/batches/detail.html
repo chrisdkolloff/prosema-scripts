@@ -42,6 +42,9 @@
     <div id="batch-unknown-unit-list" class="d-flex flex-column gap-2"></div>
   </div>
 
+  {% if options_error %}
+  <div class="alert alert-warning" role="status">{{ options_error }}</div>
+  {% endif %}
   <div class="card mb-4">
     <div class="card-body">
       <form class="row g-3 align-items-end" method="get" action="/batches/{{ batch.id }}">
@@ -50,9 +53,22 @@
           <input class="form-control" id="batch-filter-q" type="search" name="q" value="{{ filters.query }}" placeholder="Nummer, Lieferant, Name">
         </div>
         <div class="col-auto">
+          <label class="form-label" for="batch-filter-lieferant">Lieferant</label>
+          <input class="form-control" id="batch-filter-lieferant" name="lieferant"
+                 list="batch-suppliers" value="{{ filters.lieferant }}" placeholder="Nummer oder Firmenname">
+          <datalist id="batch-suppliers">
+            {% for supplier in lieferanten %}
+            <option value="{{ supplier.number }}">{{ supplier.name }}</option>
+            {% endfor %}
+          </datalist>
+        </div>
+        <div class="col-auto">
           <label class="form-label" for="batch-filter-hauptgruppe">Hauptgruppe</label>
           <select class="form-select" id="batch-filter-hauptgruppe" name="hauptgruppe">
             <option value="">(alle)</option>
+            {% if filters.hauptgruppe and filters.hauptgruppe not in hauptgruppen %}
+            <option selected value="{{ filters.hauptgruppe }}">{{ filters.hauptgruppe }}</option>
+            {% endif %}
             {% for label in hauptgruppen %}
             <option value="{{ label }}" {% if filters.hauptgruppe == label %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
@@ -62,6 +78,9 @@
           <label class="form-label" for="batch-filter-kategorie">Kategorie</label>
           <select class="form-select" id="batch-filter-kategorie" name="kategorie">
             <option value="">(alle)</option>
+            {% if filters.kategorie and filters.kategorie not in kategorien %}
+            <option selected value="{{ filters.kategorie }}">{{ filters.kategorie }}</option>
+            {% endif %}
             {% for label in kategorien %}
             <option value="{{ label }}" {% if filters.kategorie == label %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
