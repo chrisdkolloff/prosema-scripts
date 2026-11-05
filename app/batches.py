@@ -361,6 +361,8 @@ def build_columns(
             "width": COLUMN_WIDTHS.get(field_name, 140),
             "readOnly": read_only,
             "name": field_name,
+            "align": "left",
+            "wordWrap": True,
         }
         if field_name == INCLUDE_FIELD:
             column["type"] = "checkbox"
@@ -675,6 +677,8 @@ def row_matches(
     row: ArticleBatchRow,
     *,
     query: str = "",
+    lieferant: str = "",
+    supplier_names: list[str] | None = None,
     hauptgruppe: str = "",
     kategorie: str = "",
     aktiv: str = "",
@@ -685,6 +689,12 @@ def row_matches(
     ):
         return False
     values = effective_values(row)
+    # Supplier metadata is not part of the article-create column whitelist.
+    for supplier_field in ("Lieferanten Firmenname", "Lieferantennummer"):
+        edited = _lookup_aliased(row.edits or {}, supplier_field)
+        values[supplier_field] = edited if edited is not None else (
+            _lookup_aliased(row.raw_data or {}, supplier_field) or ""
+        )
     needle = query.strip().lower()
     if needle:
         haystack = " ".join(
@@ -693,12 +703,31 @@ def row_matches(
                 values.get("Lieferantenartikelnummer", ""),
                 get_row_value(values, KURZTEXT_FIELD),
                 values.get("Referenz (Matchcode)", ""),
+                values.get("Lieferanten Firmenname", ""),
+                values.get("Lieferantennummer", ""),
             ]
         ).lower()
         if needle not in haystack:
             return False
-    if hauptgruppe and values.get(HAUPTGRUPPE_FIELD, "") != hauptgruppe:
-        return False
+    if lieferant:
+        number = values.get("Lieferantennummer", "").strip()
+        name = values.get("Lieferanten Firmenname", "").strip().casefold()
+        if lieferant.isdecimal():
+            matches_supplier = number == lieferant or name in {
+                n.casefold() for n in supplier_names or []
+            }
+        else:
+            matches_supplier = lieferant.casefold() in name or lieferant.casefold() in number.casefold()
+        if not matches_supplier:
+            return False
+    if hauptgruppe:
+        from scripts.weclapp.article_import import _split_group_label
+
+        actual_name, actual_code = _split_group_label(values.get(HAUPTGRUPPE_FIELD, ""))
+        wanted_name, wanted_code = _split_group_label(hauptgruppe)
+        if (actual_name.casefold() != wanted_name.casefold()
+                or (wanted_code is not None and actual_code != wanted_code)):
+            return False
     if kategorie and values.get("Kategorie", "") != kategorie:
         return False
     return not (aktiv and values.get("Aktiv", "") != aktiv)
@@ -708,6 +737,8 @@ def filtered_rows(
     rows: list[ArticleBatchRow],
     *,
     query: str = "",
+    lieferant: str = "",
+    supplier_names: list[str] | None = None,
     hauptgruppe: str = "",
     kategorie: str = "",
     aktiv: str = "",
@@ -720,6 +751,8 @@ def filtered_rows(
         if row_matches(
             row,
             query=query,
+            lieferant=lieferant,
+            supplier_names=supplier_names,
             hauptgruppe=hauptgruppe,
             kategorie=kategorie,
             aktiv=aktiv,
