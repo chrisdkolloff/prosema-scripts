@@ -1,5 +1,9 @@
 # PROSEMA release history — edit this file to bump the version and document changes.
-# The top-level `version` is shown in the site header; `[[releases]]
+# The top-level `version` is shown in the site header; `[[releases]]` entries appear on /changelog.
+
+version = "1.4.7"
+
+[[releases]]
 version = "1.4.7"
 date = "2026-11-05"
 summary = "Batch-Suche mit aktuellen weclapp-Auswahlwerten und besser lesbarer Tabelle."
@@ -8,10 +12,6 @@ changes = [
   "Lieferanten nach Nummer oder Firmenname suchen; historische Gruppenbezeichnungen berücksichtigen.",
   "Batch-Spalten und Überschriften linksbündig mit automatischem Zeilenumbruch darstellen.",
 ]
-
-[[releases]]` entries appear on /changelog.
-
-version = "1.4.7"
 
 [[releases]]
 version = "1.4.6"
