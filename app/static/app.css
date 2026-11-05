@@ -290,3 +290,12 @@ tr.batch-row-excluded > td {
   background: #e7e5e4;
   font-size: 0.85rem;
 }
+
+/* Batch editor: keep long values and headings readable within their columns. */
+#batch-spreadsheet .jss_worksheet thead td,
+#batch-spreadsheet .jss_worksheet tbody td {
+  text-align: left !important;
+  white-space: pre-wrap !important;
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+}
