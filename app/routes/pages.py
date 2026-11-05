@@ -55,6 +55,16 @@ def brutto_netto_rechner(
     )
 
 
+@router.get("/laengen-umrechner", response_class=HTMLResponse)
+def laengen_umrechner(
+    user: SessionUser = Depends(require_user),
+) -> FileResponse:
+    return FileResponse(
+        _TOOLS_PAGES_DIR / "laengen-umrechner.html",
+        media_type="text/html; charset=utf-8",
+    )
+
+
 @router.get("/signatur-generator", response_class=HTMLResponse)
 def signatur_generator(
     user: SessionUser = Depends(require_user),

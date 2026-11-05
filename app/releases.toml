@@ -1,7 +1,16 @@
 # PROSEMA release history — edit this file to bump the version and document changes.
 # The top-level `version` is shown in the site header; `[[releases]]` entries appear on /changelog.
 
-version = "1.4.7"
+version = "1.4.8"
+
+[[releases]]
+version = "1.4.8"
+date = "2026-11-05"
+summary = "Längen-Umrechner für Meter, Zentimeter und Millimeter."
+changes = [
+  "Längen in Meter, Zentimeter oder Millimeter eingeben und alle drei Ergebnisse sofort anzeigen.",
+  "Eigener Menüeintrag und Rechner-Selektor zum Wechseln zwischen Brutto-Netto-Rechner und Längen-Umrechner.",
+]
 
 [[releases]]
 version = "1.4.7"
