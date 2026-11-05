@@ -23,6 +23,7 @@ from app.batch_actions import (
     discard_batch,
     snapshot_banner_state,
 )
+from app.batch_filter_options import live_filter_options
 from app.batch_units import create_unit_for_batch, row_results_payload
 from app.batch_upload import (
     DEFAULT_MANUAL_ROWS,
@@ -38,17 +39,24 @@ from app.batches import (
     apply_edits,
     build_grid_config,
     filtered_rows,
-    group_dropdowns,
     load_batch_rows,
     refresh_draft_validation,
-    schema_dropdowns,
     touch_presence,
 )
 from app.db import get_db
 from app.jobs import enqueue
 from app.models import ArticleBatch, ArticleTemplate, Job
 from app.snapshots import create_snapshot_pull, excel_filename_timestamp
-from app.weclapp import SETTINGS_PATH, check_weclapp_access, get_token_meta, is_auth_job_error, public_job_error
+from app.weclapp import (
+    SETTINGS_PATH,
+    NoWeclappToken,
+    WeclappTokenUnreadable,
+    check_weclapp_access,
+    get_token_meta,
+    is_auth_job_error,
+    public_job_error,
+)
+from scripts.weclapp.client import WeclappError
 
 router = APIRouter()
 
@@ -97,6 +105,7 @@ def _filters(
         page = 1
     return {
         "query": q,
+        "lieferant": str(request.query_params.get("lieferant") or "").strip(),
         "hauptgruppe": hauptgruppe,
         "kategorie": kategorie,
         "aktiv": aktiv,
@@ -163,9 +172,20 @@ def _page_context(
     all_rows = load_batch_rows(db, batch.id)
     if refresh_draft_validation(db, batch, all_rows):
         db.commit()
-    page_rows, total, pages = filtered_rows(all_rows, **filters)
-    haupt, _unter_by_haupt = group_dropdowns(db)
-    categories = schema_dropdowns(db).get("Kategorie") or []
+    options = {"hauptgruppen": [], "kategorien": [], "lieferanten": []}
+    options_error = ""
+    try:
+        options = live_filter_options(db, user["oid"])
+    except (NoWeclappToken, WeclappTokenUnreadable, WeclappError, ValueError, RuntimeError):
+        options_error = (
+            "Aktuelle Suchauswahl aus weclapp konnte nicht geladen werden. "
+            "Bitte weclapp-Zugang prüfen und erneut aktualisieren."
+        )
+    supplier_names = [s["name"] for s in options["lieferanten"]
+                      if s["number"] == filters["lieferant"]]
+    page_rows, total, pages = filtered_rows(
+        all_rows, **filters, supplier_names=supplier_names,
+    )
     query_params = []
     if filters["query"]:
         query_params.append(("q", filters["query"]))
@@ -177,6 +197,8 @@ def _page_context(
         query_params.append(("aktiv", filters["aktiv"]))
     if filters["nur_fehler"]:
         query_params.append(("nur_fehler", "1"))
+    if filters["lieferant"]:
+        query_params.append(("lieferant", filters["lieferant"]))
     filter_qs = urlencode(query_params)
     counts = batch_counts(all_rows)
     dialog = approval_dialog_context(batch, all_rows)
@@ -202,8 +224,8 @@ def _page_context(
         "total_rows": total,
         "pages": pages,
         "page": filters["page"],
-        "hauptgruppen": haupt,
-        "kategorien": categories,
+        **options,
+        "options_error": options_error,
         "grid_config": build_grid_config(
             db,
             batch,
