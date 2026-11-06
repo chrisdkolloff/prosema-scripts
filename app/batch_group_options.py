@@ -44,7 +44,8 @@ class GroupOptions:
 
     def _option_id(self, label: str, value: str) -> str:
         name, code = _split_group_label(value)
-        matches: set[str] = set()
+        coded_matches: set[str] = set()
+        uncoded_matches: set[str] = set()
         for option in self.definitions[label]["selectableValues"]:
             if option.get("active") is False:
                 continue
@@ -54,7 +55,11 @@ class GroupOptions:
                 and (option_code is None or code == option_code)
                 and option.get("id")
             ):
-                matches.add(str(option["id"]))
+                if option_code is not None:
+                    coded_matches.add(str(option["id"]))
+                else:
+                    uncoded_matches.add(str(option["id"]))
+        matches = coded_matches or uncoded_matches
         if len(matches) != 1:
             raise ValueError(
                 f"weclapp-Auswahlwert fehlt oder ist mehrdeutig: {label} / {value}. "
