@@ -69,7 +69,7 @@ def test_missing_or_conflicting_group_aborts_instead_of_reusing_old_id(sub):
 
 def test_ambiguous_name_is_rejected():
     defs = definitions()
-    defs[1]["selectableValues"].append({"id": "another", "value": "Werkzeug - 30"})
+    defs[1]["selectableValues"].append({"id": "another", "value": "Werkzeug"})
     with pytest.raises(ValueError, match="mehrdeutig"):
         GroupOptions(defs, _load_schema()).refresh({}, VALUES)
 
@@ -140,4 +140,25 @@ def test_inactive_only_option_is_rejected():
     defs = definitions()
     defs[0]["selectableValues"][0]["active"] = False
     with pytest.raises(ValueError, match="fehlt oder ist mehrdeutig"):
+        GroupOptions(defs, _load_schema()).refresh({}, VALUES)
+
+
+@pytest.mark.parametrize("coded_first", [True, False])
+@pytest.mark.parametrize("code", ["10", "010"])
+def test_coded_match_takes_priority_over_uncoded_name(coded_first, code):
+    defs = definitions()
+    coded = {"id": "coded-main", "value": f"Zubehör - {code}"}
+    bare = defs[0]["selectableValues"][0]
+    defs[0]["selectableValues"] = [coded, bare] if coded_first else [bare, coded]
+    refreshed = GroupOptions(defs, _load_schema()).refresh({}, VALUES)
+    assert refreshed["customAttributes"][0]["selectedValueId"] == "coded-main"
+
+
+def test_duplicate_coded_matches_remain_ambiguous():
+    defs = definitions(main="Zubehör - 010")
+    defs[0]["selectableValues"].extend([
+        {"id": "duplicate", "value": "Zubehör - 10"},
+        {"id": "bare", "value": "Zubehör"},
+    ])
+    with pytest.raises(ValueError, match="mehrdeutig"):
         GroupOptions(defs, _load_schema()).refresh({}, VALUES)
