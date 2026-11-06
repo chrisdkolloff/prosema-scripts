@@ -1,7 +1,16 @@
 # PROSEMA release history — edit this file to bump the version and document changes.
 # The top-level `version` is shown in the site header; `[[releases]]` entries appear on /changelog.
 
-version = "1.4.8"
+version = "1.4.9"
+
+[[releases]]
+version = "1.4.9"
+date = "2026-11-06"
+summary = "Artikelregistrierung: eindeutige Gruppenzuordnung beim Senden."
+changes = [
+  "Passende Gruppenbezeichnungen mit Code erhalten Vorrang vor gleichnamigen Einträgen ohne Code.",
+  "Gruppencodes mit und ohne führende Null bleiben gleichwertig; echte Mehrdeutigkeiten werden weiterhin abgefangen.",
+]
 
 [[releases]]
 version = "1.4.8"
